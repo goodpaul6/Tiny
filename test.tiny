@@ -1,0 +1,4 @@
+begin
+	read x end
+	write x end
+end
