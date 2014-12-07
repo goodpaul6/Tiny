@@ -7,14 +7,12 @@ The language itself is very simple, and not very practical at all, but is very e
 
 The following is an example program:
 
-''' 
-
+```
 begin
 	read x y z end
 	read x + y + z * 3 end
 end
-
-''' 
+``` 
 
 This will read 3 numbers from stdin and write their sum multiplied by 3 to stdout.
 There is no operator precedence in the language; as such, parentheses must be used where an operation 
