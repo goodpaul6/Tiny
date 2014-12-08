@@ -1,4 +1,38 @@
 begin
+	proc factorial							# compute the factorial of a number
+		if $-1 == 0 return 1 end			# $-1 is the last argument, $-2, $-3... are the previous ones
+		return $-1 * factorial($-1 - 1)	
+	end
+	
 	read x end
-	write x end
+	write factorial(x) end
+	
+	proc printLocal
+		0									# local value 1
+		0									# local value 2
+		$0 = 10								# set local value 1 to 10
+		$1 = 20								# set local value 2 to 20
+		write $0 + $1 end					# write the sum of the 2 locals
+	end
+	
+	read x end								# wait for input
+	printLocal()							# call printLocal
+	g
+	proc nested
+		if $-1 > 100 return; end			# return followed by ';' means return without a value
+		proc nested2						# a function nested within a function, but not restricted to the scope of this function
+			write $-1 end
+		end
+		nested2($-1)
+		return nested($-1 + 1) 
+	end
+	
+	read x end								# wait for input
+	
+	nested(0)
+	nested2(400000)							# able to call nested2 because all procedures are global
+	
+	while 0 < 0								# does not execute because 0 is not, in fact, less than zero
+		write 10 end
+	end
 end
