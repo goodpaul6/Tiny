@@ -1,38 +1,50 @@
-begin
-	proc factorial							# compute the factorial of a number
-		if $-1 == 0 return 1 end			# $-1 is the last argument, $-2, $-3... are the previous ones
-		return $-1 * factorial($-1 - 1)	
-	end
+# guessing game
+proc guess_game(value)
+	local user_guess
+	read $user_guess end
 	
-	read x end
-	write factorial(x) end
+	$user_guess = tonumber($user_guess)
 	
-	proc printLocal
-		0									# local value 1
-		0									# local value 2
-		$0 = 10								# set local value 1 to 10
-		$1 = 20								# set local value 2 to 20
-		write $0 + $1 end					# write the sum of the 2 locals
-	end
-	
-	read x end								# wait for input
-	printLocal()							# call printLocal
-	g
-	proc nested
-		if $-1 > 100 return; end			# return followed by ';' means return without a value
-		proc nested2						# a function nested within a function, but not restricted to the scope of this function
-			write $-1 end
+	local guess_array = array()
+
+	while $user_guess != $value
+		array_push($guess_array, $user_guess)
+		
+		local diff = $value - $user_guess
+		
+		write " " end
+		
+		if $diff > 0 then
+			write "too low" end
 		end
-		nested2($-1)
-		return nested($-1 + 1) 
+		
+		if $diff < 0 then
+			write "too high" end
+		end
+		
+		write " " end
+		
+		if array_length($guess_array) > 0 then
+			write "previous guesses:" end
+		
+			local i = 0
+			while $i < array_length($guess_array) 
+				write array_get($guess_array, $i) end
+				$i = $i + 1
+			end
+		end
+		write " " end
+		
+		read $user_guess end
+		$user_guess = tonumber($user_guess)
 	end
 	
-	read x end								# wait for input
-	
-	nested(0)
-	nested2(400000)							# able to call nested2 because all procedures are global
-	
-	while 0 < 0								# does not execute because 0 is not, in fact, less than zero
-		write 10 end
-	end
+	write "you got it!" end
 end
+
+# run guessing game
+srand()
+write "guess a number from 1 to 100" end
+guess_game(rand() % 101 + 1)
+
+

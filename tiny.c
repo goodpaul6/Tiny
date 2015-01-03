@@ -5,11 +5,20 @@
 #include <ctype.h>
 #include <string.h>
 
+#include "tiny.h"
+
 void* emalloc(size_t size)
 {
 	void* data = malloc(size);
 	assert(data && "Out of memory!");
 	return data;
+}
+
+void* erealloc(void* mem, size_t newSize)
+{
+	void* newMem = realloc(mem, newSize);
+	assert(newMem && "Out of memory!");
+	return newMem;
 }
 
 char* estrdup(char* string)
@@ -21,34 +30,261 @@ char* estrdup(char* string)
 
 #define MAX_PROG_LEN	2048
 #define MAX_CONST_AMT	256
-#define MAX_STACK		512
+#define MAX_STACK		1024
 #define MAX_INDIR		1024
 #define MAX_VARS		128
 #define MAX_FUNCS		128
+#define MAX_ARGS		32
 
 typedef unsigned char Word;
 
 Word Program[MAX_PROG_LEN];
-Word ProgramLength;
+int ProgramLength;
 int ProgramCounter;
 int FramePointer;
 
-double Constants[MAX_CONST_AMT];
-int ConstantAmount = 0;
+Object* GCHead;
+int NumObjects;
+int MaxNumObjects;
 
-double Stack[MAX_STACK];
+void DeleteObject(Object* obj)
+{
+	if(obj->type == OBJ_STRING) free(obj->string);
+	if(obj->type == OBJ_NATIVE) 
+	{
+		if(obj->ptrFree)
+			obj->ptrFree(obj->ptr);
+	}
+	free(obj);
+}
+
+void Mark(Object* obj)
+{
+	if(!obj) 
+	{
+		printf("attempted to mark null object\n");
+		return;
+	}
+	
+	if(obj->marked) return;
+	if(obj->type == OBJ_NATIVE)
+	{
+		if(obj->ptrMark)
+			obj->ptrMark(obj->ptr);
+	}
+
+	obj->marked = 1;
+}
+
+void MarkAll();
+
+void Sweep()
+{
+	Object** object = &GCHead;
+	while(*object)
+	{
+		if(!(*object)->marked)
+		{
+			Object* unreached = *object;
+			--NumObjects;
+			*object = unreached->next;
+			DeleteObject(unreached);
+		}
+		else
+		{
+			(*object)->marked = 0;
+			object = &(*object)->next;
+		}
+	}
+}
+
+void GarbageCollect()
+{
+	MarkAll();
+	Sweep();
+	MaxNumObjects = NumObjects * 2;
+}
+
+Object* NewObject(ObjectType type)
+{
+	if(NumObjects >= MaxNumObjects) GarbageCollect();
+	
+	Object* obj = emalloc(sizeof(Object));
+	
+	obj->type = type;
+	obj->next = GCHead;
+	GCHead = obj;
+	obj->marked = 0;
+	
+	NumObjects++;
+	
+	return obj;
+}
+
+Object* NewNative(void* ptr, void(*ptrFree)(void*), void(*ptrMark)(void*))
+{
+	Object* obj = NewObject(OBJ_NATIVE);
+	obj->ptr = ptr;
+	obj->ptrFree = ptrFree;
+	obj->ptrMark = ptrMark;
+	return obj;
+}
+
+Object* NewNumber(double value)
+{
+	Object* obj = NewObject(OBJ_NUM);
+	obj->number = value;
+	return obj;
+}
+
+Object* NewString(char* string)
+{
+	Object* obj = NewObject(OBJ_STRING);
+	obj->string = string;
+	return obj;
+}
+
+Object* Stack[MAX_STACK];
 int StackSize = 0;
 
 int IndirStack[MAX_INDIR];
 int IndirStackSize;
 
 char* VariableNames[MAX_VARS];
-double Variables[MAX_VARS];
+Object* Variables[MAX_VARS];
 int VariableAmount = 0;
+int RuntimeVariableAmount = 0;
 
 char* FunctionNames[MAX_FUNCS];
 int FunctionPcs[MAX_FUNCS];
 int FunctionAmount = 0;
+
+char* ForeignFunctionNames[MAX_FUNCS];
+void (*ForeignFunctions[MAX_FUNCS])(void);
+int ForeignAmount = 0;
+
+int CurrScope = 0;
+int CurrNumLocals = 0;
+
+int NumArgsDeclared = 0;
+
+typedef struct sLocalDecl
+{
+	struct sLocalDecl* next;
+	char* name;
+	int index;
+	int scope;
+} LocalDecl;
+
+LocalDecl* LocalDeclarations;
+
+int DeclareLocal(char* name)
+{
+	LocalDecl* newLocal = emalloc(sizeof(LocalDecl));
+	
+	newLocal->name = estrdup(name);
+	newLocal->index = CurrNumLocals;
+	newLocal->scope = CurrScope;
+	
+	newLocal->next = LocalDeclarations;
+	LocalDeclarations = newLocal;
+	
+	++CurrNumLocals;
+	return CurrNumLocals - 1;
+}
+
+int DeclareArgument(char* name, int nargs)
+{
+	++NumArgsDeclared;
+	
+	LocalDecl* newLocal = emalloc(sizeof(LocalDecl));
+	
+	newLocal->name = estrdup(name);
+	newLocal->index = -nargs + (NumArgsDeclared - 1);
+	newLocal->scope = CurrScope;
+	
+	newLocal->next = LocalDeclarations;
+	LocalDeclarations = newLocal;
+	
+	return newLocal->index;
+}
+
+int ReferenceLocal(char* name)
+{
+	LocalDecl* node = LocalDeclarations;
+	
+	while(node)
+	{
+		if(strcmp(node->name, name) == 0)
+		{
+			if(node->scope <= CurrScope)
+				return node->index;
+		}
+		node = node->next;
+	}
+	
+	fprintf(stderr, "Attempted to reference non-existent local variable '%s'\n", name);
+	exit(1);
+}
+
+void ClearLocals()
+{
+	LocalDecl* node = LocalDeclarations;
+	
+	while(node)
+	{
+		LocalDecl* next = node->next;
+		free(node->name);
+		free(node);
+		node = next;
+	}
+	
+	LocalDeclarations = NULL;
+	
+	CurrNumLocals = 0;
+}
+
+typedef enum
+{
+	CST_NUM,
+	CST_STR
+} ConstType;
+
+typedef struct
+{
+	ConstType type;
+	union
+	{
+		char* string;
+		double number;
+	};
+} ConstInfo;
+
+ConstInfo** Constants;
+int ConstantCapacity = 1;
+int ConstantAmount = 0;
+
+ConstInfo* NewConst(ConstType type)
+{
+	if(ConstantAmount + 1 >= ConstantCapacity)
+	{
+		ConstantCapacity *= 2;
+		Constants = erealloc(Constants, ConstantCapacity * sizeof(ConstInfo));
+	}
+	
+	ConstInfo* info = emalloc(sizeof(ConstInfo));
+	info->type = type;
+	return info;
+}
+
+void MarkAll()
+{
+	for(int i = 0; i < StackSize; ++i)
+		Mark(Stack[i]);
+	
+	for(int i = 0; i < RuntimeVariableAmount; ++i)
+		Mark(Variables[i]);
+}
 
 void DeleteVariables()
 {
@@ -74,6 +310,13 @@ void ResetMachine()
 	VariableAmount = 0;
 	FunctionAmount = 0;
 	IndirStackSize = 0;
+	GCHead = NULL;
+	NumObjects = 0;
+	ForeignAmount = 0;
+	RuntimeVariableAmount = 0;
+	CurrScope = 0;
+	LocalDeclarations = NULL;
+	NumArgsDeclared = 0;
 }
 
 void GenerateCode(Word inst)
@@ -96,17 +339,53 @@ void GenerateIntAt(int value, int pc)
 		Program[pc + i] = *wp++;
 }
 
-int RegisterConstant(double value)
+int RegisterNumber(double value)
 {
 	for(int i = 0; i < ConstantAmount; ++i)
 	{
-		if(Constants[i] == value)
-			return i;
+		if(Constants[i]->type == CST_NUM)
+		{
+			if(Constants[i]->number == value)
+				return i;
+		}
 	}
 	
 	assert(ConstantAmount < MAX_CONST_AMT && "Constant Overflow!");
-	Constants[ConstantAmount++] = value;
+	ConstInfo* num = NewConst(CST_NUM);
+	num->number = value;
+	Constants[ConstantAmount++] = num;
 	return ConstantAmount - 1;
+}
+
+int RegisterString(char* string)
+{
+	for(int i = 0; i < ConstantAmount; ++i)
+	{
+		if(Constants[i]->type == CST_STR)
+		{
+			if(strcmp(Constants[i]->string, string) == 0)
+				return i;
+		}
+	}
+	
+	assert(ConstantAmount < MAX_CONST_AMT && "Constant Overflow!");
+	
+	ConstInfo* str = NewConst(CST_STR);
+	str->string = estrdup(string);
+	Constants[ConstantAmount++] = str;
+	return ConstantAmount - 1;
+}
+
+void DeleteConstants()
+{
+	for(int i = 0; i < ConstantAmount; ++i)
+	{
+		ConstInfo* cip = Constants[i];
+		if(cip->type == CST_STR)
+			free(cip->string);
+		free(cip);
+	}
+	free(Constants);
 }
 
 int RegisterVariableName(char* name)
@@ -122,6 +401,12 @@ int RegisterVariableName(char* name)
 
 int RegisterFunction(char* name)
 {
+	for(int i = 0; i < ForeignAmount; ++i)
+	{
+		if(strcmp(ForeignFunctionNames[i], name) == 0)
+			return (-i - 1);
+	}
+
 	for(int i = 0; i < FunctionAmount; ++i)
 	{
 		if(strcmp(FunctionNames[i], name) == 0)
@@ -129,6 +414,18 @@ int RegisterFunction(char* name)
 	}
 	FunctionNames[FunctionAmount++] = estrdup(name);
 	return FunctionAmount - 1;
+}
+
+void BindForeignFunction(void(*fun)(void), char* name)
+{
+	ForeignFunctionNames[ForeignAmount] = estrdup(name);
+	ForeignFunctions[ForeignAmount++] = fun;
+}
+
+void DeleteForeignFunctions()
+{
+	for(int i = 0; i < ForeignAmount; ++i)
+		free(ForeignFunctionNames[i]);
 }
 
 enum 
@@ -140,6 +437,9 @@ enum
 	OP_SUB,
 	OP_MUL,
 	OP_DIV,
+	OP_MOD,
+	OP_OR,
+	OP_AND,
 	OP_LT,
 	OP_LTE,
 	OP_GT,
@@ -161,7 +461,9 @@ enum
 	OP_CALL,
 	OP_RETURN,
 	OP_RETURN_VALUE,
-	
+
+	OP_CALLF,
+
 	OP_GETLOCAL,
 	OP_SETLOCAL,
 	
@@ -180,7 +482,7 @@ int ReadInteger()
 	return val;
 }
 
-void DoPush(double value)
+void DoPush(Object* value)
 {
 	if(StackSize >= MAX_STACK) 
 	{
@@ -190,7 +492,7 @@ void DoPush(double value)
 	Stack[StackSize++] = value;
 }
 
-double DoPop()
+Object* DoPop()
 {
 	if(StackSize <= 0) 
 	{
@@ -202,24 +504,29 @@ double DoPop()
 
 void DoRead()
 {
-	char buffer[32];
+	char* buffer = emalloc(1);
+	size_t bufferLength = 0;
+	size_t bufferCapacity = 1;
+	
+	int c = getc(stdin);
 	int i = 0;
-	int sign = 1;
-	int c = getchar();
-	if(c == '-') 
+	while(c != '\n')
 	{
-		sign = -1;
-		c = getchar();
-	}
-	while(isdigit(c))
-	{
-		assert(i < 32 - 1 && "Number was too long!");
+		if(bufferLength + 1 >= bufferCapacity)
+		{
+			bufferCapacity *= 2;
+			buffer = erealloc(buffer, bufferCapacity);
+		}
+		
 		buffer[i++] = c;
-		c = getchar();
+		c = getc(stdin);
 	}
 	
 	buffer[i] = '\0';
-	DoPush(strtod(buffer, NULL) * sign);
+	
+	Object* obj = NewObject(OBJ_STRING);
+	obj->string = buffer;
+	DoPush(obj);
 }
 
 void DoPushIndir(int nargs)
@@ -248,8 +555,19 @@ void ExecuteCycle()
 		case OP_PUSH:
 		{
 			++ProgramCounter;
-			double value = Constants[ReadInteger()];
-			DoPush(value);
+			ConstInfo* cip = Constants[ReadInteger()];
+			Object* obj;
+			if(cip->type == CST_NUM)
+			{
+				obj = NewObject(OBJ_NUM);
+				obj->number = cip->number;
+			}
+			else if(cip->type == CST_STR)
+			{
+				obj = NewObject(OBJ_STRING);
+				obj->string = estrdup(cip->string);
+			}
+			DoPush(obj);
 		} break;
 		
 		case OP_POP:
@@ -258,12 +576,16 @@ void ExecuteCycle()
 			++ProgramCounter;
 		} break;
 		
-		#define BIN_OP(OP, operator) case OP_##OP: { double val2 = DoPop(); double val1 = DoPop(); DoPush(val1 operator val2); ++ProgramCounter; } break;
+		#define BIN_OP(OP, operator) case OP_##OP: { Object* val2 = DoPop(); Object* val1 = DoPop(); Object* result = NewObject(OBJ_NUM); result->number = val1->number operator val2->number; DoPush(result); ++ProgramCounter; } break;
+		#define BIN_OP_INT(OP, operator) case OP_##OP: { Object* val2 = DoPop(); Object* val1 = DoPop(); Object* result = NewObject(OBJ_NUM); result->number = (int)val1->number operator (int)val2->number; DoPush(result); ++ProgramCounter; } break;
 		
 		BIN_OP(ADD, +)
 		BIN_OP(SUB, -)
 		BIN_OP(MUL, *)
 		BIN_OP(DIV, /)
+		BIN_OP_INT(MOD, %)
+		BIN_OP_INT(OR, |)
+		BIN_OP_INT(AND, &)
 		BIN_OP(LT, <)
 		BIN_OP(LTE, <=)
 		BIN_OP(GT, >)
@@ -275,7 +597,9 @@ void ExecuteCycle()
 		
 		case OP_PRINT:
 		{
-			printf("%g\n", DoPop());
+			Object* obj = DoPop();
+			if(obj->type == OBJ_NUM) printf("%g\n", obj->number);
+			if(obj->type == OBJ_STRING) printf("%s\n", obj->string);
 			++ProgramCounter;
 		} break;
 
@@ -283,6 +607,8 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			int varIdx = ReadInteger();
+			if(RuntimeVariableAmount < varIdx + 1)
+				RuntimeVariableAmount = varIdx + 1;
 			Variables[varIdx] = DoPop();
 		} break;
 		
@@ -290,7 +616,7 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			int varIdx = ReadInteger();
-			DoPush(Variables[varIdx]);
+			DoPush(Variables[varIdx]); 
 		} break;
 		
 		case OP_READ:
@@ -310,17 +636,15 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			int newPc = ReadInteger();
-			if(DoPop() == 0)
-			{	
+			if(DoPop()->number == 0)
 				ProgramCounter = newPc;
-			}
 		} break;
 		
 		case OP_GOTONZ:
 		{
 			++ProgramCounter;
 			int newPc = ReadInteger();
-			if(DoPop() != 0)
+			if(DoPop()->number != 0)
 				ProgramCounter = newPc;
 		} break;
 		
@@ -341,11 +665,18 @@ void ExecuteCycle()
 		
 		case OP_RETURN_VALUE:
 		{
-			double retVal = DoPop();
+			Object* retVal = DoPop();
 			DoPopIndir();
 			DoPush(retVal);
 		} break;
 		
+		case OP_CALLF:
+		{
+			++ProgramCounter;
+			int fIdx = ReadInteger();
+			ForeignFunctions[fIdx]();
+		} break;
+
 		case OP_GETLOCAL:
 		{
 			++ProgramCounter;
@@ -357,7 +688,7 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			int localIdx = ReadInteger();
-			double val = DoPop();
+			Object* val = DoPop();
 			Stack[FramePointer + localIdx] = val;
 		} break;
 		
@@ -383,16 +714,19 @@ enum
 	TOK_READ = -5,
 	TOK_WRITE = -6,
 	TOK_NUMBER = -7,
-	TOK_LOCALIDX = -8,
-	TOK_PROC = -9,
-	TOK_IF = -10,
-	TOK_EQUALS = -11,
-	TOK_NOTEQUALS = -12,
-	TOK_LTE = -13,
-	TOK_GTE = -14,
-	TOK_RETURN = -15,
-	TOK_WHILE = -16,
-	TOK_EOF = -17,
+	TOK_STRING = -8,
+	TOK_LOCAL = -9,
+	TOK_PROC = -10,
+	TOK_IF = -11,
+	TOK_EQUALS = -12,
+	TOK_NOTEQUALS = -13,
+	TOK_LTE = -14,
+	TOK_GTE = -15,
+	TOK_RETURN = -16,
+	TOK_WHILE = -17,
+	TOK_THEN = -18,
+	TOK_EOF = -19,
+	TOK_LOCALREF = -20
 };
 
 #define MAX_TOK_LEN		256
@@ -431,6 +765,20 @@ int GetToken(FILE* in)
 		if(strcmp(TokenBuffer, "if") == 0) return TOK_IF;
 		if(strcmp(TokenBuffer, "return") == 0) return TOK_RETURN;
 		if(strcmp(TokenBuffer, "while") == 0) return TOK_WHILE;
+		if(strcmp(TokenBuffer, "then") == 0) return TOK_THEN;
+		if(strcmp(TokenBuffer, "local") == 0) return TOK_LOCAL;
+
+		if(strcmp(TokenBuffer, "true") == 0)
+		{
+			TokenNumber = 1;
+			return TOK_NUMBER;
+		}
+		
+		if(strcmp(TokenBuffer, "false") == 0)
+		{
+			TokenNumber = 0;
+			return TOK_NUMBER;
+		}
 		
 		return TOK_IDENT;
 	}
@@ -459,24 +807,32 @@ int GetToken(FILE* in)
 	if(last == '$')
 	{
 		last = getc(in);
-		int sign = 1;
-		if(last == '-')
-		{
-			sign = -1;
-			last = getc(in);
-		}
 		
 		int i = 0;
-		while(isdigit(last))
+		while(isalnum(last) || last == '_')
 		{
-			assert(i < MAX_TOK_LEN - 1 && "Local index was too long!");
+			assert(i < MAX_TOK_LEN - 1 && "Token was too long!");
 			TokenBuffer[i++] = last;
 			last = getc(in);
 		}
 		TokenBuffer[i] = '\0';
 		
-		TokenNumber = (int)strtol(TokenBuffer, NULL, 10) * sign;
-		return TOK_LOCALIDX;
+		return TOK_LOCALREF;
+	}
+
+	if(last == '"')
+	{
+		last = getc(in);
+		int i = 0;
+		while(last != '"')
+		{
+			TokenBuffer[i++] = last;
+			last = getc(in);
+		}
+		TokenBuffer[i] = '\0';
+		
+		last = getc(in);
+		return TOK_STRING;
 	}
 	
 	if(last == EOF)
@@ -534,7 +890,7 @@ typedef enum
 	EXP_ID,
 	EXP_CALL,
 	EXP_NUM,
-	EXP_LOCALIDX,
+	EXP_STRING,
 	EXP_BINARY,
 	EXP_PAREN,
 	EXP_PROC,
@@ -542,10 +898,11 @@ typedef enum
 	EXP_UNARY,
 	EXP_RETURN,
 	EXP_WHILE,
+	EXP_LOCAL,
+	EXP_LOCALREF,
 } ExprType;
 
 #define MAX_READ_WRITE	128
-#define MAX_ARGS		16
 
 typedef struct sExpr
 {
@@ -562,6 +919,7 @@ typedef struct sExpr
 		struct
 		{
 			int ids[MAX_READ_WRITE];
+			char isLocal[MAX_READ_WRITE];
 			int numIds;
 		} read;
 		
@@ -572,7 +930,8 @@ typedef struct sExpr
 		} write;
 		
 		int number;
-		
+		int string;
+
 		int ident;
 		
 		struct
@@ -581,8 +940,6 @@ typedef struct sExpr
 			struct sExpr* args[MAX_ARGS];
 			int numArgs;
 		} call;
-		
-		int localIdx;
 		
 		struct
 		{
@@ -603,6 +960,8 @@ typedef struct sExpr
 		{
 			int name;
 			struct sExpr* exprHead;
+			
+			int numLocals;
 		} proc;
 
 		struct
@@ -616,6 +975,13 @@ typedef struct sExpr
 			struct sExpr* cond;
 			struct sExpr* exprHead;
 		} whilex;
+		
+		struct
+		{
+			int index;
+		} local;
+		
+		int localRefIdx;
 		
 		struct sExpr* retExpr;
 	};
@@ -689,21 +1055,52 @@ Expr* ParseFactor(FILE* in)
 		case TOK_NUMBER:
 		{
 			Expr* exp = Expr_create(EXP_NUM);
-			exp->number = RegisterConstant(TokenNumber);
+			exp->number = RegisterNumber(TokenNumber);
+			GetNextToken(in);
+			return exp;
+		} break;
+
+		case TOK_STRING:
+		{
+			Expr* exp = Expr_create(EXP_STRING);
+			exp->string = RegisterString(TokenBuffer);
 			GetNextToken(in);
 			return exp;
 		} break;
 		
-		case TOK_LOCALIDX:
+		case TOK_LOCAL:
 		{
-			Expr* exp = Expr_create(EXP_LOCALIDX);
-			exp->localIdx = (int)TokenNumber;
+			if(CurrScope == 0) 
+			{
+				fprintf(stderr, "Cannot declare or reference locals in the global scope!\n");
+				exit(1);
+			}
+			
+			GetNextToken(in);
+			assert(CurTok == TOK_IDENT && "Local name must be identifier!");
+			
+			Expr* exp = Expr_create(EXP_LOCAL);
+			exp->local.index = DeclareLocal(TokenBuffer);
+			GetNextToken(in);
+			return exp;
+		} break;
+		
+		case TOK_LOCALREF:
+		{
+			Expr* exp = Expr_create(EXP_LOCALREF);
+			exp->localRefIdx = ReferenceLocal(TokenBuffer);
 			GetNextToken(in);
 			return exp;
 		} break;
 		
 		case TOK_PROC:
 		{
+			if(CurrScope != 0)
+			{
+				fprintf(stderr, "Procedure defintion in a local scope is not allowed\n");
+				exit(1);
+			}
+			
 			Expr* exp = Expr_create(EXP_PROC);
 			
 			GetNextToken(in);
@@ -712,6 +1109,35 @@ Expr* ParseFactor(FILE* in)
 			exp->proc.name = RegisterFunction(TokenBuffer);
 			
 			GetNextToken(in);
+			
+			++CurrScope;
+			
+			assert(CurTok == '(');
+			GetNextToken(in);
+			
+			
+			char* args[MAX_ARGS];
+			int nargs = 0;
+			
+			while(CurTok != ')')
+			{
+				assert(CurTok == TOK_IDENT);
+				args[nargs++] = estrdup(TokenBuffer);
+				GetNextToken(in);
+				assert(CurTok == ')' || CurTok == ',');
+				if(CurTok == ',') GetNextToken(in);
+			}
+			
+			for(int i = 0; i < nargs; ++i)
+				DeclareArgument(args[i], nargs);
+			
+			NumArgsDeclared = 0;
+			
+			for(int i = 0; i < nargs; ++i)
+				free(args[i]);
+			
+			GetNextToken(in);
+			
 			if(CurTok != TOK_END)
 			{
 				Expr* curExp = ParseExpr(in);
@@ -726,6 +1152,9 @@ Expr* ParseFactor(FILE* in)
 			}
 			else
 				exp->proc.exprHead = NULL;
+			exp->proc.numLocals = CurrNumLocals;
+			--CurrScope;
+			ClearLocals();
 			GetNextToken(in);
 			return exp;
 		} break;
@@ -735,6 +1164,9 @@ Expr* ParseFactor(FILE* in)
 			GetNextToken(in);
 			Expr* exp = Expr_create(EXP_IF);
 			exp->ifx.cond = ParseExpr(in);
+			assert(CurTok == TOK_THEN && "Expected 'then' after if condition");
+			GetNextToken(in);
+			++CurrScope;
 			if(CurTok != TOK_END)
 			{
 				Expr* curExp = ParseExpr(in);
@@ -749,6 +1181,7 @@ Expr* ParseFactor(FILE* in)
 			}
 			else
 				exp->ifx.exprHead = NULL;
+			--CurrScope;
 			GetNextToken(in);
 			return exp;
 		} break;
@@ -758,6 +1191,7 @@ Expr* ParseFactor(FILE* in)
 			GetNextToken(in);
 			Expr* exp = Expr_create(EXP_WHILE);
 			exp->whilex.cond = ParseExpr(in);
+			++CurrScope;
 			if(CurTok != TOK_END)
 			{
 				Expr* curExp = ParseExpr(in);
@@ -772,7 +1206,7 @@ Expr* ParseFactor(FILE* in)
 			}
 			else
 				exp->whilex.exprHead = NULL;
-			
+			--CurrScope;
 			GetNextToken(in);
 			return exp;
 		} break;
@@ -799,8 +1233,17 @@ Expr* ParseFactor(FILE* in)
 			exp->read.numIds = 0;
 			while(CurTok != TOK_END)
 			{
-				assert(CurTok == TOK_IDENT && "Expected identifier in list for read expression!");
-				exp->read.ids[exp->read.numIds++] = RegisterVariableName(TokenBuffer); 
+				assert((CurTok == TOK_IDENT || CurTok == TOK_LOCALREF) && "Expected some sort of variable in list for read expression!");
+				if(CurTok == TOK_IDENT)
+				{
+					exp->read.isLocal[exp->read.numIds] = 0;
+					exp->read.ids[exp->read.numIds++] = RegisterVariableName(TokenBuffer); 
+				}
+				else
+				{
+					exp->read.isLocal[exp->read.numIds] = 1;
+					exp->read.ids[exp->read.numIds++] = ReferenceLocal(TokenBuffer);
+				}
 				GetNextToken(in);
 			}
 			GetNextToken(in);
@@ -897,16 +1340,14 @@ Expr* ParseExpr(FILE* in)
 
 Expr* ParseProgram(FILE* in)
 {
-	while(CurTok != TOK_BEGIN)
-		GetNextToken(in);
 	GetNextToken(in);
-	
-	if(CurTok != TOK_END)
+		
+	if(CurTok != TOK_EOF)
 	{
 		Expr* head = ParseExpr(in);
 		Expr* exp = head;
 		
-		while(CurTok != TOK_END)
+		while(CurTok != TOK_EOF)
 		{
 			Expr* stmt = ParseExpr(in);
 			head->next = stmt;
@@ -941,8 +1382,13 @@ void PrintExpr(Expr* exp)
 		
 		case EXP_NUM:
 		{
-			printf("%g", Constants[exp->number]);
-		} break; 
+			printf("%g", Constants[exp->number]->number);
+		} break;
+
+		case EXP_STRING:
+		{
+			printf("%s", Constants[exp->string]->string);
+		} break;	
 		
 		case EXP_READ:
 		{
@@ -983,11 +1429,6 @@ void PrintExpr(Expr* exp)
 		{
 			printf("%c", exp->unary.op);
 			PrintExpr(exp->unary.exp);
-		} break;
-		
-		case EXP_LOCALIDX:
-		{
-			printf("$%i", exp->localIdx);
 		} break;
 		
 		case EXP_PROC:
@@ -1058,9 +1499,17 @@ void CompileExpr(Expr* exp)
 		{
 			for(int i = 0; i < exp->call.numArgs; ++i)
 				CompileExpr(exp->call.args[i]);
-			GenerateCode(OP_CALL);
-			GenerateInt(exp->call.numArgs);
-			GenerateInt(exp->call.callee);
+			if(exp->call.callee < 0)
+			{
+				GenerateCode(OP_CALLF);
+				GenerateInt(-(exp->call.callee + 1));
+			}
+			else
+			{
+				GenerateCode(OP_CALL);
+				GenerateInt(exp->call.numArgs);
+				GenerateInt(exp->call.callee);
+			}
 		} break;
 		
 		case EXP_NUM:
@@ -1068,11 +1517,22 @@ void CompileExpr(Expr* exp)
 			GenerateCode(OP_PUSH);
 			GenerateInt(exp->number);
 		} break; 
+
+		case EXP_STRING:
+		{
+			GenerateCode(OP_PUSH);
+			GenerateInt(exp->string);
+		} break;
+
+		case EXP_LOCAL:
+		{
+			// local expressions do not create code
+		} break;
 		
-		case EXP_LOCALIDX:
+		case EXP_LOCALREF:
 		{
 			GenerateCode(OP_GETLOCAL);
-			GenerateInt(exp->localIdx);
+			GenerateInt(exp->localRefIdx);
 		} break;
 		
 		case EXP_READ:
@@ -1080,7 +1540,10 @@ void CompileExpr(Expr* exp)
 			for(int i = 0; i < exp->read.numIds; ++i)
 			{	
 				GenerateCode(OP_READ);
-				GenerateCode(OP_SET);
+				if(!exp->read.isLocal[i])
+					GenerateCode(OP_SET);
+				else
+					GenerateCode(OP_SETLOCAL);
 				GenerateInt(exp->read.ids[i]);
 			}
 		} break;
@@ -1106,15 +1569,21 @@ void CompileExpr(Expr* exp)
 						GenerateCode(OP_SET);
 						GenerateInt(exp->binary.lhs->ident);
 					}
-					else if(exp->binary.lhs->type == EXP_LOCALIDX)
+					else if(exp->binary.lhs->type == EXP_LOCAL)
 					{
 						CompileExpr(exp->binary.rhs);
 						GenerateCode(OP_SETLOCAL);
-						GenerateInt(exp->binary.lhs->localIdx);
+						GenerateInt(exp->binary.lhs->local.index);
+					}
+					else if(exp->binary.lhs->type == EXP_LOCALREF)
+					{
+						CompileExpr(exp->binary.rhs);
+						GenerateCode(OP_SETLOCAL);
+						GenerateInt(exp->binary.lhs->localRefIdx);
 					}
 					else
 					{
-						fprintf(stderr, "LHS of assignment operation must be an id or a local index $x\n");
+						fprintf(stderr, "LHS of assignment operation must be a local or a global variable\n");
 						exit(1);
 					}
 				} break;
@@ -1140,6 +1609,27 @@ void CompileExpr(Expr* exp)
 					GenerateCode(OP_DIV);
 				} break;
 				
+				case '%':
+				{
+					CompileExpr(exp->binary.lhs);
+					CompileExpr(exp->binary.rhs);
+					GenerateCode(OP_MOD);
+				} break;
+				
+				case '|':
+				{
+					CompileExpr(exp->binary.lhs);
+					CompileExpr(exp->binary.rhs);
+					GenerateCode(OP_OR);
+				} break;
+				
+				case '&':
+				{
+					CompileExpr(exp->binary.lhs);
+					CompileExpr(exp->binary.rhs);
+					GenerateCode(OP_AND);
+				} break;
+				
 				case '-':
 				{
 					CompileExpr(exp->binary.lhs);
@@ -1161,12 +1651,7 @@ void CompileExpr(Expr* exp)
 					GenerateCode(OP_GT);
 				} break;
 				
-				case ':':
-				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-				} break;
-				
+
 				case TOK_EQUALS:
 				{
 					CompileExpr(exp->binary.lhs);
@@ -1210,7 +1695,7 @@ void CompileExpr(Expr* exp)
 				case '-': 
 				{
 					GenerateCode(OP_PUSH);
-					GenerateInt(RegisterConstant(-1));
+					GenerateInt(RegisterNumber(-1));
 					GenerateCode(OP_MUL);
 				} break;
 			}
@@ -1221,7 +1706,15 @@ void CompileExpr(Expr* exp)
 			GenerateCode(OP_GOTO);
 			int skipGotoPc = ProgramLength;
 			GenerateInt(0);
+			
 			FunctionPcs[exp->proc.name] = ProgramLength;
+			
+			for(int i = 0; i < exp->proc.numLocals; ++i)
+			{
+				GenerateCode(OP_PUSH);
+				GenerateInt(RegisterNumber(0));
+			}
+			
 			if(exp->proc.exprHead)
 				CompileProgram(exp->proc.exprHead);
 			GenerateCode(OP_RETURN);
@@ -1282,7 +1775,7 @@ void Expr_destroy(Expr* exp)
 {
 	switch(exp->type)
 	{
-		case EXP_ID: case EXP_NUM:	break;
+		case EXP_ID: case EXP_NUM: case EXP_STRING: case EXP_LOCAL: case EXP_LOCALREF: break;
 		
 		case EXP_CALL: 
 		{
@@ -1295,8 +1788,8 @@ void Expr_destroy(Expr* exp)
 		case EXP_BINARY: Expr_destroy(exp->binary.lhs); Expr_destroy(exp->binary.rhs); break;
 		case EXP_PAREN: Expr_destroy(exp->paren); break;
 		case EXP_PROC: if(exp->proc.exprHead) DeleteProgram(exp->proc.exprHead); break;
-		case EXP_IF: if(exp->ifx.exprHead) DeleteProgram(exp->ifx.exprHead); break;
-		case EXP_WHILE: if(exp->whilex.exprHead) DeleteProgram(exp->whilex.exprHead); break;
+		case EXP_IF: Expr_destroy(exp->ifx.cond); if(exp->ifx.exprHead) DeleteProgram(exp->ifx.exprHead); break;
+		case EXP_WHILE: Expr_destroy(exp->whilex.cond); if(exp->whilex.exprHead) DeleteProgram(exp->whilex.exprHead); break;
 		case EXP_RETURN: if(exp->retExpr) Expr_destroy(exp->retExpr); break;
 		case EXP_UNARY: Expr_destroy(exp->unary.exp); break;
 		default: break;
@@ -1350,34 +1843,32 @@ void DebugMachineProgram()
 	}
 }
 
-int main(int argc, char* argv[])
+void InitInterpreter()
 {
 	ResetMachine();
-	
-	FILE* input = stdin;
-	
-	if(argc >= 2)
-	{
-		input = fopen(argv[1], "r");
-		assert(input && "Failed to open input file!");
-	}
-	
-	Expr* exp = ParseProgram(input);
-	if(exp)
-	{
-		CompileProgram(exp);
-		GenerateCode(OP_HALT);
-		DeleteProgram(exp);
-		if(argc == 3)
-			DebugMachineProgram();
-	
-		RunMachine();
-	
-		DeleteVariables();
-		DeleteFunctions();
-	}
-	if(argc == 2)
-		fclose(input);
-	
-	return 0;
+	NumObjects = 0;
+	MaxNumObjects = 2;
+}
+
+void DeleteInterpreter()
+{
+	DeleteVariables();
+	DeleteFunctions();
+	DeleteForeignFunctions();
+	DeleteConstants();
+	StackSize = 0;
+	VariableAmount = 0;
+	GarbageCollect();
+	ResetMachine();
+}
+
+void InterpretFile(FILE* in)
+{
+	CurTok = 0;
+	Expr* prog = ParseProgram(in);
+	CompileProgram(prog);
+	GenerateCode(OP_HALT);
+	DeleteProgram(prog);
+
+	RunMachine();
 }
