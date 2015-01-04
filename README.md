@@ -1,17 +1,15 @@
 Tiny is an implementation of the Tiny programming language as specified by this wikipedia page (but very much extended):
 http://en.wikipedia.org/wiki/Tiny_programming_language
 
-It compiles a program to it's own bytecode and then executes said bytecode.
+It compiles a program to it's own bytecode and then executes this bytecode.
 
 The following is an example program:
 
 ```
-begin
-	0						# local variable slot 0	
-	read x y z end			# read 3 numbers from stdin
-	$0 = x + y + z			# set local slot 0 to x + y + z
-	write $0 end			# write value in local slot 0 to stdout
-end
+
+read x y z end
+write x + y + z end
+
 ```
 
 This program will write the sum of 3 numbers which it reads from stdin to stdout.
@@ -19,21 +17,64 @@ This program will write the sum of 3 numbers which it reads from stdin to stdout
 Another example program:
 
 ```
-begin 
-	proc fact							# compute the factorial of a number
-		if $-1 == 0						# the arguments are numbered from $-1 to $-n where n is the number of arguments (-1 is the last, -n is the first)
-			return 1					# exit the function returning 1 if the argument passed in is 0
-		end
-		
-		return $-1 * fact($-1 - 1)		# otherwise, compute the factorial...
+
+proc fact(x)						# compute the factorial of a number
+	if $x == 0 then	
+		return 1
 	end
 	
-	write fact(5) end					# compute factorial of 5 and write to stdout
+	return $x * fact($x - 1)
 end
+
+write fact(5) end					# compute factorial of 5 and write to stdout
+
 ```
 
 This program willl write the factorial of 5 (120) to stdout
 
-At the moment, there are no named arguments or named locals, but that is planned for the future.
-There is also no other data type aside from double. Again, more is planned. At the moment, it has 
-very simple code, a large part of which is simply just for debugging when necessary.
+The language supports strings as well as arrays (see tinystd.c)
+and local variables.
+
+```
+
+proc testLocalArrayOfStrings()
+	local arrayOfStrings = array()
+	array_push($arrayOfStrings, "hello world")
+	write array_get($arrayOfStrings, 0) end
+end
+
+# writes "hello world" (excluding quotes) to stdout
+testLocalArrayOfStrings()
+
+```
+
+You can bind your own functions and structures to the language (see tinystd.c, as this is how arrays are implemented).
+
+Here is an example of the binding api:
+
+```
+
+// C Code
+
+// write this function in tinystd.c
+void MyNativeLibrary_add()
+	double num2 = DoPop()->number;
+	double num1 = DoPop()->number;
+	
+	DoPush(NewNumber(num1 + num2));
+end
+
+// and then in the BindStandardLibrary function add this code
+void BindStandardLibrary()
+{
+	...
+	BindForeignFunction(MyNativeLibrary_add, "add");
+}
+
+# Tiny code
+
+write add(10, 20) end # will output 30 (but it will compute it in the cpu, not in the virtual machine)
+
+```
+
+You can bind any C library to Tiny, but there is no support for structures/classes in the language itself.
