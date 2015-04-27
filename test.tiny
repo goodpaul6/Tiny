@@ -1,50 +1,24 @@
-# guessing game
-proc guess_game(value)
-	local user_guess
-	read $user_guess end
-	
-	$user_guess = tonumber($user_guess)
-	
-	local guess_array = array()
 
-	while $user_guess != $value
-		array_push($guess_array, $user_guess)
-		
-		local diff = $value - $user_guess
-		
-		write " " end
-		
-		if $diff > 0 then
-			write "too low" end
-		end
-		
-		if $diff < 0 then
-			write "too high" end
-		end
-		
-		write " " end
-		
-		if array_length($guess_array) > 0 then
-			write "previous guesses:" end
-		
-			local i = 0
-			while $i < array_length($guess_array) 
-				write array_get($guess_array, $i) end
-				$i = $i + 1
-			end
-		end
-		write " " end
-		
-		read $user_guess end
-		$user_guess = tonumber($user_guess)
+proc main(length)
+	local arr = [$length]
+	
+	local i = 0
+	while $i < len($arr)
+		$arr[$i] = $i
+		$i = $i + 1
 	end
 	
-	write "you got it!" end
+	$i = 0
+	while $i < len($arr)
+		write $arr[$i] end
+		$i = $i + 1
+	end
+	
+	exit(1)
 end
 
-# run guessing game
-srand()
-write "guess a number from 1 to 100" end
-guess_game(rand() % 101 + 1)
+length = 0
 
-
+read length end
+length = tonumber(length)
+main(length)

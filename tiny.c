@@ -21,7 +21,7 @@ void* erealloc(void* mem, size_t newSize)
 	return newMem;
 }
 
-char* estrdup(char* string)
+char* estrdup(const char* string)
 {
 	char* dupString = emalloc(strlen(string) + 1);
 	strcpy(dupString, string);
@@ -55,6 +55,8 @@ void DeleteObject(Object* obj)
 		if(obj->ptrFree)
 			obj->ptrFree(obj->ptr);
 	}
+	if(obj->type == OBJ_ARRAY)
+		free(obj->array.values);
 	free(obj);
 }
 
@@ -71,6 +73,17 @@ void Mark(Object* obj)
 	{
 		if(obj->ptrMark)
 			obj->ptrMark(obj->ptr);
+	}
+	if(obj->type == OBJ_ARRAY)
+	{
+		if(obj->array.length > 0)
+		{
+			for(int i = 0; i < obj->array.length; ++i)
+			{
+				if(obj->array.values[i])
+					Mark(obj->array.values[i]);
+			}
+		}
 	}
 
 	obj->marked = 1;
@@ -144,14 +157,34 @@ Object* NewString(char* string)
 	return obj;
 }
 
+Object* NewArray(int length)
+{
+	Object* obj = NewObject(OBJ_ARRAY);
+	obj->array.values = emalloc(sizeof(Object*) * length);
+	memset(obj->array.values, 0, sizeof(Object*) * length);
+	obj->array.length = length;
+	obj->array.capacity = length;
+	return obj;
+}
+
 Object* Stack[MAX_STACK];
 int StackSize = 0;
 
 int IndirStack[MAX_INDIR];
 int IndirStackSize;
 
-char* VariableNames[MAX_VARS];
-Object* Variables[MAX_VARS];
+#define MAX_MEMBERS 32
+struct 
+{
+	char* name;
+	char initialized;
+	Object* object;
+	
+	// maps member variables of a structure (represented as an array at runtime) to integer indices in the runtime array of the structure
+	// not going to use runtime hash tables
+	char* members[MAX_MEMBERS];
+	int nmem;
+} Variables[MAX_VARS];
 int VariableAmount = 0;
 int RuntimeVariableAmount = 0;
 
@@ -281,15 +314,19 @@ void MarkAll()
 {
 	for(int i = 0; i < StackSize; ++i)
 		Mark(Stack[i]);
-	
 	for(int i = 0; i < RuntimeVariableAmount; ++i)
-		Mark(Variables[i]);
+		Mark(Variables[i].object);
 }
 
 void DeleteVariables()
 {
 	for(int i = 0; i < VariableAmount; ++i)
-		free(VariableNames[i]);
+	{
+		free(Variables[i].name);
+		
+		for(int j = 0; j < Variables[i].nmem; ++j)
+			free(Variables[i].members[j]) ;
+	}
 	VariableAmount = 0;
 }
 
@@ -317,10 +354,11 @@ void ResetMachine()
 	CurrScope = 0;
 	LocalDeclarations = NULL;
 	NumArgsDeclared = 0;
+	memset(Variables, 0, sizeof(Variables));
 }
 
 void GenerateCode(Word inst)
-{
+{	
 	assert(ProgramLength < MAX_PROG_LEN && "Program Overflow!");
 	Program[ProgramLength++] = inst;
 }
@@ -388,14 +426,15 @@ void DeleteConstants()
 	free(Constants);
 }
 
-int RegisterVariableName(char* name)
+int RegisterVariableName(const char* name)
 {
 	for(int i = 0; i < VariableAmount; ++i)
 	{
-		if(strcmp(VariableNames[i], name) == 0)
+		if(strcmp(Variables[i].name, name) == 0)
 			return i;
 	}
-	VariableNames[VariableAmount++] = estrdup(name);
+	Variables[VariableAmount++].name = estrdup(name);
+	Variables[VariableAmount - 1].initialized = 0;
 	return VariableAmount - 1;
 }
 
@@ -414,6 +453,31 @@ int RegisterFunction(char* name)
 	}
 	FunctionNames[FunctionAmount++] = estrdup(name);
 	return FunctionAmount - 1;
+}
+
+int GetProcId(const char* name)
+{
+	for(int i = 0; i < FunctionAmount; ++i)
+	{
+		if(strcmp(FunctionNames[i], name) == 0)
+			return i;
+	}
+	
+	return -1;
+}
+
+void ExecuteCycle(void);
+void DoPushIndir(int nargs);
+
+void CallProc(int id, int nargs)
+{
+	if(id < 0) return;
+	
+	DoPushIndir(nargs);
+	ProgramCounter = FunctionPcs[id];
+	
+	while(ProgramCounter < ProgramLength && ProgramCounter >= 0)
+		ExecuteCycle();
 }
 
 void BindForeignFunction(void(*fun)(void), char* name)
@@ -467,6 +531,10 @@ enum
 	OP_GETLOCAL,
 	OP_SETLOCAL,
 	
+	OP_MAKE_ARRAY,
+	OP_SETINDEX,
+	OP_GETINDEX,
+	
 	OP_HALT
 };
 
@@ -486,7 +554,7 @@ void DoPush(Object* value)
 {
 	if(StackSize >= MAX_STACK) 
 	{
-		fprintf(stderr, "Stack Overflow at PC: %i!", ProgramCounter);
+		fprintf(stderr, "Stack Overflow at PC: %i! (Stack size: %i)", ProgramCounter, StackSize);
 		exit(1);
 	}
 	Stack[StackSize++] = value;
@@ -555,7 +623,8 @@ void ExecuteCycle()
 		case OP_PUSH:
 		{
 			++ProgramCounter;
-			ConstInfo* cip = Constants[ReadInteger()];
+			int cidx = ReadInteger();
+			ConstInfo* cip = Constants[cidx];
 			Object* obj;
 			if(cip->type == CST_NUM)
 			{
@@ -609,14 +678,14 @@ void ExecuteCycle()
 			int varIdx = ReadInteger();
 			if(RuntimeVariableAmount < varIdx + 1)
 				RuntimeVariableAmount = varIdx + 1;
-			Variables[varIdx] = DoPop();
+			Variables[varIdx].object = DoPop();
 		} break;
 		
 		case OP_GET:
 		{
 			++ProgramCounter;
 			int varIdx = ReadInteger();
-			DoPush(Variables[varIdx]); 
+			DoPush(Variables[varIdx].object); 
 		} break;
 		
 		case OP_READ:
@@ -692,6 +761,48 @@ void ExecuteCycle()
 			Stack[FramePointer + localIdx] = val;
 		} break;
 		
+		case OP_MAKE_ARRAY:
+		{
+			++ProgramCounter;
+			int length = (int)DoPop()->number;
+			Object* array = NewArray(length);
+			DoPush(array);
+		} break;
+		
+		case OP_SETINDEX:
+		{
+			++ProgramCounter;
+			Object* value = DoPop();
+			int index = (int)DoPop()->number;
+			Object* obj = DoPop();
+			if(index >= 0 && index < obj->array.length)
+				obj->array.values[index] = value;
+			else
+			{
+				fprintf(stderr, "Array index out of bounds error (%i)\n", index);
+				exit(1); 
+			}
+		} break;
+		
+		case OP_GETINDEX:
+		{
+			++ProgramCounter;
+			int index = (int)DoPop()->number;
+			Object* obj = DoPop();
+			if(index >= 0 && index < obj->array.length)
+			{
+				if(obj->array.values[index])
+					DoPush(obj->array.values[index]);
+				else
+					DoPush(NewNumber(0));
+			}
+			else
+			{
+				fprintf(stderr, "Array index out of bounds error (%i)\n", index);
+				exit(1); 
+			}
+		} break;
+		
 		case OP_HALT:
 		{
 			ProgramCounter = -1;
@@ -726,7 +837,7 @@ enum
 	TOK_WHILE = -17,
 	TOK_THEN = -18,
 	TOK_EOF = -19,
-	TOK_LOCALREF = -20
+	TOK_LOCALREF = -20,
 };
 
 #define MAX_TOK_LEN		256
@@ -900,6 +1011,10 @@ typedef enum
 	EXP_WHILE,
 	EXP_LOCAL,
 	EXP_LOCALREF,
+	EXP_MAKE_ARRAY,
+	EXP_ARRAY_INDEX,
+	EXP_GET_ARRAY_LENGTH,
+	EXP_NAMED_MEMBER_ARRAY
 } ExprType;
 
 #define MAX_READ_WRITE	128
@@ -981,6 +1096,22 @@ typedef struct sExpr
 			int index;
 		} local;
 		
+		struct sExpr* arrayLengthExpr;
+		
+		struct
+		{
+			char isGlobalArray;
+			int arrayVariableIndex;
+			struct sExpr* indexExpr;
+		} arrayIndex;
+		
+		struct
+		{
+			char used;
+			char* members[MAX_MEMBERS];
+			int nmem;
+		} namedMemArray;
+		
 		int localRefIdx;
 		
 		struct sExpr* retExpr;
@@ -1015,7 +1146,20 @@ Expr* ParseFactor(FILE* in)
 			GetNextToken(in);
 			if(CurTok != '(')
 			{
-				Expr* exp = Expr_create(EXP_ID);
+				Expr* exp;
+				
+				if(CurTok == '[')	// array indexing
+				{
+					exp = Expr_create(EXP_ARRAY_INDEX);
+					GetNextToken(in);
+					exp->arrayIndex.isGlobalArray = 1;
+					exp->arrayIndex.arrayVariableIndex = RegisterVariableName(ident);
+					exp->arrayIndex.indexExpr = ParseExpr(in);
+					GetNextToken(in); // eat ']'
+					return exp;
+				}
+				
+				exp = Expr_create(EXP_ID);
 				exp->ident = RegisterVariableName(ident);
 				free(ident);
 				return exp;
@@ -1039,6 +1183,37 @@ Expr* ParseFactor(FILE* in)
 			exp->call.callee = RegisterFunction(ident);
 			free(ident);
 			GetNextToken(in);
+			return exp;
+		} break;
+		
+		case '{':
+		{
+			Expr* exp = Expr_create(EXP_NAMED_MEMBER_ARRAY);
+			GetNextToken(in);
+
+			exp->namedMemArray.nmem = 0;
+			exp->namedMemArray.used = 0;
+			while(CurTok != '}')
+			{
+				exp->namedMemArray.members[exp->namedMemArray.nmem++] = estrdup(TokenBuffer);
+				if(CurTok == ',') GetNextToken(in);
+				else if(CurTok != '}')
+				{
+					fprintf(stderr, "Expected '}' after named member array declaration\n");
+					exit(1);
+				}
+			}
+			GetNextToken(in);
+
+			return exp;
+		} break;
+		
+		case '[':
+		{
+			Expr* exp = Expr_create(EXP_MAKE_ARRAY);
+			GetNextToken(in);
+			exp->arrayLengthExpr = ParseExpr(in);
+			GetNextToken(in); // eat ']'
 			return exp;
 		} break;
 		
@@ -1087,10 +1262,24 @@ Expr* ParseFactor(FILE* in)
 		
 		case TOK_LOCALREF:
 		{
-			Expr* exp = Expr_create(EXP_LOCALREF);
-			exp->localRefIdx = ReferenceLocal(TokenBuffer);
+			int idx = ReferenceLocal(TokenBuffer);
 			GetNextToken(in);
-			return exp;
+			if(CurTok != '[')
+			{
+				Expr* exp = Expr_create(EXP_LOCALREF);
+				exp->localRefIdx = idx;
+				return exp;
+			}
+			else
+			{
+				Expr* exp = Expr_create(EXP_ARRAY_INDEX);
+				GetNextToken(in);
+				exp->arrayIndex.isGlobalArray = 0;
+				exp->arrayIndex.arrayVariableIndex = idx;
+				exp->arrayIndex.indexExpr = ParseExpr(in);
+				GetNextToken(in); // eat ']'
+				return exp;
+			}
 		} break;
 		
 		case TOK_PROC:
@@ -1366,7 +1555,7 @@ void PrintExpr(Expr* exp)
 	{
 		case EXP_ID:
 		{	
-			printf("%s", VariableNames[exp->ident]);
+			printf("%s", Variables[exp->ident].name);
 		} break;
 		
 		case EXP_CALL:
@@ -1394,7 +1583,7 @@ void PrintExpr(Expr* exp)
 		{
 			printf("read ");
 			for(int i = 0; i < exp->read.numIds; ++i)
-				printf("%s ", VariableNames[exp->read.ids[i]]);
+				printf("%s ", Variables[exp->read.ids[i]].name);
 			printf("end\n");
 		} break;
 		
@@ -1491,6 +1680,12 @@ void CompileExpr(Expr* exp)
 	{
 		case EXP_ID:
 		{
+			if(!Variables[exp->ident].initialized)
+			{
+				fprintf(stderr, "Attempted to use uninitialized variable '%s'\n", Variables[exp->ident].name);
+				exit(1);
+			}
+			
 			GenerateCode(OP_GET);
 			GenerateInt(exp->ident);
 		} break;
@@ -1565,9 +1760,20 @@ void CompileExpr(Expr* exp)
 				{
 					if(exp->binary.lhs->type == EXP_ID)
 					{
-						CompileExpr(exp->binary.rhs);
-						GenerateCode(OP_SET);
-						GenerateInt(exp->binary.lhs->ident);
+						if(exp->binary.rhs->type != EXP_NAMED_MEMBER_ARRAY)
+						{
+							CompileExpr(exp->binary.rhs);
+							GenerateCode(OP_SET);
+							GenerateInt(exp->binary.lhs->ident);
+							Variables[exp->binary.lhs->ident].initialized = 1;
+						}
+						else
+						{
+							int ident = exp->binary.lhs->ident;
+							memcpy(Variables[ident].members, exp->binary.rhs->namedMemArray.members, exp->binary.rhs->namedMemArray.nmem * sizeof(char*));
+							Variables[ident].nmem = exp->binary.rhs->namedMemArray.nmem;
+							exp->binary.rhs->namedMemArray.used = 1;
+						}
 					}
 					else if(exp->binary.lhs->type == EXP_LOCAL)
 					{
@@ -1581,6 +1787,23 @@ void CompileExpr(Expr* exp)
 						GenerateCode(OP_SETLOCAL);
 						GenerateInt(exp->binary.lhs->localRefIdx);
 					}
+					else if(exp->binary.lhs->type == EXP_ARRAY_INDEX)
+					{
+						if(exp->binary.lhs->arrayIndex.isGlobalArray)
+						{
+							GenerateCode(OP_GET);
+							GenerateInt(exp->binary.lhs->arrayIndex.arrayVariableIndex);
+						}
+						else
+						{
+							GenerateCode(OP_GETLOCAL);
+							GenerateInt(exp->binary.lhs->arrayIndex.arrayVariableIndex);
+						}
+						CompileExpr(exp->binary.lhs->arrayIndex.indexExpr);
+						CompileExpr(exp->binary.rhs);
+						
+						GenerateCode(OP_SETINDEX);
+					}
 					else
 					{
 						fprintf(stderr, "LHS of assignment operation must be a local or a global variable\n");
@@ -1588,6 +1811,17 @@ void CompileExpr(Expr* exp)
 					}
 				} break;
 				
+				case '.':
+				{
+					if(exp->binary.lhs->type != EXP_ID)
+					{
+						fprintf(stderr, "Named member array value access can only be done on global variables!\n");
+						exit(1);
+					}
+
+					
+				} break;
+
 				case '+':
 				{
 					CompileExpr(exp->binary.lhs);
@@ -1746,6 +1980,28 @@ void CompileExpr(Expr* exp)
 			GenerateIntAt(ProgramLength, skipGotoPc);
 		} break;
 		
+		case EXP_MAKE_ARRAY:
+		{
+			CompileExpr(exp->arrayLengthExpr);
+			GenerateCode(OP_MAKE_ARRAY);
+		} break;
+		
+		case EXP_ARRAY_INDEX:
+		{
+			if(exp->arrayIndex.isGlobalArray)
+			{
+				GenerateCode(OP_GET);
+				GenerateInt(exp->arrayIndex.arrayVariableIndex);
+			}
+			else
+			{
+				GenerateCode(OP_GETLOCAL);
+				GenerateInt(exp->arrayIndex.arrayVariableIndex);
+			}
+			CompileExpr(exp->arrayIndex.indexExpr);
+			GenerateCode(OP_GETINDEX);
+		} break;
+		
 		case EXP_RETURN:
 		{
 			if(exp->retExpr)
@@ -1792,6 +2048,16 @@ void Expr_destroy(Expr* exp)
 		case EXP_WHILE: Expr_destroy(exp->whilex.cond); if(exp->whilex.exprHead) DeleteProgram(exp->whilex.exprHead); break;
 		case EXP_RETURN: if(exp->retExpr) Expr_destroy(exp->retExpr); break;
 		case EXP_UNARY: Expr_destroy(exp->unary.exp); break;
+		case EXP_MAKE_ARRAY: Expr_destroy(exp->arrayLengthExpr); break;
+		case EXP_ARRAY_INDEX: Expr_destroy(exp->arrayIndex.indexExpr); break;
+		case EXP_NAMED_MEMBER_ARRAY: 
+		{
+			if(!exp->namedMemArray.used)
+			{
+				for(int i = 0; i < exp->namedMemArray.nmem; ++i)
+					free(exp->namedMemArray.members[i]);
+			}
+		} break;
 		default: break;
 	}
 	free(exp);
@@ -1838,6 +2104,9 @@ void DebugMachineProgram()
 			case OP_RETURN_VALUE:	printf("return_value\n"); break;
 			case OP_GETLOCAL:		printf("getlocal\n"); i += 4; break;
 			case OP_SETLOCAL:		printf("setlocal\n"); i += 4; break;
+			case OP_MAKE_ARRAY:		printf("makearray\n"); break;
+			case OP_SETINDEX:		printf("setindex\n"); break;
+			case OP_GETINDEX:		printf("getindex\n"); break;
 			case OP_HALT:			printf("halt\n");
 		}
 	}
@@ -1862,12 +2131,27 @@ void DeleteInterpreter()
 	ResetMachine();
 }
 
+void CompileFile(FILE* in)
+{
+	CurTok = 0;
+	Expr* prog = ParseProgram(in);
+	CompileProgram(prog);
+	GenerateCode(OP_HALT);
+	DeleteProgram(prog);
+}
+
+void RunProgram()
+{
+	RunMachine();
+}
+
 void InterpretFile(FILE* in)
 {
 	CurTok = 0;
 	Expr* prog = ParseProgram(in);
 	CompileProgram(prog);
 	GenerateCode(OP_HALT);
+	// DebugMachineProgram();
 	DeleteProgram(prog);
 
 	RunMachine();

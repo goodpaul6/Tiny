@@ -6,97 +6,41 @@
 #include <assert.h>
 #include <time.h>
 
-typedef struct
+void Std_Len()
 {
-	Object** data;
-	size_t length;
-	size_t capacity;
-} Std_Array;
-
-void Std_MarkArray(void* nat)
-{
-	Std_Array* array = (Std_Array*)nat;
-	for(size_t i = 0; i < array->length; ++i)
-		Mark(array->data[i]);
+	Object* obj = DoPop();
+	if(obj->type == OBJ_ARRAY)
+		DoPush(NewNumber((int)obj->array.length));
+	else if(obj->type == OBJ_STRING)
+		DoPush(NewNumber(strlen(obj->string)));
+	else
+		DoPush(NewNumber(0));
 }
 
-void Std_FreeArray(void* nat)
-{
-	Std_Array* array = (Std_Array*)nat;
-	if(array->data)
-		free(array->data);
-	array->length = 0;
-	array->capacity = 0;
-	free(array);
-}
-
-void Std_ExtendArray(Std_Array* array)
-{
-	if(array->length + 1 >= array->capacity)
-	{
-		array->capacity *= 2;
-		array->data = erealloc(array->data, sizeof(Object*) * array->capacity);
-	}
-}
-
-void Std_ArrayPush()
+void Std_Push()
 {
 	Object* value = DoPop();
-	assert(value);
-	Object* nat = DoPop();
-	Std_Array* array = (Std_Array*)(nat->ptr);
-	Std_ExtendArray(array);
+	Object* obj = DoPop();
 	
-	array->data[array->length++] = value;
-	value->marked = 1;
+	obj->array.length += 1;
+	while(obj->array.length >= obj->array.capacity)
+	{
+		obj->array.capacity *= 2;
+		obj->array.values = erealloc(obj->array.values, obj->array.capacity * sizeof(Object*));
+	}
+	obj->array.values[obj->array.length - 1] = value;
 }
 
-void Std_ArrayPop()
+void Std_Pop()
 {
-	Object* nat = DoPop();
-	Std_Array* array = (Std_Array*)(nat->ptr);
-	if(array->length <= 0)
+	Object* obj = DoPop();
+	if(obj->array.length <= 0)
 	{
-		fprintf(stderr, "Attempted to 'array_pop' on an array that was empty!\n");
+		fprintf(stderr, "Attempted to pop value from empty array\n");
 		exit(1);
 	}
 	
-	Object* value = array->data[--array->length];
-	DoPush(value);
-}
-
-void Std_ArrayGet()
-{
-	Object* idxObj = DoPop();
-	int idx = (int)idxObj->number;
-	
-	Object* nat = DoPop();
-	Std_Array* array = (Std_Array*)(nat->ptr);
-	if(array->length <= 0)
-	{
-		fprintf(stderr, "Attempted to 'array_get' on an array that was empty!\n");
-		exit(1);
-	}
-	
-	Object* value = array->data[idx];
-	DoPush(value);
-}
-
-void Std_ArrayLength()
-{
-	Object* nat = DoPop();
-	Std_Array* array = (Std_Array*)(nat->ptr);
-	DoPush(NewNumber(array->length));
-}
-
-void Std_CreateArray()
-{
-	Std_Array* array = emalloc(sizeof(Std_Array));
-	array->data = NULL;
-	array->length = 0;
-	array->capacity = 1;
-	Object* nat = NewNative(array, Std_FreeArray, Std_MarkArray);
-	DoPush(nat);
+	DoPush(obj->array.values[--obj->array.length]);
 }
 
 void Std_Strcat()
@@ -145,13 +89,22 @@ void Std_Rand()
 	DoPush(NewNumber(rand()));
 }
 
+void Std_Exit()
+{
+	
+	int arg = (int)DoPop()->number;
+	
+	DeleteInterpreter();
+	 
+	exit(arg);
+}
+
 void BindStandardLibrary()
 {
-	BindForeignFunction(Std_CreateArray, "array");
-	BindForeignFunction(Std_ArrayPush, "array_push");
-	BindForeignFunction(Std_ArrayPop, "array_pop");
-	BindForeignFunction(Std_ArrayGet, "array_get");
-	BindForeignFunction(Std_ArrayLength, "array_length");
+	BindForeignFunction(Std_Len, "len");
+
+	BindForeignFunction(Std_Push, "push");
+	BindForeignFunction(Std_Pop, "pop");
 
 	BindForeignFunction(Std_Strcat, "strcat");
 	BindForeignFunction(Std_ToNumber, "tonumber");
@@ -159,14 +112,27 @@ void BindStandardLibrary()
 	
 	BindForeignFunction(Std_SeedRand, "srand");
 	BindForeignFunction(Std_Rand, "rand");
+
+	BindForeignFunction(Std_Exit, "exit");
+}
+
+void RunFile(FILE* mainScriptFile, char del)
+{
+	InitInterpreter();
+	BindStandardLibrary();
+	CompileFile(mainScriptFile);
+	
+	if(del)
+		fclose(mainScriptFile);
+	
+	RunProgram();
+	
+	DeleteInterpreter();
 }
 
 int main(int argc, char* argv[])
 {
 	FILE* in = stdin;
-	
-	InitInterpreter();
-	BindStandardLibrary();
 	
 	if(argc == 2)
 	{
@@ -178,11 +144,7 @@ int main(int argc, char* argv[])
 		}
 	}
 	
-	InterpretFile(in);
-	
-	if(argc == 2)
-		fclose(in);
-		
-	DeleteInterpreter();
+	RunFile(in, argc == 2);
+			
 	return 0;
 }

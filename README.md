@@ -32,19 +32,19 @@ write fact(5) end					# compute factorial of 5 and write to stdout
 
 This program willl write the factorial of 5 (120) to stdout
 
-The language supports strings as well as arrays (see tinystd.c)
+The language supports strings as well as arrays
 and local variables.
 
 ```
 
-proc testLocalArrayOfStrings()
-	local arrayOfStrings = array()
-	array_push($arrayOfStrings, "hello world")
-	write array_get($arrayOfStrings, 0) end
+proc test()
+	local arr = [1] # length of array in square brackets (can by any expression: 2 + 2, $a + b)
+	push($arr, "hello world")
+	write $arr[0] end
 end
 
 # writes "hello world" (excluding quotes) to stdout
-testLocalArrayOfStrings()
+test()
 
 ```
 
