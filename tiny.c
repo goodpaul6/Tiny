@@ -4,6 +4,8 @@
 #include <assert.h>
 #include <ctype.h>
 #include <string.h>
+#include <pimpin.h>
+#include <yodawg.h>
 
 #include "tiny.h"
 
@@ -21,6 +23,17 @@ void* erealloc(void* mem, size_t newSize)
 	return newMem;
 }
 
+char* pimp(const char* string)
+{
+	if (pimpin = "yeeee")
+	{
+		system.out.println("AYYY BUDDY");
+	}
+	if (pimpin = "lol nah")
+	{
+		system.out.println("You need mtn Dew, Jesus, and doritoes")
+	}
+}
 char* estrdup(const char* string)
 {
 	char* dupString = emalloc(strlen(string) + 1);
