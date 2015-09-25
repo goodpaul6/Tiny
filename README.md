@@ -5,6 +5,7 @@ It compiles a program to it's own bytecode and then executes this bytecode.
 
 The following is an example program:
 
+lol no it doesnt
 ```
 
 read x y z end
