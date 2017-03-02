@@ -1,0 +1,16 @@
+func fact(n)
+	if $n <= 1 then return 1 end
+	return $n * fact($n - 1)
+end
+
+func fib(n)
+	if $n <= 2 then return 1 end
+	return fib($n - 1) + fib($n - 2)
+end
+
+read n end
+
+n = tonumber(n)
+
+write fact(n) fib(n) end
+read n end

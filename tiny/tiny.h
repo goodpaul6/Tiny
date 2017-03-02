@@ -9,8 +9,7 @@ typedef enum
 {
 	OBJ_NUM,
 	OBJ_STRING,
-	OBJ_NATIVE,
-	OBJ_ARRAY,
+	OBJ_NATIVE
 } ObjectType;
 
 typedef struct sObject
@@ -31,13 +30,6 @@ typedef struct sObject
 			void(*ptrFree)(void*);
 			void(*ptrMark)(void*);
 		};
-
-		struct
-		{
-			struct sObject** values;
-			int length;
-			int capacity;
-		} array;
 	};
 } Object;
 
@@ -51,13 +43,13 @@ void Mark(Object* obj);
 Object* NewNative(void* ptr, void (*ptrFree)(void*), void (*ptrMark)(void*));
 Object* NewNumber(double value);
 Object* NewString(char* string);
-Object* NewArray(int length);
 void DoPush(Object* value);
 Object* DoPop();
 int GetProcId(const char* name);
 void CallProc(int id, int nargs);
 void BindForeignFunction(void (*fun)(void), char* name);
 void InitInterpreter();
+void DebugMachineProgram();
 void CompileFile(FILE* in);
 void RunProgram();
 void InterpretFile(FILE* in);

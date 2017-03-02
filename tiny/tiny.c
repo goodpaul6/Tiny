@@ -50,13 +50,12 @@ int MaxNumObjects;
 void DeleteObject(Object* obj)
 {
 	if(obj->type == OBJ_STRING) free(obj->string);
-	if(obj->type == OBJ_NATIVE) 
+	if (obj->type == OBJ_NATIVE)
 	{
-		if(obj->ptrFree)
+		if (obj->ptrFree)
 			obj->ptrFree(obj->ptr);
 	}
-	if(obj->type == OBJ_ARRAY)
-		free(obj->array.values);
+
 	free(obj);
 }
 
@@ -69,21 +68,11 @@ void Mark(Object* obj)
 	}
 	
 	if(obj->marked) return;
+	
 	if(obj->type == OBJ_NATIVE)
 	{
 		if(obj->ptrMark)
 			obj->ptrMark(obj->ptr);
-	}
-	if(obj->type == OBJ_ARRAY)
-	{
-		if(obj->array.length > 0)
-		{
-			for(int i = 0; i < obj->array.length; ++i)
-			{
-				if(obj->array.values[i])
-					Mark(obj->array.values[i]);
-			}
-		}
 	}
 
 	obj->marked = 1;
@@ -118,9 +107,9 @@ void GarbageCollect()
 	MaxNumObjects = NumObjects * 2;
 }
 
-Object* NewObject(ObjectType type)
+Object* NewObject(ObjectType type, char gc)
 {
-	if(NumObjects >= MaxNumObjects) GarbageCollect();
+	if(gc && NumObjects >= MaxNumObjects) GarbageCollect();
 	
 	Object* obj = emalloc(sizeof(Object));
 	
@@ -136,7 +125,7 @@ Object* NewObject(ObjectType type)
 
 Object* NewNative(void* ptr, void(*ptrFree)(void*), void(*ptrMark)(void*))
 {
-	Object* obj = NewObject(OBJ_NATIVE);
+	Object* obj = NewObject(OBJ_NATIVE, 1);
 	obj->ptr = ptr;
 	obj->ptrFree = ptrFree;
 	obj->ptrMark = ptrMark;
@@ -145,25 +134,15 @@ Object* NewNative(void* ptr, void(*ptrFree)(void*), void(*ptrMark)(void*))
 
 Object* NewNumber(double value)
 {
-	Object* obj = NewObject(OBJ_NUM);
+	Object* obj = NewObject(OBJ_NUM, 1);
 	obj->number = value;
 	return obj;
 }
 
 Object* NewString(char* string)
 {
-	Object* obj = NewObject(OBJ_STRING);
+	Object* obj = NewObject(OBJ_STRING, 1);
 	obj->string = string;
-	return obj;
-}
-
-Object* NewArray(int length)
-{
-	Object* obj = NewObject(OBJ_ARRAY);
-	obj->array.values = emalloc(sizeof(Object*) * length);
-	memset(obj->array.values, 0, sizeof(Object*) * length);
-	obj->array.length = length;
-	obj->array.capacity = length;
 	return obj;
 }
 
@@ -173,20 +152,13 @@ int StackSize = 0;
 int IndirStack[MAX_INDIR];
 int IndirStackSize;
 
-#define MAX_MEMBERS 32
 struct 
 {
-	char* name;
 	char initialized;
+	char* name;
 	Object* object;
-	
-	// maps member variables of a structure (represented as an array at runtime) to integer indices in the runtime array of the structure
-	// not going to use runtime hash tables
-	char* members[MAX_MEMBERS];
-	int nmem;
 } Variables[MAX_VARS];
 int VariableAmount = 0;
-int RuntimeVariableAmount = 0;
 
 char* FunctionNames[MAX_FUNCS];
 int FunctionPcs[MAX_FUNCS];
@@ -314,19 +286,17 @@ void MarkAll()
 {
 	for(int i = 0; i < StackSize; ++i)
 		Mark(Stack[i]);
-	for(int i = 0; i < RuntimeVariableAmount; ++i)
-		Mark(Variables[i].object);
+	for (int i = 0; i < MAX_VARS; ++i)
+	{
+		if(Variables[i].object)
+			Mark(Variables[i].object);
+	}
 }
 
 void DeleteVariables()
 {
 	for(int i = 0; i < VariableAmount; ++i)
-	{
 		free(Variables[i].name);
-		
-		for(int j = 0; j < Variables[i].nmem; ++j)
-			free(Variables[i].members[j]) ;
-	}
 	VariableAmount = 0;
 }
 
@@ -350,7 +320,6 @@ void ResetMachine()
 	GCHead = NULL;
 	NumObjects = 0;
 	ForeignAmount = 0;
-	RuntimeVariableAmount = 0;
 	CurrScope = 0;
 	LocalDeclarations = NULL;
 	NumArgsDeclared = 0;
@@ -433,12 +402,12 @@ int RegisterVariableName(const char* name)
 		if(strcmp(Variables[i].name, name) == 0)
 			return i;
 	}
+	
 	Variables[VariableAmount++].name = estrdup(name);
-	Variables[VariableAmount - 1].initialized = 0;
 	return VariableAmount - 1;
 }
 
-int RegisterFunction(char* name)
+static int RegisterFunction(const char* name)
 {
 	for(int i = 0; i < ForeignAmount; ++i)
 	{
@@ -451,6 +420,7 @@ int RegisterFunction(char* name)
 		if(strcmp(FunctionNames[i], name) == 0)
 			return i;
 	}
+
 	FunctionNames[FunctionAmount++] = estrdup(name);
 	return FunctionAmount - 1;
 }
@@ -520,7 +490,6 @@ enum
 	
 	OP_GOTO,
 	OP_GOTOZ,
-	OP_GOTONZ,
 
 	OP_CALL,
 	OP_RETURN,
@@ -530,11 +499,7 @@ enum
 
 	OP_GETLOCAL,
 	OP_SETLOCAL,
-	
-	OP_MAKE_ARRAY,
-	OP_SETINDEX,
-	OP_GETINDEX,
-	
+
 	OP_HALT
 };
 
@@ -552,6 +517,7 @@ int ReadInteger()
 
 void DoPush(Object* value)
 {
+	assert(value);
 	if(StackSize >= MAX_STACK) 
 	{
 		fprintf(stderr, "Stack Overflow at PC: %i! (Stack size: %i)", ProgramCounter, StackSize);
@@ -578,6 +544,7 @@ void DoRead()
 	
 	int c = getc(stdin);
 	int i = 0;
+
 	while(c != '\n')
 	{
 		if(bufferLength + 1 >= bufferCapacity)
@@ -592,7 +559,7 @@ void DoRead()
 	
 	buffer[i] = '\0';
 	
-	Object* obj = NewObject(OBJ_STRING);
+	Object* obj = NewObject(OBJ_STRING, 1);
 	obj->string = buffer;
 	DoPush(obj);
 }
@@ -602,15 +569,18 @@ void DoPushIndir(int nargs)
 	IndirStack[IndirStackSize++] = nargs;
 	IndirStack[IndirStackSize++] = FramePointer;
 	IndirStack[IndirStackSize++] = ProgramCounter;
+
 	FramePointer = StackSize;
 }
 
 void DoPopIndir()
 {
 	StackSize = FramePointer;
+
 	int prevPc = IndirStack[--IndirStackSize];
 	int prevFp = IndirStack[--IndirStackSize];
 	int nargs = IndirStack[--IndirStackSize];
+	
 	StackSize -= nargs;
 	FramePointer = prevFp;
 	ProgramCounter = prevPc;
@@ -625,17 +595,18 @@ void ExecuteCycle()
 			++ProgramCounter;
 			int cidx = ReadInteger();
 			ConstInfo* cip = Constants[cidx];
-			Object* obj;
-			if(cip->type == CST_NUM)
+			Object* obj = NULL;
+			if (cip->type == CST_NUM)
 			{
-				obj = NewObject(OBJ_NUM);
+				obj = NewObject(OBJ_NUM, 1);
 				obj->number = cip->number;
 			}
-			else if(cip->type == CST_STR)
+			else if (cip->type == CST_STR)
 			{
-				obj = NewObject(OBJ_STRING);
+				obj = NewObject(OBJ_STRING, 1);
 				obj->string = estrdup(cip->string);
 			}
+
 			DoPush(obj);
 		} break;
 		
@@ -645,12 +616,23 @@ void ExecuteCycle()
 			++ProgramCounter;
 		} break;
 		
-		#define BIN_OP(OP, operator) case OP_##OP: { Object* val2 = DoPop(); Object* val1 = DoPop(); Object* result = NewObject(OBJ_NUM); result->number = val1->number operator val2->number; DoPush(result); ++ProgramCounter; } break;
-		#define BIN_OP_INT(OP, operator) case OP_##OP: { Object* val2 = DoPop(); Object* val1 = DoPop(); Object* result = NewObject(OBJ_NUM); result->number = (int)val1->number operator (int)val2->number; DoPush(result); ++ProgramCounter; } break;
+		#define BIN_OP(OP, operator) case OP_##OP: { Object* val2 = DoPop(); Object* val1 = DoPop(); Object* result = NewObject(OBJ_NUM, 0); result->number = val1->number operator val2->number; DoPush(result); ++ProgramCounter; } break;
+		#define BIN_OP_INT(OP, operator) case OP_##OP: { Object* val2 = DoPop(); Object* val1 = DoPop(); Object* result = NewObject(OBJ_NUM, 0); result->number = (int)val1->number operator (int)val2->number; DoPush(result); ++ProgramCounter; } break;
 		
+		case OP_MUL:
+		{
+			Object* val2 = DoPop();
+			Object* val1 = DoPop();
+
+			Object* result = NewObject(OBJ_NUM, 0);
+			result->number = val1->number * val2->number;
+
+			DoPush(result);
+			++ProgramCounter;
+		} break;
+
 		BIN_OP(ADD, +)
 		BIN_OP(SUB, -)
-		BIN_OP(MUL, *)
 		BIN_OP(DIV, /)
 		BIN_OP_INT(MOD, %)
 		BIN_OP_INT(OR, |)
@@ -676,8 +658,6 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			int varIdx = ReadInteger();
-			if(RuntimeVariableAmount < varIdx + 1)
-				RuntimeVariableAmount = varIdx + 1;
 			Variables[varIdx].object = DoPop();
 		} break;
 		
@@ -706,14 +686,6 @@ void ExecuteCycle()
 			++ProgramCounter;
 			int newPc = ReadInteger();
 			if(DoPop()->number == 0)
-				ProgramCounter = newPc;
-		} break;
-		
-		case OP_GOTONZ:
-		{
-			++ProgramCounter;
-			int newPc = ReadInteger();
-			if(DoPop()->number != 0)
 				ProgramCounter = newPc;
 		} break;
 		
@@ -760,49 +732,7 @@ void ExecuteCycle()
 			Object* val = DoPop();
 			Stack[FramePointer + localIdx] = val;
 		} break;
-		
-		case OP_MAKE_ARRAY:
-		{
-			++ProgramCounter;
-			int length = (int)DoPop()->number;
-			Object* array = NewArray(length);
-			DoPush(array);
-		} break;
-		
-		case OP_SETINDEX:
-		{
-			++ProgramCounter;
-			Object* value = DoPop();
-			int index = (int)DoPop()->number;
-			Object* obj = DoPop();
-			if(index >= 0 && index < obj->array.length)
-				obj->array.values[index] = value;
-			else
-			{
-				fprintf(stderr, "Array index out of bounds error (%i)\n", index);
-				exit(1); 
-			}
-		} break;
-		
-		case OP_GETINDEX:
-		{
-			++ProgramCounter;
-			int index = (int)DoPop()->number;
-			Object* obj = DoPop();
-			if(index >= 0 && index < obj->array.length)
-			{
-				if(obj->array.values[index])
-					DoPush(obj->array.values[index]);
-				else
-					DoPush(NewNumber(0));
-			}
-			else
-			{
-				fprintf(stderr, "Array index out of bounds error (%i)\n", index);
-				exit(1); 
-			}
-		} break;
-		
+
 		case OP_HALT:
 		{
 			ProgramCounter = -1;
@@ -835,9 +765,12 @@ enum
 	TOK_GTE = -15,
 	TOK_RETURN = -16,
 	TOK_WHILE = -17,
-	TOK_THEN = -18,
-	TOK_EOF = -19,
-	TOK_LOCALREF = -20,
+	TOK_FOR = -18,
+	TOK_DO = -19,
+	TOK_THEN = -20,
+	TOK_ELSE = -21,
+	TOK_EOF = -22,
+	TOK_LOCALREF = -23,
 };
 
 #define MAX_TOK_LEN		256
@@ -868,16 +801,19 @@ int GetToken(FILE* in)
 		}
 		TokenBuffer[i] = '\0';
 		
-		if(strcmp(TokenBuffer, "begin") == 0) return TOK_BEGIN;
-		if(strcmp(TokenBuffer, "end") == 0) return TOK_END;
-		if(strcmp(TokenBuffer, "read") == 0) return TOK_READ;
-		if(strcmp(TokenBuffer, "write") == 0) return TOK_WRITE;
-		if(strcmp(TokenBuffer, "proc") == 0) return TOK_PROC;
-		if(strcmp(TokenBuffer, "if") == 0) return TOK_IF;
-		if(strcmp(TokenBuffer, "return") == 0) return TOK_RETURN;
-		if(strcmp(TokenBuffer, "while") == 0) return TOK_WHILE;
-		if(strcmp(TokenBuffer, "then") == 0) return TOK_THEN;
-		if(strcmp(TokenBuffer, "local") == 0) return TOK_LOCAL;
+		if (strcmp(TokenBuffer, "begin") == 0) return TOK_BEGIN;
+		if (strcmp(TokenBuffer, "end") == 0) return TOK_END;
+		if (strcmp(TokenBuffer, "read") == 0) return TOK_READ;
+		if (strcmp(TokenBuffer, "write") == 0) return TOK_WRITE;
+		if (strcmp(TokenBuffer, "func") == 0) return TOK_PROC;
+		if (strcmp(TokenBuffer, "if") == 0) return TOK_IF;
+		if (strcmp(TokenBuffer, "return") == 0) return TOK_RETURN;
+		if (strcmp(TokenBuffer, "while") == 0) return TOK_WHILE;
+		if (strcmp(TokenBuffer, "then") == 0) return TOK_THEN;
+		if (strcmp(TokenBuffer, "local") == 0) return TOK_LOCAL;
+		if (strcmp(TokenBuffer, "for") == 0) return TOK_FOR;
+		if (strcmp(TokenBuffer, "do") == 0) return TOK_DO;
+		if (strcmp(TokenBuffer, "else") == 0) return TOK_ELSE;
 
 		if(strcmp(TokenBuffer, "true") == 0)
 		{
@@ -1009,15 +945,12 @@ typedef enum
 	EXP_UNARY,
 	EXP_RETURN,
 	EXP_WHILE,
+	EXP_FOR,
 	EXP_LOCAL,
-	EXP_LOCALREF,
-	EXP_MAKE_ARRAY,
-	EXP_ARRAY_INDEX,
-	EXP_GET_ARRAY_LENGTH,
-	EXP_NAMED_MEMBER_ARRAY
+	EXP_LOCALREF
 } ExprType;
 
-#define MAX_READ_WRITE	128
+#define MAX_READ_WRITE	16
 
 typedef struct sExpr
 {
@@ -1051,7 +984,7 @@ typedef struct sExpr
 		
 		struct
 		{
-			int callee;
+			char* calleeName;
 			struct sExpr* args[MAX_ARGS];
 			int numArgs;
 		} call;
@@ -1082,7 +1015,8 @@ typedef struct sExpr
 		struct
 		{
 			struct sExpr* cond;
-			struct sExpr* exprHead;
+			struct sExpr* bodyHead;
+			struct sExpr* alt;
 		} ifx;
 		
 		struct
@@ -1090,29 +1024,19 @@ typedef struct sExpr
 			struct sExpr* cond;
 			struct sExpr* exprHead;
 		} whilex;
+
+		struct
+		{
+			struct sExpr* init;
+			struct sExpr* cond;
+			struct sExpr* step;
+			struct sExpr* exprHead;
+		} forx;
 		
 		struct
 		{
 			int index;
-		} local;
-		
-		struct sExpr* arrayLengthExpr;
-		
-		struct
-		{
-			char isGlobalArray;
-			int arrayVariableIndex;
-			struct sExpr* indexExpr;
-		} arrayIndex;
-		
-		struct
-		{
-			char used;
-			char* members[MAX_MEMBERS];
-			int nmem;
-		} namedMemArray;
-		
-		int localRefIdx;
+		} local; // used for both EXP_LOCAL and EXP_LOCALREF
 		
 		struct sExpr* retExpr;
 	};
@@ -1136,6 +1060,76 @@ int GetNextToken(FILE* in)
 
 Expr* ParseExpr(FILE* in);
 
+static void ExpectToken(int tok, const char* msg)
+{
+	if (CurTok != tok)
+	{
+		fprintf(stderr, msg);
+		putc('\n', stderr);
+
+		exit(1);
+	}
+}
+
+// Parses expressions until TOK_END is encountered
+// Expressions are put in a linked list referenced by the first expression
+static Expr* ParseExprList(FILE* in)
+{
+	if (CurTok == TOK_END)
+	{
+		GetNextToken(in);
+		return NULL;
+	}
+
+	Expr* curExp = ParseExpr(in);
+	Expr* head = curExp;
+
+	while (CurTok != TOK_END)
+	{
+		curExp->next = ParseExpr(in);
+		curExp = curExp->next;
+	}
+	GetNextToken(in);
+
+	return head;
+}
+
+static Expr* ParseIf(FILE* in)
+{
+	Expr* exp = Expr_create(EXP_IF);
+
+	GetNextToken(in);
+
+	exp->ifx.cond = ParseExpr(in);
+
+	ExpectToken(TOK_THEN, "Expected 'then' after if.");
+	GetNextToken(in);
+
+	Expr* curExp = ParseExpr(in);
+	
+	exp->ifx.bodyHead = curExp;
+
+	while (CurTok != TOK_END && CurTok != TOK_ELSE)
+	{
+		curExp->next = ParseExpr(in);
+		curExp = curExp->next;
+	}
+
+	if (CurTok == TOK_ELSE)
+	{
+		GetNextToken(in);
+
+		exp->ifx.alt = ParseExpr(in);
+	}
+	else
+	{
+		exp->ifx.alt = NULL;
+		GetNextToken(in);
+	}
+
+	return exp;
+}
+
 Expr* ParseFactor(FILE* in)
 {
 	switch(CurTok)
@@ -1147,17 +1141,6 @@ Expr* ParseFactor(FILE* in)
 			if(CurTok != '(')
 			{
 				Expr* exp;
-				
-				if(CurTok == '[')	// array indexing
-				{
-					exp = Expr_create(EXP_ARRAY_INDEX);
-					GetNextToken(in);
-					exp->arrayIndex.isGlobalArray = 1;
-					exp->arrayIndex.arrayVariableIndex = RegisterVariableName(ident);
-					exp->arrayIndex.indexExpr = ParseExpr(in);
-					GetNextToken(in); // eat ']'
-					return exp;
-				}
 				
 				exp = Expr_create(EXP_ID);
 				exp->ident = RegisterVariableName(ident);
@@ -1180,40 +1163,12 @@ Expr* ParseFactor(FILE* in)
 					exit(1);
 				}
 			}
-			exp->call.callee = RegisterFunction(ident);
+
+			exp->call.calleeName = estrdup(ident);
+			
 			free(ident);
-			GetNextToken(in);
-			return exp;
-		} break;
-		
-		case '{':
-		{
-			Expr* exp = Expr_create(EXP_NAMED_MEMBER_ARRAY);
-			GetNextToken(in);
 
-			exp->namedMemArray.nmem = 0;
-			exp->namedMemArray.used = 0;
-			while(CurTok != '}')
-			{
-				exp->namedMemArray.members[exp->namedMemArray.nmem++] = estrdup(TokenBuffer);
-				if(CurTok == ',') GetNextToken(in);
-				else if(CurTok != '}')
-				{
-					fprintf(stderr, "Expected '}' after named member array declaration\n");
-					exit(1);
-				}
-			}
 			GetNextToken(in);
-
-			return exp;
-		} break;
-		
-		case '[':
-		{
-			Expr* exp = Expr_create(EXP_MAKE_ARRAY);
-			GetNextToken(in);
-			exp->arrayLengthExpr = ParseExpr(in);
-			GetNextToken(in); // eat ']'
 			return exp;
 		} break;
 		
@@ -1252,7 +1207,7 @@ Expr* ParseFactor(FILE* in)
 			}
 			
 			GetNextToken(in);
-			assert(CurTok == TOK_IDENT && "Local name must be identifier!");
+			ExpectToken(TOK_IDENT, "Local name must be identifier!");
 			
 			Expr* exp = Expr_create(EXP_LOCAL);
 			exp->local.index = DeclareLocal(TokenBuffer);
@@ -1264,22 +1219,10 @@ Expr* ParseFactor(FILE* in)
 		{
 			int idx = ReferenceLocal(TokenBuffer);
 			GetNextToken(in);
-			if(CurTok != '[')
-			{
-				Expr* exp = Expr_create(EXP_LOCALREF);
-				exp->localRefIdx = idx;
-				return exp;
-			}
-			else
-			{
-				Expr* exp = Expr_create(EXP_ARRAY_INDEX);
-				GetNextToken(in);
-				exp->arrayIndex.isGlobalArray = 0;
-				exp->arrayIndex.arrayVariableIndex = idx;
-				exp->arrayIndex.indexExpr = ParseExpr(in);
-				GetNextToken(in); // eat ']'
-				return exp;
-			}
+			
+			Expr* exp = Expr_create(EXP_LOCALREF);
+			exp->local.index = idx;
+			return exp;
 		} break;
 		
 		case TOK_PROC:
@@ -1293,7 +1236,8 @@ Expr* ParseFactor(FILE* in)
 			Expr* exp = Expr_create(EXP_PROC);
 			
 			GetNextToken(in);
-			assert(CurTok == TOK_IDENT && "Proc name must be identifier!");
+
+			ExpectToken(TOK_IDENT, "Function name must be identifier!");
 			
 			exp->proc.name = RegisterFunction(TokenBuffer);
 			
@@ -1301,19 +1245,25 @@ Expr* ParseFactor(FILE* in)
 			
 			++CurrScope;
 			
-			assert(CurTok == '(');
+			ExpectToken('(', "Expected '(' after function name");
 			GetNextToken(in);
-			
 			
 			char* args[MAX_ARGS];
 			int nargs = 0;
 			
 			while(CurTok != ')')
 			{
-				assert(CurTok == TOK_IDENT);
+				ExpectToken(TOK_IDENT, "Expected identifier in function parameter list");
+
 				args[nargs++] = estrdup(TokenBuffer);
 				GetNextToken(in);
-				assert(CurTok == ')' || CurTok == ',');
+				
+				if (CurTok != ')' && CurTok != ',')
+				{
+					fprintf(stderr, "Expected ')' or ',' after parameter name in function parameter list");
+					exit(1);
+				}
+
 				if(CurTok == ',') GetNextToken(in);
 			}
 			
@@ -1327,76 +1277,65 @@ Expr* ParseFactor(FILE* in)
 			
 			GetNextToken(in);
 			
-			if(CurTok != TOK_END)
-			{
-				Expr* curExp = ParseExpr(in);
-				Expr* head = curExp;
-				
-				while(CurTok != TOK_END)
-				{
-					curExp->next = ParseExpr(in);
-					curExp = curExp->next;
-				}
-				exp->proc.exprHead = head;
-			}
-			else
-				exp->proc.exprHead = NULL;
+			exp->proc.exprHead = ParseExprList(in);
 			exp->proc.numLocals = CurrNumLocals;
+			
 			--CurrScope;
+			
 			ClearLocals();
-			GetNextToken(in);
+
 			return exp;
 		} break;
 		
 		case TOK_IF:
 		{
-			GetNextToken(in);
-			Expr* exp = Expr_create(EXP_IF);
-			exp->ifx.cond = ParseExpr(in);
-			assert(CurTok == TOK_THEN && "Expected 'then' after if condition");
-			GetNextToken(in);
-			++CurrScope;
-			if(CurTok != TOK_END)
-			{
-				Expr* curExp = ParseExpr(in);
-				Expr* head = curExp;
-				
-				while(CurTok != TOK_END)
-				{
-					curExp->next = ParseExpr(in);
-					curExp = curExp->next;
-				}
-				exp->ifx.exprHead = head;
-			}
-			else
-				exp->ifx.exprHead = NULL;
-			--CurrScope;
-			GetNextToken(in);
-			return exp;
+			return ParseIf(in);
 		} break;
 		
 		case TOK_WHILE:
 		{
 			GetNextToken(in);
 			Expr* exp = Expr_create(EXP_WHILE);
+
 			exp->whilex.cond = ParseExpr(in);
+
 			++CurrScope;
-			if(CurTok != TOK_END)
-			{
-				Expr* curExp = ParseExpr(in);
-				Expr* head = curExp;
-				
-				while(CurTok != TOK_END)
-				{
-					curExp->next = ParseExpr(in);
-					curExp = curExp->next;
-				}
-				exp->whilex.exprHead = head;
-			}
-			else
-				exp->whilex.exprHead = NULL;
+			exp->whilex.exprHead = ParseExprList(in);
 			--CurrScope;
+
+			return exp;
+		} break;
+
+		case TOK_FOR:
+		{
 			GetNextToken(in);
+			Expr* exp = Expr_create(EXP_FOR);
+			
+			// Every local declared after this is scoped to the for
+			++CurrScope;
+
+			exp->forx.init = ParseExpr(in);
+
+			ExpectToken(';', "Expected ';' after for initializer.");
+
+			GetNextToken(in);
+
+			exp->forx.cond = ParseExpr(in);
+
+			ExpectToken(';', "Expected ';' after for condition.");
+
+			GetNextToken(in);
+
+			exp->forx.step = ParseExpr(in);
+
+			ExpectToken(TOK_DO, "Expected 'do' after for step expression.");
+
+			GetNextToken(in);
+
+			exp->forx.exprHead = ParseExprList(in);
+
+			--CurrScope;
+
 			return exp;
 		} break;
 		
@@ -1410,6 +1349,7 @@ Expr* ParseFactor(FILE* in)
 				exp->retExpr = NULL;
 				return exp;
 			}
+
 			exp->retExpr = ParseExpr(in);
 			return exp;
 		} break;
@@ -1426,7 +1366,11 @@ Expr* ParseFactor(FILE* in)
 				if(CurTok == TOK_IDENT)
 				{
 					exp->read.isLocal[exp->read.numIds] = 0;
-					exp->read.ids[exp->read.numIds++] = RegisterVariableName(TokenBuffer); 
+
+					int id = RegisterVariableName(TokenBuffer);
+					exp->read.ids[exp->read.numIds++] = id;
+
+					Variables[id].initialized = 1;
 				}
 				else
 				{
@@ -1469,6 +1413,7 @@ Expr* ParseFactor(FILE* in)
 		
 		default: break;
 	}
+
 	fprintf(stderr, "Unexpected token %i (%c)\n", CurTok, CurTok);
 	exit(1);
 }
@@ -1560,7 +1505,7 @@ void PrintExpr(Expr* exp)
 		
 		case EXP_CALL:
 		{
-			printf("%s(", FunctionNames[exp->call.callee]);
+			printf("%s(", exp->call.calleeName);
 			for(int i = 0; i < exp->call.numArgs; ++i)
 			{
 				PrintExpr(exp->call.args[i]);
@@ -1632,8 +1577,15 @@ void PrintExpr(Expr* exp)
 		{
 			printf("if ");
 			PrintExpr(exp->ifx.cond);
-			if(exp->ifx.exprHead)
-				PrintProgram(exp->ifx.exprHead);
+			if(exp->ifx.bodyHead)
+				PrintProgram(exp->ifx.bodyHead);
+
+			if (exp->ifx.alt)
+			{
+				printf("else\n");
+				PrintProgram(exp->ifx.alt);
+			}
+
 			printf("end\n");
 		} break;
 		
@@ -1694,16 +1646,19 @@ void CompileExpr(Expr* exp)
 		{
 			for(int i = 0; i < exp->call.numArgs; ++i)
 				CompileExpr(exp->call.args[i]);
-			if(exp->call.callee < 0)
+			
+			int callee = RegisterFunction(exp->call.calleeName);
+
+			if(callee < 0)
 			{
 				GenerateCode(OP_CALLF);
-				GenerateInt(-(exp->call.callee + 1));
+				GenerateInt(-(callee + 1));
 			}
 			else
 			{
 				GenerateCode(OP_CALL);
 				GenerateInt(exp->call.numArgs);
-				GenerateInt(exp->call.callee);
+				GenerateInt(callee);
 			}
 		} break;
 		
@@ -1727,7 +1682,7 @@ void CompileExpr(Expr* exp)
 		case EXP_LOCALREF:
 		{
 			GenerateCode(OP_GETLOCAL);
-			GenerateInt(exp->localRefIdx);
+			GenerateInt(exp->local.index);
 		} break;
 		
 		case EXP_READ:
@@ -1760,49 +1715,16 @@ void CompileExpr(Expr* exp)
 				{
 					if(exp->binary.lhs->type == EXP_ID)
 					{
-						if(exp->binary.rhs->type != EXP_NAMED_MEMBER_ARRAY)
-						{
-							CompileExpr(exp->binary.rhs);
-							GenerateCode(OP_SET);
-							GenerateInt(exp->binary.lhs->ident);
-							Variables[exp->binary.lhs->ident].initialized = 1;
-						}
-						else
-						{
-							int ident = exp->binary.lhs->ident;
-							memcpy(Variables[ident].members, exp->binary.rhs->namedMemArray.members, exp->binary.rhs->namedMemArray.nmem * sizeof(char*));
-							Variables[ident].nmem = exp->binary.rhs->namedMemArray.nmem;
-							exp->binary.rhs->namedMemArray.used = 1;
-						}
+						CompileExpr(exp->binary.rhs);
+						GenerateCode(OP_SET);
+						GenerateInt(exp->binary.lhs->ident);
+						Variables[exp->binary.lhs->ident].initialized = 1;
 					}
-					else if(exp->binary.lhs->type == EXP_LOCAL)
+					else if(exp->binary.lhs->type == EXP_LOCAL || exp->binary.lhs->type == EXP_LOCALREF)
 					{
 						CompileExpr(exp->binary.rhs);
 						GenerateCode(OP_SETLOCAL);
 						GenerateInt(exp->binary.lhs->local.index);
-					}
-					else if(exp->binary.lhs->type == EXP_LOCALREF)
-					{
-						CompileExpr(exp->binary.rhs);
-						GenerateCode(OP_SETLOCAL);
-						GenerateInt(exp->binary.lhs->localRefIdx);
-					}
-					else if(exp->binary.lhs->type == EXP_ARRAY_INDEX)
-					{
-						if(exp->binary.lhs->arrayIndex.isGlobalArray)
-						{
-							GenerateCode(OP_GET);
-							GenerateInt(exp->binary.lhs->arrayIndex.arrayVariableIndex);
-						}
-						else
-						{
-							GenerateCode(OP_GETLOCAL);
-							GenerateInt(exp->binary.lhs->arrayIndex.arrayVariableIndex);
-						}
-						CompileExpr(exp->binary.lhs->arrayIndex.indexExpr);
-						CompileExpr(exp->binary.rhs);
-						
-						GenerateCode(OP_SETINDEX);
 					}
 					else
 					{
@@ -1811,17 +1733,6 @@ void CompileExpr(Expr* exp)
 					}
 				} break;
 				
-				case '.':
-				{
-					if(exp->binary.lhs->type != EXP_ID)
-					{
-						fprintf(stderr, "Named member array value access can only be done on global variables!\n");
-						exit(1);
-					}
-
-					
-				} break;
-
 				case '+':
 				{
 					CompileExpr(exp->binary.lhs);
@@ -1959,11 +1870,17 @@ void CompileExpr(Expr* exp)
 		{
 			CompileExpr(exp->ifx.cond);
 			GenerateCode(OP_GOTOZ);
+			
 			int skipGotoPc = ProgramLength;
 			GenerateInt(0);
-			if(exp->ifx.exprHead)
-				CompileProgram(exp->ifx.exprHead);
+			
+			if(exp->ifx.bodyHead)
+				CompileProgram(exp->ifx.bodyHead);
+			
 			GenerateIntAt(ProgramLength, skipGotoPc);
+
+			if (exp->ifx.alt)
+				CompileExpr(exp->ifx.alt);
 		} break;
 		
 		case EXP_WHILE:
@@ -1978,28 +1895,6 @@ void CompileExpr(Expr* exp)
 			GenerateCode(OP_GOTO);
 			GenerateInt(condPc);
 			GenerateIntAt(ProgramLength, skipGotoPc);
-		} break;
-		
-		case EXP_MAKE_ARRAY:
-		{
-			CompileExpr(exp->arrayLengthExpr);
-			GenerateCode(OP_MAKE_ARRAY);
-		} break;
-		
-		case EXP_ARRAY_INDEX:
-		{
-			if(exp->arrayIndex.isGlobalArray)
-			{
-				GenerateCode(OP_GET);
-				GenerateInt(exp->arrayIndex.arrayVariableIndex);
-			}
-			else
-			{
-				GenerateCode(OP_GETLOCAL);
-				GenerateInt(exp->arrayIndex.arrayVariableIndex);
-			}
-			CompileExpr(exp->arrayIndex.indexExpr);
-			GenerateCode(OP_GETINDEX);
 		} break;
 		
 		case EXP_RETURN:
@@ -2035,6 +1930,7 @@ void Expr_destroy(Expr* exp)
 		
 		case EXP_CALL: 
 		{
+			free(exp->call.calleeName);
 			for(int i = 0; i < exp->call.numArgs; ++i)
 				Expr_destroy(exp->call.args[i]);
 		} break;
@@ -2044,20 +1940,10 @@ void Expr_destroy(Expr* exp)
 		case EXP_BINARY: Expr_destroy(exp->binary.lhs); Expr_destroy(exp->binary.rhs); break;
 		case EXP_PAREN: Expr_destroy(exp->paren); break;
 		case EXP_PROC: if(exp->proc.exprHead) DeleteProgram(exp->proc.exprHead); break;
-		case EXP_IF: Expr_destroy(exp->ifx.cond); if(exp->ifx.exprHead) DeleteProgram(exp->ifx.exprHead); break;
+		case EXP_IF: Expr_destroy(exp->ifx.cond); if (exp->ifx.bodyHead) DeleteProgram(exp->ifx.bodyHead); if (exp->ifx.alt) Expr_destroy(exp->ifx.alt); break;
 		case EXP_WHILE: Expr_destroy(exp->whilex.cond); if(exp->whilex.exprHead) DeleteProgram(exp->whilex.exprHead); break;
 		case EXP_RETURN: if(exp->retExpr) Expr_destroy(exp->retExpr); break;
 		case EXP_UNARY: Expr_destroy(exp->unary.exp); break;
-		case EXP_MAKE_ARRAY: Expr_destroy(exp->arrayLengthExpr); break;
-		case EXP_ARRAY_INDEX: Expr_destroy(exp->arrayIndex.indexExpr); break;
-		case EXP_NAMED_MEMBER_ARRAY: 
-		{
-			if(!exp->namedMemArray.used)
-			{
-				for(int i = 0; i < exp->namedMemArray.nmem; ++i)
-					free(exp->namedMemArray.members[i]);
-			}
-		} break;
 		default: break;
 	}
 	free(exp);
@@ -2080,7 +1966,7 @@ void DebugMachineProgram()
 	{
 		switch(Program[i])
 		{
-			case OP_PUSH:			printf("push\n"); i += 4; break;
+			case OP_PUSH:			printf("push\n"); break;
 			case OP_POP:			printf("pop\n"); break;
 			case OP_ADD:			printf("add\n"); break;
 			case OP_SUB:			printf("sub\n"); break;
@@ -2098,15 +1984,11 @@ void DebugMachineProgram()
 			case OP_READ:			printf("read\n"); break;
 			case OP_GOTO:			printf("goto\n"); i += 4; break;
 			case OP_GOTOZ:			printf("gotoz\n"); i += 4; break;
-			case OP_GOTONZ:			printf("gotonz\n"); i += 4; break;
 			case OP_CALL:			printf("call\n"); i += 8; break;
 			case OP_RETURN:			printf("return\n"); break;
 			case OP_RETURN_VALUE:	printf("return_value\n"); break;
 			case OP_GETLOCAL:		printf("getlocal\n"); i += 4; break;
 			case OP_SETLOCAL:		printf("setlocal\n"); i += 4; break;
-			case OP_MAKE_ARRAY:		printf("makearray\n"); break;
-			case OP_SETINDEX:		printf("setindex\n"); break;
-			case OP_GETINDEX:		printf("getindex\n"); break;
 			case OP_HALT:			printf("halt\n");
 		}
 	}
@@ -2116,7 +1998,7 @@ void InitInterpreter()
 {
 	ResetMachine();
 	NumObjects = 0;
-	MaxNumObjects = 2;
+	MaxNumObjects = 8;
 }
 
 void DeleteInterpreter()
