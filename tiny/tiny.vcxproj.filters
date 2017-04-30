@@ -21,14 +21,35 @@
     <ClCompile Include="tinystd.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="dict.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="iniparser.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="tiny.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="iniparser.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="dict.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <None Include="test.tiny">
+    <None Include="test1.tiny">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="test2.tiny">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="test3.tiny">
+      <Filter>Resource Files</Filter>
+    </None>
+    <None Include="test.ini">
       <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>

@@ -1,0 +1,56 @@
+file = fopen("test.ini", "w")
+
+fwrite(file, "it will skip lines that don't have an equal sign\n")
+fwrite(file, "host=www.example.com\n")
+
+fwrite(file, "[hello]\n\n\n")
+fwrite(file, "name=John\n\n")
+fwrite(file, "ip=192.168.2.1")
+
+fclose(file)
+
+$x =10
+$y =20
+
+func ini_dict(ini) {
+	$d = dict()
+
+	$sections = ini_sections($ini)
+	$len = array_len($sections)
+
+	for $i = 0; $i < $len; $i = $i + 1 {
+		$section = array_get($sections, $i)
+		
+		$name = ini_name($section)
+
+		$keys = ini_keys($section)
+		$keys_len = array_len($keys)
+
+		$kv = dict()
+		
+		for $j = 0; $j < $keys_len; $j = $j + 1 {
+			$key = array_get($keys, $j)
+			dict_put($kv, $key, ini_value($section, $key))
+		}
+		
+		dict_put($d, $name, $kv)
+	}
+
+	return $d
+}
+
+dat = ini_dict(ini_parse("test.ini"))
+
+names = dict_keys(dat)
+
+for i = 0; i < array_len(names); i = i + 1 {
+	section = dict_get(dat, array_get(names, i))
+
+	keys = dict_keys(section)
+
+	printf("[%s]\n", array_get(names, i))
+
+	for j = 0; j < array_len(keys); j = j + 1 {
+		printf("%s=%s\n", array_get(keys, j), dict_get(section, array_get(keys, j)))
+	}
+}

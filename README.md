@@ -18,13 +18,13 @@ Another example program:
 
 ```
 
-proc fact(x)						# compute the factorial of a number
-	if $x == 0 then	
+func fact(x) {						# compute the factorial of a number
+	if $x == 0 {
 		return 1
-	end
+	}
 	
 	return $x * fact($x - 1)
-end
+}
 
 write fact(5) end					# compute factorial of 5 and write to stdout
 
@@ -32,15 +32,16 @@ write fact(5) end					# compute factorial of 5 and write to stdout
 
 This program willl write the factorial of 5 (120) to stdout
 
-The language supports strings as well as arrays
-and local variables.
+The language also has support for local variables and the included interpreter (tinystd.c) 
+supports arrays:
 
 ```
 
-proc test()
-	local arr = [1] # length of array in square brackets (can by any expression: 2 + 2, $a + b)
-	push($arr, "hello world")
-	write $arr[0] end
+func test()
+	local arr = array()
+	
+	array_push($arr, "hello world")
+	write array_get($arr, 0) end
 end
 
 # writes "hello world" (excluding quotes) to stdout
@@ -57,14 +58,14 @@ Here is an example of the binding api:
 // C Code
 
 // write this function in tinystd.c
-void MyNativeLibrary_add()
-	double num2 = DoPop()->number;
-	double num1 = DoPop()->number;
+void MyNativeLibrary_add() {
+	double num2 = DoPop().number;
+	double num1 = DoPop().number;
 	
 	DoPush(NewNumber(num1 + num2));
-end
+}
 
-// and then in the BindStandardLibrary function add this code
+// and then in the BindStandardLibrary function (in tinystd.c) add this code
 void BindStandardLibrary()
 {
 	...

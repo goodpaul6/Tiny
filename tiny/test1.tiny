@@ -1,0 +1,47 @@
+func fib(n) {
+	$a = 1
+	$r = 0
+
+	for $i = 0; $i < $n; $i = $i + 1 {
+		$new_a = $r
+		$r = $r + $a
+		$a = $new_a
+	}
+
+	return $r
+}
+
+func main() {
+	$n = ston(input("How fibonacci numbers do you want? "))
+	
+	print("Computing...")
+
+	$nums = array()
+	array_resize($nums, $n)
+
+	$start_time = time()
+
+	for $i = 0; $i < $n; $i = $i + 1 {
+		array_set($nums, $i, fib($i + 1))
+	}
+
+	$elapsed = time() - $start_time
+
+	print("That took", $elapsed, "seconds")
+
+	print("Done computing.")
+
+	$filename = input("Where would you like to output the numbers? ")
+
+	$file = fopen($filename, "w")
+
+	for $i = 0; $i < $n; $i = $i + 1 { 
+		fwrite($file, strcat(ntos(array_get($nums, $i)), "\n"))
+	}
+
+	fclose($file)
+
+	print("Done.")
+}
+
+main()

@@ -4,6 +4,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <string.h>
+#include <stdbool.h>
 
 #include "tiny.h"
 
@@ -52,8 +53,8 @@ void DeleteObject(Object* obj)
 	if(obj->type == OBJ_STRING) free(obj->string);
 	if (obj->type == OBJ_NATIVE)
 	{
-		if (obj->ptrFree)
-			obj->ptrFree(obj->ptr);
+		if (obj->nat.prop && obj->nat.prop->free)
+			obj->nat.prop->free(obj->nat.addr);
 	}
 
 	free(obj);
@@ -71,8 +72,8 @@ void Mark(Object* obj)
 	
 	if(obj->type == OBJ_NATIVE)
 	{
-		if(obj->ptrMark)
-			obj->ptrMark(obj->ptr);
+		if(obj->nat.prop && obj->nat.prop->mark)
+			obj->nat.prop->mark(obj->nat.addr);
 	}
 
 	obj->marked = 1;
@@ -107,10 +108,8 @@ void GarbageCollect()
 	MaxNumObjects = NumObjects * 2;
 }
 
-Object* NewObject(ObjectType type, char gc)
+Object* NewObject(ObjectType type)
 {
-	if(gc && NumObjects >= MaxNumObjects) GarbageCollect();
-	
 	Object* obj = emalloc(sizeof(Object));
 	
 	obj->type = type;
@@ -123,131 +122,105 @@ Object* NewObject(ObjectType type, char gc)
 	return obj;
 }
 
-Object* NewNative(void* ptr, void(*ptrFree)(void*), void(*ptrMark)(void*))
+Value NewNative(void* ptr, const NativeProp* prop)
 {
-	Object* obj = NewObject(OBJ_NATIVE, 1);
-	obj->ptr = ptr;
-	obj->ptrFree = ptrFree;
-	obj->ptrMark = ptrMark;
-	return obj;
+	Object* obj = NewObject(OBJ_NATIVE);
+	
+	obj->nat.addr = ptr;
+	obj->nat.prop = prop;
+
+	Value val;
+
+	val.type = VAL_OBJ;
+	val.obj = obj;
+
+	return val;
 }
 
-Object* NewNumber(double value)
+Value NewNumber(double value)
 {
-	Object* obj = NewObject(OBJ_NUM, 1);
-	obj->number = value;
-	return obj;
+	Value val;
+
+	val.type = VAL_NUM;
+	val.number = value;
+
+	return val;
 }
 
-Object* NewString(char* string)
+Value NewString(char* string)
 {
-	Object* obj = NewObject(OBJ_STRING, 1);
+	Object* obj = NewObject(OBJ_STRING);
 	obj->string = string;
-	return obj;
+
+	Value val;
+
+	val.type = VAL_OBJ;
+	val.obj = obj;
+
+	return val;
 }
 
-Object* Stack[MAX_STACK];
+typedef enum
+{
+	SYM_GLOBAL,
+	SYM_LOCAL,
+	SYM_FUNCTION,
+	SYM_FOREIGN_FUNCTION
+} SymbolType;
+
+typedef struct sSymbol
+{
+	struct sSymbol* next;
+	SymbolType type;
+	char* name;
+
+	union
+	{
+		struct
+		{
+			bool initialized;	// Has the variable been assigned to?
+			bool scopeEnded;	// If true, then this variable cannot be accessed anymore
+			int scope, index;
+		} var; // Used for both local and global
+
+		struct
+		{
+			int index;
+			int nargs, nlocals;
+
+			struct sSymbol* argsHead;
+			struct sSymbol* localsHead;
+		} func;
+
+		struct
+		{
+			ForeignFunction callee;
+			int index;
+		} foreignFunc;
+	};
+} Symbol;
+
+Value Stack[MAX_STACK];
 int StackSize = 0;
 
 int IndirStack[MAX_INDIR];
 int IndirStackSize;
 
-struct 
-{
-	char initialized;
-	char* name;
-	Object* object;
-} Variables[MAX_VARS];
-int VariableAmount = 0;
+int NumGlobalVars = 0;
+Value* GlobalVars = NULL;
 
-char* FunctionNames[MAX_FUNCS];
-int FunctionPcs[MAX_FUNCS];
-int FunctionAmount = 0;
+int NumFunctions = 0;
+int* FunctionPcs = NULL;
 
-char* ForeignFunctionNames[MAX_FUNCS];
-void (*ForeignFunctions[MAX_FUNCS])(void);
-int ForeignAmount = 0;
+int NumForeignFunctions = 0;
+ForeignFunction* ForeignFunctions = NULL;
 
 int CurrScope = 0;
-int CurrNumLocals = 0;
+Symbol* CurrFunc = NULL;
+Symbol* GlobalSymbols = NULL;
 
-int NumArgsDeclared = 0;
-
-typedef struct sLocalDecl
-{
-	struct sLocalDecl* next;
-	char* name;
-	int index;
-	int scope;
-} LocalDecl;
-
-LocalDecl* LocalDeclarations;
-
-int DeclareLocal(char* name)
-{
-	LocalDecl* newLocal = emalloc(sizeof(LocalDecl));
-	
-	newLocal->name = estrdup(name);
-	newLocal->index = CurrNumLocals;
-	newLocal->scope = CurrScope;
-	
-	newLocal->next = LocalDeclarations;
-	LocalDeclarations = newLocal;
-	
-	++CurrNumLocals;
-	return CurrNumLocals - 1;
-}
-
-int DeclareArgument(char* name, int nargs)
-{
-	++NumArgsDeclared;
-	
-	LocalDecl* newLocal = emalloc(sizeof(LocalDecl));
-	
-	newLocal->name = estrdup(name);
-	newLocal->index = -nargs + (NumArgsDeclared - 1);
-	newLocal->scope = CurrScope;
-	
-	newLocal->next = LocalDeclarations;
-	LocalDeclarations = newLocal;
-	
-	return newLocal->index;
-}
-
-int ReferenceLocal(char* name)
-{
-	LocalDecl* node = LocalDeclarations;
-	
-	while(node)
-	{
-		if(strcmp(node->name, name) == 0)
-		{
-			if(node->scope <= CurrScope)
-				return node->index;
-		}
-		node = node->next;
-	}
-	
-	fprintf(stderr, "Attempted to reference non-existent local variable '%s'\n", name);
-	exit(1);
-}
-
-void ClearLocals()
-{
-	LocalDecl* node = LocalDeclarations;
-	
-	while(node)
-	{
-		LocalDecl* next = node->next;
-		free(node->name);
-		free(node);
-		node = next;
-	}
-	
-	LocalDeclarations = NULL;
-	
-	CurrNumLocals = 0;
-}
+const char* FileName = NULL;
+int LineNumber = 1;
 
 typedef enum
 {
@@ -258,6 +231,7 @@ typedef enum
 typedef struct
 {
 	ConstType type;
+	int index;
 	union
 	{
 		char* string;
@@ -265,7 +239,7 @@ typedef struct
 	};
 } ConstInfo;
 
-ConstInfo** Constants;
+ConstInfo* Constants;
 int ConstantCapacity = 1;
 int ConstantAmount = 0;
 
@@ -276,57 +250,94 @@ ConstInfo* NewConst(ConstType type)
 		ConstantCapacity *= 2;
 		Constants = erealloc(Constants, ConstantCapacity * sizeof(ConstInfo));
 	}
+
+	ConstInfo* c = &Constants[ConstantAmount++];
 	
-	ConstInfo* info = emalloc(sizeof(ConstInfo));
-	info->type = type;
-	return info;
+	c->type = type;
+	c->index = ConstantAmount - 1;
+
+	return c;
+}
+
+static void Symbol_destroy(Symbol* sym);
+
+void ResetCompiler(void)
+{
+	// Reset position
+	FileName = "unknown";
+	LineNumber = 0;
+
+	// Delete all symbols
+	while (GlobalSymbols)
+	{
+		Symbol* next = GlobalSymbols->next;
+
+		Symbol_destroy(GlobalSymbols);
+		GlobalSymbols = next;
+	}
+
+	// Destroy and reset constants
+	for (int i = 0; i < ConstantAmount; ++i)
+	{
+		if (Constants[i].type == CST_STR)
+			free(Constants[i].string);
+	}
+
+	free(Constants);
+	Constants = NULL;
+
+	ConstantAmount = 0;
+	ConstantCapacity = 1;
+
+	// Reset scope
+	CurrFunc = NULL;
+	CurrScope = 0;
+
+	// Reset function and variable data
+	NumGlobalVars = 0;
+	free(GlobalVars);
+
+	NumFunctions = 0;
+	free(FunctionPcs);
+
+	NumForeignFunctions = 0;
+	free(ForeignFunctions);
 }
 
 void MarkAll()
 {
-	for(int i = 0; i < StackSize; ++i)
-		Mark(Stack[i]);
-	for (int i = 0; i < MAX_VARS; ++i)
+	for (int i = 0; i < StackSize; ++i)
 	{
-		if(Variables[i].object)
-			Mark(Variables[i].object);
+		if (Stack[i].type == VAL_OBJ)
+			Mark(Stack[i].obj);
 	}
-}
 
-void DeleteVariables()
-{
-	for(int i = 0; i < VariableAmount; ++i)
-		free(Variables[i].name);
-	VariableAmount = 0;
-}
-
-void DeleteFunctions()
-{
-	for(int i = 0; i < FunctionAmount; ++i)
-		free(FunctionNames[i]);
-	FunctionAmount = 0;
+	for (int i = 0; i < NumGlobalVars; ++i)
+	{
+		if (GlobalVars[i].type == VAL_OBJ)
+			Mark(GlobalVars[i].obj);
+	}
 }
 
 void ResetMachine()
 {
-	ProgramLength = 0;
-	ProgramCounter = -1;
-	ConstantAmount = 0;
 	StackSize = 0;
 	FramePointer = 0;
-	VariableAmount = 0;
-	FunctionAmount = 0;
 	IndirStackSize = 0;
-	GCHead = NULL;
+	
+	while (GCHead)
+	{
+		Object* next = GCHead->next;
+		DeleteObject(GCHead);
+		GCHead = next;
+	}
+
 	NumObjects = 0;
-	ForeignAmount = 0;
-	CurrScope = 0;
-	LocalDeclarations = NULL;
-	NumArgsDeclared = 0;
-	memset(Variables, 0, sizeof(Variables));
+	MaxNumObjects = 8;
+	ProgramCounter = -1;
 }
 
-void GenerateCode(Word inst)
+static void GenerateCode(Word inst)
 {	
 	assert(ProgramLength < MAX_PROG_LEN && "Program Overflow!");
 	Program[ProgramLength++] = inst;
@@ -350,89 +361,260 @@ int RegisterNumber(double value)
 {
 	for(int i = 0; i < ConstantAmount; ++i)
 	{
-		if(Constants[i]->type == CST_NUM)
+		if(Constants[i].type == CST_NUM)
 		{
-			if(Constants[i]->number == value)
+			if(Constants[i].number == value)
 				return i;
 		}
 	}
 	
-	assert(ConstantAmount < MAX_CONST_AMT && "Constant Overflow!");
 	ConstInfo* num = NewConst(CST_NUM);
+	
 	num->number = value;
-	Constants[ConstantAmount++] = num;
-	return ConstantAmount - 1;
+
+	return num->index;
 }
 
 int RegisterString(char* string)
 {
 	for(int i = 0; i < ConstantAmount; ++i)
 	{
-		if(Constants[i]->type == CST_STR)
+		if(Constants[i].type == CST_STR)
 		{
-			if(strcmp(Constants[i]->string, string) == 0)
+			if(strcmp(Constants[i].string, string) == 0)
 				return i;
 		}
 	}
 	
-	assert(ConstantAmount < MAX_CONST_AMT && "Constant Overflow!");
-	
 	ConstInfo* str = NewConst(CST_STR);
-	str->string = estrdup(string);
-	Constants[ConstantAmount++] = str;
-	return ConstantAmount - 1;
-}
-
-void DeleteConstants()
-{
-	for(int i = 0; i < ConstantAmount; ++i)
-	{
-		ConstInfo* cip = Constants[i];
-		if(cip->type == CST_STR)
-			free(cip->string);
-		free(cip);
-	}
-	free(Constants);
-}
-
-int RegisterVariableName(const char* name)
-{
-	for(int i = 0; i < VariableAmount; ++i)
-	{
-		if(strcmp(Variables[i].name, name) == 0)
-			return i;
-	}
 	
-	Variables[VariableAmount++].name = estrdup(name);
-	return VariableAmount - 1;
+	str->string = estrdup(string);
+	
+	return str->index;
 }
 
-static int RegisterFunction(const char* name)
+static Symbol* Symbol_create(SymbolType type, const char* name)
 {
-	for(int i = 0; i < ForeignAmount; ++i)
+	Symbol* sym = emalloc(sizeof(Symbol));
+
+	sym->name = estrdup(name);
+	sym->type = type;
+	sym->next = NULL;
+
+	return sym;
+}
+
+static void Symbol_destroy(Symbol* sym)
+{
+	if (sym->type == SYM_FUNCTION)
 	{
-		if(strcmp(ForeignFunctionNames[i], name) == 0)
-			return (-i - 1);
+		Symbol* arg = sym->func.argsHead;
+
+		while (arg)
+		{
+			assert(arg->type == SYM_LOCAL);
+
+			Symbol* next = arg->next;
+
+			Symbol_destroy(arg);
+
+			arg = next;
+		}
+	
+		Symbol* local = sym->func.localsHead;
+
+		while (local)
+		{
+			assert(local->type == SYM_LOCAL);
+
+			Symbol* next = local->next;
+
+			Symbol_destroy(local);
+
+			local = next;
+		}
 	}
 
-	for(int i = 0; i < FunctionAmount; ++i)
+	free(sym->name);
+	free(sym);
+}
+
+static void OpenScope()
+{
+	++CurrScope;
+}
+
+static void CloseScope()
+{
+	if (CurrFunc)
 	{
-		if(strcmp(FunctionNames[i], name) == 0)
-			return i;
+		Symbol* node = CurrFunc->func.localsHead;
+
+		while (node)
+		{
+			assert(node->type == SYM_LOCAL);
+
+			if (node->var.scope == CurrScope)
+				node->var.scopeEnded = true;
+
+			node = node->next;
+		}
 	}
 
-	FunctionNames[FunctionAmount++] = estrdup(name);
-	return FunctionAmount - 1;
+	--CurrScope;
+}
+
+static Symbol* RegisterGlobalVar(const char* name)
+{
+	Symbol* node = GlobalSymbols;
+
+	while (node)
+	{
+		if (node->type == SYM_GLOBAL && strcmp(node->name, name) == 0)
+			return node;
+
+		node = node->next;
+	}
+
+	Symbol* newNode = Symbol_create(SYM_GLOBAL, name);
+
+	newNode->var.initialized = false;
+	newNode->var.index = NumGlobalVars;
+	newNode->var.scope = 0;					// Global variable scope don't matter
+	newNode->var.scopeEnded = true;
+
+	newNode->next = GlobalSymbols;
+	GlobalSymbols = newNode;
+
+	NumGlobalVars += 1;
+
+	return newNode;
+}
+
+static Symbol* DeclareArgument(const char* name)
+{
+	assert(CurrFunc);
+
+	Symbol* node = CurrFunc->func.argsHead;
+
+	while (node)
+	{
+		assert(node->type == SYM_LOCAL);
+
+		if (strcmp(node->name, name) == 0)
+		{
+			fprintf(stderr, "Function '%s' takes multiple arguments with the same name '%s'.\n", CurrFunc->name, name);
+			exit(1);
+		}
+
+		node = node->next;
+	}
+
+	Symbol* newNode = Symbol_create(SYM_LOCAL, name);
+
+	newNode->var.initialized = false;
+	newNode->var.scopeEnded = false;
+	newNode->var.index = -(CurrFunc->func.nargs + 1);
+	newNode->var.scope = 0;								// These should be accessible anywhere in the function
+
+	newNode->next = CurrFunc->func.argsHead;
+	CurrFunc->func.argsHead = newNode;
+
+	CurrFunc->func.nargs += 1;
+	
+	return newNode;
+}
+
+static Symbol* RegisterLocal(const char* name)
+{
+	assert(CurrFunc);
+
+	// Check local variables
+	Symbol* node = CurrFunc->func.localsHead;
+
+	while (node)
+	{
+		assert(node->type == SYM_LOCAL);
+		
+		// Make sure that it's available in the current scope too
+		if (!node->var.scopeEnded && strcmp(node->name, name) == 0)
+			return node;
+
+		node = node->next;
+	}
+
+	// Check arguments
+	node = CurrFunc->func.argsHead;
+
+	while (node)
+	{
+		assert(node->type == SYM_LOCAL);
+
+		if (strcmp(node->name, name) == 0)
+			return node;
+
+		node = node->next;
+	}
+
+	// If neither local nor arg exists, create a new local
+	Symbol* newNode = Symbol_create(SYM_LOCAL, name);
+
+	newNode->var.initialized = false;
+	newNode->var.scopeEnded = false;
+	newNode->var.index = CurrFunc->func.nlocals;
+	newNode->var.scope = CurrScope;
+
+	newNode->next = CurrFunc->func.localsHead;
+	CurrFunc->func.localsHead = newNode;
+
+	CurrFunc->func.nlocals += 1;
+
+	return newNode;
+}
+
+static Symbol* DeclareFunction(const char* name)
+{
+	Symbol* newNode = Symbol_create(SYM_FUNCTION, name);
+
+	newNode->func.index = NumFunctions;
+	newNode->func.nargs = newNode->func.nlocals = 0;
+	newNode->func.argsHead = NULL;
+	newNode->func.localsHead = NULL;
+
+	newNode->next = GlobalSymbols;
+	GlobalSymbols = newNode;
+
+	NumFunctions += 1;
+
+	return newNode;
+}
+
+static Symbol* ReferenceFunction(const char* name)
+{
+	Symbol* node = GlobalSymbols;
+
+	while (node)
+	{
+		if ((node->type == SYM_FUNCTION || node->type == SYM_FOREIGN_FUNCTION) &&
+			strcmp(node->name, name) == 0)
+			return node;
+
+		node = node->next;
+	}
+
+	return NULL;
 }
 
 int GetProcId(const char* name)
 {
-	for(int i = 0; i < FunctionAmount; ++i)
+	Symbol* node = GlobalSymbols;
+
+	while (node)
 	{
-		if(strcmp(FunctionNames[i], name) == 0)
-			return i;
+		if (node->type == SYM_FUNCTION && strcmp(node->name, name) == 0)
+			return node->func.index;
 	}
-	
+
 	return -1;
 }
 
@@ -450,16 +632,30 @@ void CallProc(int id, int nargs)
 		ExecuteCycle();
 }
 
-void BindForeignFunction(void(*fun)(void), char* name)
+void BindForeignFunction(ForeignFunction func, const char* name)
 {
-	ForeignFunctionNames[ForeignAmount] = estrdup(name);
-	ForeignFunctions[ForeignAmount++] = fun;
-}
+	Symbol* node = GlobalSymbols;
 
-void DeleteForeignFunctions()
-{
-	for(int i = 0; i < ForeignAmount; ++i)
-		free(ForeignFunctionNames[i]);
+	while (node)
+	{
+		if (node->type == SYM_FOREIGN_FUNCTION && strcmp(node->name, name) == 0)
+		{
+			fprintf(stderr, "There is already a foreign function bound to name '%s'.", name);
+			exit(1);
+		}
+
+		node = node->next;
+	}
+
+	Symbol* newNode = Symbol_create(SYM_FOREIGN_FUNCTION, name);
+
+	newNode->foreignFunc.index = NumForeignFunctions;
+	newNode->foreignFunc.callee = func;
+
+	newNode->next = GlobalSymbols;
+	GlobalSymbols = newNode;
+
+	NumForeignFunctions += 1;
 }
 
 enum 
@@ -479,8 +675,11 @@ enum
 	OP_GT,
 	OP_GTE,
 	OP_EQU,
-	OP_NEQU,
-	
+
+	OP_LOG_NOT,
+	OP_LOG_AND,
+	OP_LOG_OR,
+
 	OP_PRINT,
 	
 	OP_SET,
@@ -515,24 +714,25 @@ int ReadInteger()
 	return val;
 }
 
-void DoPush(Object* value)
+inline void DoPush(Value value)
 {
-	assert(value);
 	if(StackSize >= MAX_STACK) 
 	{
 		fprintf(stderr, "Stack Overflow at PC: %i! (Stack size: %i)", ProgramCounter, StackSize);
 		exit(1);
 	}
+
 	Stack[StackSize++] = value;
 }
 
-Object* DoPop()
+inline Value DoPop()
 {
 	if(StackSize <= 0) 
 	{
 		fprintf(stderr, "Stack Underflow at PC: %i (Inst %i)!", ProgramCounter, Program[ProgramCounter]);
 		exit(1);
 	}
+
 	return Stack[--StackSize];
 }
 
@@ -559,9 +759,15 @@ void DoRead()
 	
 	buffer[i] = '\0';
 	
-	Object* obj = NewObject(OBJ_STRING, 1);
+	Object* obj = NewObject(OBJ_STRING);
 	obj->string = buffer;
-	DoPush(obj);
+
+	Value val;
+
+	val.type = VAL_OBJ;
+	val.obj = obj;
+
+	DoPush(val);
 }
 
 void DoPushIndir(int nargs)
@@ -594,20 +800,12 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			int cidx = ReadInteger();
-			ConstInfo* cip = Constants[cidx];
-			Object* obj = NULL;
-			if (cip->type == CST_NUM)
-			{
-				obj = NewObject(OBJ_NUM, 1);
-				obj->number = cip->number;
-			}
-			else if (cip->type == CST_STR)
-			{
-				obj = NewObject(OBJ_STRING, 1);
-				obj->string = estrdup(cip->string);
-			}
+			ConstInfo cip = Constants[cidx];
 
-			DoPush(obj);
+			if (cip.type == CST_NUM)
+				DoPush(NewNumber(cip.number));
+			else if (cip.type == CST_STR)
+				DoPush(NewString(estrdup(cip.string)));
 		} break;
 		
 		case OP_POP:
@@ -616,18 +814,16 @@ void ExecuteCycle()
 			++ProgramCounter;
 		} break;
 		
-		#define BIN_OP(OP, operator) case OP_##OP: { Object* val2 = DoPop(); Object* val1 = DoPop(); Object* result = NewObject(OBJ_NUM, 0); result->number = val1->number operator val2->number; DoPush(result); ++ProgramCounter; } break;
-		#define BIN_OP_INT(OP, operator) case OP_##OP: { Object* val2 = DoPop(); Object* val1 = DoPop(); Object* result = NewObject(OBJ_NUM, 0); result->number = (int)val1->number operator (int)val2->number; DoPush(result); ++ProgramCounter; } break;
+		#define BIN_OP(OP, operator) case OP_##OP: { Value val2 = DoPop(); Value val1 = DoPop(); DoPush(NewNumber(val1.number operator val2.number)); ++ProgramCounter; } break;
+		#define BIN_OP_INT(OP, operator) case OP_##OP: { Value val2 = DoPop(); Value val1 = DoPop(); DoPush(NewNumber((int)val1.number operator (int)val2.number)); ++ProgramCounter; } break;
 		
 		case OP_MUL:
 		{
-			Object* val2 = DoPop();
-			Object* val1 = DoPop();
+			Value val2 = DoPop();
+			Value val1 = DoPop();
 
-			Object* result = NewObject(OBJ_NUM, 0);
-			result->number = val1->number * val2->number;
+			DoPush(NewNumber(val1.number * val2.number));
 
-			DoPush(result);
 			++ProgramCounter;
 		} break;
 
@@ -641,16 +837,64 @@ void ExecuteCycle()
 		BIN_OP(LTE, <=)
 		BIN_OP(GT, >)
 		BIN_OP(GTE, >=)
-		BIN_OP(EQU, ==)
-		BIN_OP(NEQU, !=)
-		
+
 		#undef BIN_OP
 		
+		case OP_EQU:
+		{
+			++ProgramCounter;
+			Value b = DoPop();
+			Value a = DoPop();
+
+			if (a.type != b.type)
+				DoPush(NewNumber(0));
+			else
+			{
+				if (a.type == VAL_NUM)
+					DoPush(NewNumber(a.number == b.number));
+				else
+				{
+					if (a.obj->type != b.obj->type)
+						DoPush(NewNumber(0));
+					else if(a.obj->type == OBJ_STRING)
+						DoPush(NewNumber(strcmp(a.obj->string, b.obj->string) == 0));
+					else if (a.obj->type == OBJ_NATIVE)
+						DoPush(NewNumber(a.obj->nat.addr == b.obj->nat.addr));
+				}
+			}
+		} break;
+
+		case OP_LOG_NOT:
+		{
+			++ProgramCounter;
+			Value a = DoPop();
+			DoPush(NewNumber(a.number > 0 ? 0 : 1));
+		} break;
+
+		case OP_LOG_AND:
+		{
+			++ProgramCounter;
+			Value b = DoPop();
+			Value a = DoPop();
+
+			DoPush(NewNumber((int)a.number && (int)b.number));
+		} break;
+
+		case OP_LOG_OR:
+		{
+			++ProgramCounter;
+			Value b = DoPop();
+			Value a = DoPop();
+
+			DoPush(NewNumber((int)a.number || (int)b.number));
+		} break;
+
 		case OP_PRINT:
 		{
-			Object* obj = DoPop();
-			if(obj->type == OBJ_NUM) printf("%g\n", obj->number);
-			if(obj->type == OBJ_STRING) printf("%s\n", obj->string);
+			Value val = DoPop();
+			if(val.type == VAL_NUM) printf("%g\n", val.number);
+			else if (val.obj->type == OBJ_STRING) printf("%s\n", val.obj->string);
+			else if (val.obj->type == OBJ_NATIVE) printf("<native at %p>\n", val.obj->nat.addr);
 			++ProgramCounter;
 		} break;
 
@@ -658,14 +902,14 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			int varIdx = ReadInteger();
-			Variables[varIdx].object = DoPop();
+			GlobalVars[varIdx] = DoPop();
 		} break;
 		
 		case OP_GET:
 		{
 			++ProgramCounter;
 			int varIdx = ReadInteger();
-			DoPush(Variables[varIdx].object); 
+			DoPush(GlobalVars[varIdx]); 
 		} break;
 		
 		case OP_READ:
@@ -685,7 +929,7 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			int newPc = ReadInteger();
-			if(DoPop()->number == 0)
+			if(DoPop().number == 0)
 				ProgramCounter = newPc;
 		} break;
 		
@@ -706,7 +950,7 @@ void ExecuteCycle()
 		
 		case OP_RETURN_VALUE:
 		{
-			Object* retVal = DoPop();
+			Value retVal = DoPop();
 			DoPopIndir();
 			DoPush(retVal);
 		} break;
@@ -714,8 +958,21 @@ void ExecuteCycle()
 		case OP_CALLF:
 		{
 			++ProgramCounter;
+			
+			int nargs = ReadInteger();
 			int fIdx = ReadInteger();
-			ForeignFunctions[fIdx]();
+
+			// the state of the stack prior to the function arguments being pushed
+			int prevSize = StackSize - nargs;
+
+			int valueCount = ForeignFunctions[fIdx](&Stack[prevSize], nargs);
+			
+			// Move the values to where the arguments started
+			if(valueCount > 0)
+				memcpy(&Stack[prevSize], &Stack[StackSize - valueCount], sizeof(Value) * valueCount);
+
+			// Resize the stack so that it has the arguments removed but the return values included
+			StackSize = prevSize + valueCount;
 		} break;
 
 		case OP_GETLOCAL:
@@ -729,7 +986,7 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			int localIdx = ReadInteger();
-			Object* val = DoPop();
+			Value val = DoPop();
 			Stack[FramePointer + localIdx] = val;
 		} break;
 
@@ -738,6 +995,10 @@ void ExecuteCycle()
 			ProgramCounter = -1;
 		} break;
 	}
+
+	// Only collect garbage in between iterations
+	if (NumObjects >= MaxNumObjects)
+		GarbageCollect();
 }
 
 void RunMachine()
@@ -752,25 +1013,24 @@ enum
 	TOK_BEGIN = -1,
 	TOK_END = -2,
 	TOK_IDENT = -3,
-	TOK_READ = -5,
-	TOK_WRITE = -6,
 	TOK_NUMBER = -7,
 	TOK_STRING = -8,
-	TOK_LOCAL = -9,
-	TOK_PROC = -10,
-	TOK_IF = -11,
-	TOK_EQUALS = -12,
-	TOK_NOTEQUALS = -13,
-	TOK_LTE = -14,
-	TOK_GTE = -15,
-	TOK_RETURN = -16,
-	TOK_WHILE = -17,
-	TOK_FOR = -18,
-	TOK_DO = -19,
-	TOK_THEN = -20,
-	TOK_ELSE = -21,
-	TOK_EOF = -22,
-	TOK_LOCALREF = -23,
+	TOK_PROC = -9,
+	TOK_IF = -10,
+	TOK_EQUALS = -11,
+	TOK_NOTEQUALS = -12,
+	TOK_LTE = -13,
+	TOK_GTE = -14,
+	TOK_RETURN = -15,
+	TOK_WHILE = -16,
+	TOK_FOR = -17,
+	TOK_DO = -18,
+	TOK_THEN = -19,
+	TOK_ELSE = -20,
+	TOK_EOF = -21,
+	TOK_NOT = -22,
+	TOK_AND = -23,
+	TOK_OR = -24
 };
 
 #define MAX_TOK_LEN		256
@@ -787,9 +1047,14 @@ int Peek(FILE* in)
 int GetToken(FILE* in)
 {
 	static int last = ' ';
-	while(isspace(last))
+	while (isspace(last))
+	{
+		if (last == '\n')
+			++LineNumber;
+
 		last = getc(in);
-	
+	}
+
 	if(isalpha(last))
 	{
 		int i = 0;
@@ -803,17 +1068,17 @@ int GetToken(FILE* in)
 		
 		if (strcmp(TokenBuffer, "begin") == 0) return TOK_BEGIN;
 		if (strcmp(TokenBuffer, "end") == 0) return TOK_END;
-		if (strcmp(TokenBuffer, "read") == 0) return TOK_READ;
-		if (strcmp(TokenBuffer, "write") == 0) return TOK_WRITE;
 		if (strcmp(TokenBuffer, "func") == 0) return TOK_PROC;
 		if (strcmp(TokenBuffer, "if") == 0) return TOK_IF;
 		if (strcmp(TokenBuffer, "return") == 0) return TOK_RETURN;
 		if (strcmp(TokenBuffer, "while") == 0) return TOK_WHILE;
 		if (strcmp(TokenBuffer, "then") == 0) return TOK_THEN;
-		if (strcmp(TokenBuffer, "local") == 0) return TOK_LOCAL;
 		if (strcmp(TokenBuffer, "for") == 0) return TOK_FOR;
 		if (strcmp(TokenBuffer, "do") == 0) return TOK_DO;
 		if (strcmp(TokenBuffer, "else") == 0) return TOK_ELSE;
+		if (strcmp(TokenBuffer, "not") == 0) return TOK_NOT;
+		if (strcmp(TokenBuffer, "and") == 0) return TOK_AND;
+		if (strcmp(TokenBuffer, "or") == 0) return TOK_OR;
 
 		if(strcmp(TokenBuffer, "true") == 0)
 		{
@@ -850,22 +1115,6 @@ int GetToken(FILE* in)
 		while(last != '\n' && last != EOF) last = getc(in);
 		return GetToken(in);
 	}
-	
-	if(last == '$')
-	{
-		last = getc(in);
-		
-		int i = 0;
-		while(isalnum(last) || last == '_')
-		{
-			assert(i < MAX_TOK_LEN - 1 && "Token was too long!");
-			TokenBuffer[i++] = last;
-			last = getc(in);
-		}
-		TokenBuffer[i] = '\0';
-		
-		return TOK_LOCALREF;
-	}
 
 	if(last == '"')
 	{
@@ -873,6 +1122,28 @@ int GetToken(FILE* in)
 		int i = 0;
 		while(last != '"')
 		{
+			if (last == '\\')
+			{
+				last = getc(in);
+
+				switch (last)
+				{
+					case 'n': last = '\n'; break;
+					case 'r': last = '\r'; break;
+					case 't': last = '\t'; break;
+					case 'b': last = '\b'; break;
+					case 'a': last = '\a'; break;
+					case 'v': last = '\v'; break;
+					case 'f': last = '\f'; break;
+					case '\\': last = '\\'; break;
+					case '"': last = '"'; break;
+					default:
+						fprintf(stderr, "Unsupported escape sequence '\\%c'.\n", last);
+						exit(1);
+						break;
+				}
+			}
+
 			TokenBuffer[i++] = last;
 			last = getc(in);
 		}
@@ -932,22 +1203,19 @@ int GetToken(FILE* in)
 
 typedef enum
 {
-	EXP_READ,
-	EXP_WRITE,
 	EXP_ID,
 	EXP_CALL,
 	EXP_NUM,
 	EXP_STRING,
 	EXP_BINARY,
 	EXP_PAREN,
+	EXP_BLOCK,
 	EXP_PROC,
 	EXP_IF,
 	EXP_UNARY,
 	EXP_RETURN,
 	EXP_WHILE,
 	EXP_FOR,
-	EXP_LOCAL,
-	EXP_LOCALREF
 } ExprType;
 
 #define MAX_READ_WRITE	16
@@ -959,29 +1227,11 @@ typedef struct sExpr
 
 	union
 	{
-		struct
-		{
-			struct sExpr* head;
-		} program;
-		
-		struct
-		{
-			int ids[MAX_READ_WRITE];
-			char isLocal[MAX_READ_WRITE];
-			int numIds;
-		} read;
-		
-		struct
-		{
-			struct sExpr* exprs[MAX_READ_WRITE];
-			int numExprs;
-		} write;
-		
 		int number;
 		int string;
 
-		int ident;
-		
+		Symbol* idSym;
+	
 		struct
 		{
 			char* calleeName;
@@ -1006,23 +1256,26 @@ typedef struct sExpr
 		
 		struct
 		{
-			int name;
 			struct sExpr* exprHead;
-			
-			int numLocals;
+		} block;
+
+		struct
+		{
+			Symbol* decl;
+			struct sExpr* body;
 		} proc;
 
 		struct
 		{
 			struct sExpr* cond;
-			struct sExpr* bodyHead;
+			struct sExpr* body;
 			struct sExpr* alt;
 		} ifx;
 		
 		struct
 		{
 			struct sExpr* cond;
-			struct sExpr* exprHead;
+			struct sExpr* body;
 		} whilex;
 
 		struct
@@ -1030,7 +1283,7 @@ typedef struct sExpr
 			struct sExpr* init;
 			struct sExpr* cond;
 			struct sExpr* step;
-			struct sExpr* exprHead;
+			struct sExpr* body;
 		} forx;
 		
 		struct
@@ -1064,34 +1317,12 @@ static void ExpectToken(int tok, const char* msg)
 {
 	if (CurTok != tok)
 	{
+		fprintf(stderr, "%s(%i):", FileName, LineNumber);
 		fprintf(stderr, msg);
 		putc('\n', stderr);
 
 		exit(1);
 	}
-}
-
-// Parses expressions until TOK_END is encountered
-// Expressions are put in a linked list referenced by the first expression
-static Expr* ParseExprList(FILE* in)
-{
-	if (CurTok == TOK_END)
-	{
-		GetNextToken(in);
-		return NULL;
-	}
-
-	Expr* curExp = ParseExpr(in);
-	Expr* head = curExp;
-
-	while (CurTok != TOK_END)
-	{
-		curExp->next = ParseExpr(in);
-		curExp = curExp->next;
-	}
-	GetNextToken(in);
-
-	return head;
 }
 
 static Expr* ParseIf(FILE* in)
@@ -1101,31 +1332,15 @@ static Expr* ParseIf(FILE* in)
 	GetNextToken(in);
 
 	exp->ifx.cond = ParseExpr(in);
-
-	ExpectToken(TOK_THEN, "Expected 'then' after if.");
-	GetNextToken(in);
-
-	Expr* curExp = ParseExpr(in);
-	
-	exp->ifx.bodyHead = curExp;
-
-	while (CurTok != TOK_END && CurTok != TOK_ELSE)
-	{
-		curExp->next = ParseExpr(in);
-		curExp = curExp->next;
-	}
+	exp->ifx.body = ParseExpr(in);
 
 	if (CurTok == TOK_ELSE)
 	{
 		GetNextToken(in);
-
 		exp->ifx.alt = ParseExpr(in);
 	}
 	else
-	{
 		exp->ifx.alt = NULL;
-		GetNextToken(in);
-	}
 
 	return exp;
 }
@@ -1134,6 +1349,31 @@ Expr* ParseFactor(FILE* in)
 {
 	switch(CurTok)
 	{
+		case '{':
+		{
+			GetNextToken(in);
+
+			OpenScope();
+
+			Expr* curExp = ParseExpr(in);
+			Expr* head = curExp;
+
+			while (CurTok != '}')
+			{
+				curExp->next = ParseExpr(in);
+				curExp = curExp->next;
+			}
+			GetNextToken(in);
+
+			CloseScope();
+
+			Expr* exp = Expr_create(EXP_BLOCK);
+
+			exp->block.exprHead = head;
+
+			return exp;
+		} break;
+
 		case TOK_IDENT:
 		{
 			char* ident = estrdup(TokenBuffer);
@@ -1143,7 +1383,8 @@ Expr* ParseFactor(FILE* in)
 				Expr* exp;
 				
 				exp = Expr_create(EXP_ID);
-				exp->ident = RegisterVariableName(ident);
+				exp->idSym = RegisterGlobalVar(ident);
+
 				free(ident);
 				return exp;
 			}
@@ -1155,7 +1396,14 @@ Expr* ParseFactor(FILE* in)
 			
 			while(CurTok != ')')
 			{
+				if (exp->call.numArgs >= MAX_ARGS)
+				{
+					fprintf(stderr, "Exceeded maximum number of arguments in call expression (%d).\n", MAX_ARGS);
+					exit(1);
+				}
+
 				exp->call.args[exp->call.numArgs++] = ParseExpr(in);
+
 				if(CurTok == ',') GetNextToken(in);
 				else if(CurTok != ')')
 				{
@@ -1172,7 +1420,7 @@ Expr* ParseFactor(FILE* in)
 			return exp;
 		} break;
 		
-		case '-': case '+':
+		case '-': case '+': case TOK_NOT:
 		{
 			int op = CurTok;
 			GetNextToken(in);
@@ -1198,38 +1446,32 @@ Expr* ParseFactor(FILE* in)
 			return exp;
 		} break;
 		
-		case TOK_LOCAL:
+		case '$':
 		{
-			if(CurrScope == 0) 
+			if (!CurrFunc)
 			{
-				fprintf(stderr, "Cannot declare or reference locals in the global scope!\n");
+				fprintf(stderr, "Attempted to use local variable outside of function body.\n");
 				exit(1);
 			}
-			
+
 			GetNextToken(in);
-			ExpectToken(TOK_IDENT, "Local name must be identifier!");
-			
-			Expr* exp = Expr_create(EXP_LOCAL);
-			exp->local.index = DeclareLocal(TokenBuffer);
+
+			ExpectToken(TOK_IDENT, "Expected identifier after '$'.\n");
+
+			Expr* exp = Expr_create(EXP_ID);
+
+			exp->idSym = RegisterLocal(TokenBuffer);
+
 			GetNextToken(in);
-			return exp;
-		} break;
-		
-		case TOK_LOCALREF:
-		{
-			int idx = ReferenceLocal(TokenBuffer);
-			GetNextToken(in);
-			
-			Expr* exp = Expr_create(EXP_LOCALREF);
-			exp->local.index = idx;
+
 			return exp;
 		} break;
 		
 		case TOK_PROC:
 		{
-			if(CurrScope != 0)
+			if(CurrFunc)
 			{
-				fprintf(stderr, "Procedure defintion in a local scope is not allowed\n");
+				fprintf(stderr, "Attempted to define function inside function '%s'. This is not allowed.\n", CurrFunc->name);
 				exit(1);
 			}
 			
@@ -1239,23 +1481,19 @@ Expr* ParseFactor(FILE* in)
 
 			ExpectToken(TOK_IDENT, "Function name must be identifier!");
 			
-			exp->proc.name = RegisterFunction(TokenBuffer);
-			
+			exp->proc.decl = DeclareFunction(TokenBuffer);
+			CurrFunc = exp->proc.decl;
+
 			GetNextToken(in);
-			
-			++CurrScope;
 			
 			ExpectToken('(', "Expected '(' after function name");
 			GetNextToken(in);
-			
-			char* args[MAX_ARGS];
-			int nargs = 0;
 			
 			while(CurTok != ')')
 			{
 				ExpectToken(TOK_IDENT, "Expected identifier in function parameter list");
 
-				args[nargs++] = estrdup(TokenBuffer);
+				DeclareArgument(TokenBuffer);
 				GetNextToken(in);
 				
 				if (CurTok != ')' && CurTok != ',')
@@ -1267,22 +1505,15 @@ Expr* ParseFactor(FILE* in)
 				if(CurTok == ',') GetNextToken(in);
 			}
 			
-			for(int i = 0; i < nargs; ++i)
-				DeclareArgument(args[i], nargs);
-			
-			NumArgsDeclared = 0;
-			
-			for(int i = 0; i < nargs; ++i)
-				free(args[i]);
-			
 			GetNextToken(in);
+
+			OpenScope();
 			
-			exp->proc.exprHead = ParseExprList(in);
-			exp->proc.numLocals = CurrNumLocals;
-			
-			--CurrScope;
-			
-			ClearLocals();
+			exp->proc.body = ParseExpr(in);
+
+			CloseScope();
+
+			CurrFunc = NULL;
 
 			return exp;
 		} break;
@@ -1299,9 +1530,12 @@ Expr* ParseFactor(FILE* in)
 
 			exp->whilex.cond = ParseExpr(in);
 
-			++CurrScope;
-			exp->whilex.exprHead = ParseExprList(in);
-			--CurrScope;
+			OpenScope();
+			
+			exp->whilex.body = ParseExpr(in);
+			
+			CloseScope();
+
 
 			return exp;
 		} break;
@@ -1312,7 +1546,7 @@ Expr* ParseFactor(FILE* in)
 			Expr* exp = Expr_create(EXP_FOR);
 			
 			// Every local declared after this is scoped to the for
-			++CurrScope;
+			OpenScope();
 
 			exp->forx.init = ParseExpr(in);
 
@@ -1328,13 +1562,9 @@ Expr* ParseFactor(FILE* in)
 
 			exp->forx.step = ParseExpr(in);
 
-			ExpectToken(TOK_DO, "Expected 'do' after for step expression.");
+			exp->forx.body = ParseExpr(in);
 
-			GetNextToken(in);
-
-			exp->forx.exprHead = ParseExprList(in);
-
-			--CurrScope;
+			CloseScope();
 
 			return exp;
 		} break;
@@ -1353,52 +1583,7 @@ Expr* ParseFactor(FILE* in)
 			exp->retExpr = ParseExpr(in);
 			return exp;
 		} break;
-		
-		case TOK_READ:
-		{
-			GetNextToken(in);
-		
-			Expr* exp = Expr_create(EXP_READ);
-			exp->read.numIds = 0;
-			while(CurTok != TOK_END)
-			{
-				assert((CurTok == TOK_IDENT || CurTok == TOK_LOCALREF) && "Expected some sort of variable in list for read expression!");
-				if(CurTok == TOK_IDENT)
-				{
-					exp->read.isLocal[exp->read.numIds] = 0;
 
-					int id = RegisterVariableName(TokenBuffer);
-					exp->read.ids[exp->read.numIds++] = id;
-
-					Variables[id].initialized = 1;
-				}
-				else
-				{
-					exp->read.isLocal[exp->read.numIds] = 1;
-					exp->read.ids[exp->read.numIds++] = ReferenceLocal(TokenBuffer);
-				}
-				GetNextToken(in);
-			}
-			GetNextToken(in);
-			return exp;
-		} break;
-		
-		case TOK_WRITE:
-		{
-			GetNextToken(in);
-		
-			Expr* exp = Expr_create(EXP_WRITE);
-			exp->write.numExprs = 0;
-			while(CurTok != TOK_END)
-			{
-				Expr* writeExp = ParseExpr(in);
-				exp->write.exprs[exp->write.numExprs++] = writeExp;
-			}
-			GetNextToken(in);
-			
-			return exp;
-		} break;
-		
 		case '(':
 		{
 			GetNextToken(in);
@@ -1414,7 +1599,7 @@ Expr* ParseFactor(FILE* in)
 		default: break;
 	}
 
-	fprintf(stderr, "Unexpected token %i (%c)\n", CurTok, CurTok);
+	fprintf(stderr, "%s(%i): Unexpected token %i (%c)\n", FileName, LineNumber, CurTok, CurTok);
 	exit(1);
 }
 
@@ -1431,6 +1616,8 @@ int GetTokenPrec()
 		case TOK_EQUALS: case TOK_NOTEQUALS:
 		case '<': case '>':				prec = 3; break;
 		
+		case TOK_AND: case TOK_OR:		prec = 2; break;
+
 		case '=':						prec = 1; break;
 	}
 	
@@ -1498,9 +1685,23 @@ void PrintExpr(Expr* exp)
 {
 	switch(exp->type)
 	{
+		case EXP_BLOCK:
+		{
+			Expr* node = exp->block.exprHead;
+			printf("{\n");
+
+			while (node)
+			{
+				PrintExpr(exp);
+				node = node->next;
+			}
+
+			printf("\n}\n");
+		} break;
+
 		case EXP_ID:
 		{	
-			printf("%s", Variables[exp->ident].name);
+			printf("%s", exp->idSym->name);
 		} break;
 		
 		case EXP_CALL:
@@ -1516,32 +1717,13 @@ void PrintExpr(Expr* exp)
 		
 		case EXP_NUM:
 		{
-			printf("%g", Constants[exp->number]->number);
+			printf("%g", Constants[exp->number].number);
 		} break;
 
 		case EXP_STRING:
 		{
-			printf("%s", Constants[exp->string]->string);
+			printf("%s", Constants[exp->string].string);
 		} break;	
-		
-		case EXP_READ:
-		{
-			printf("read ");
-			for(int i = 0; i < exp->read.numIds; ++i)
-				printf("%s ", Variables[exp->read.ids[i]].name);
-			printf("end\n");
-		} break;
-		
-		case EXP_WRITE:
-		{
-			printf("write ");
-			for(int i = 0; i < exp->write.numExprs; ++i)
-			{
-				PrintExpr(exp->write.exprs[i]);
-				printf(" ");
-			}
-			printf("end\n");
-		} break;
 		
 		case EXP_BINARY:
 		{
@@ -1567,9 +1749,10 @@ void PrintExpr(Expr* exp)
 		
 		case EXP_PROC:
 		{
-			printf("proc %s\n", FunctionNames[exp->proc.name]);
-			if(exp->proc.exprHead)
-				PrintProgram(exp->proc.exprHead);
+			printf("func %s\n", exp->proc.decl->name);
+			if (exp->proc.body)
+				PrintExpr(exp->proc.body);
+
 			printf("end\n");
 		} break;
 		
@@ -1577,8 +1760,8 @@ void PrintExpr(Expr* exp)
 		{
 			printf("if ");
 			PrintExpr(exp->ifx.cond);
-			if(exp->ifx.bodyHead)
-				PrintProgram(exp->ifx.bodyHead);
+			if (exp->ifx.body)
+				PrintExpr(exp->ifx.body);
 
 			if (exp->ifx.alt)
 			{
@@ -1593,8 +1776,8 @@ void PrintExpr(Expr* exp)
 		{
 			printf("while ");
 			PrintExpr(exp->whilex.cond);
-			if(exp->whilex.exprHead)
-				PrintProgram(exp->whilex.exprHead);
+			if (exp->whilex.body)
+				PrintExpr(exp->ifx.body);
 			printf("end\n");
 		} break;
 		
@@ -1630,16 +1813,28 @@ void CompileExpr(Expr* exp)
 {
 	switch(exp->type)
 	{
+		case EXP_BLOCK:
+		{
+			Expr* node = exp->block.exprHead;
+
+			while (node)
+			{
+				CompileExpr(node);
+				node = node->next;
+			}
+		} break;
+
 		case EXP_ID:
 		{
-			if(!Variables[exp->ident].initialized)
-			{
-				fprintf(stderr, "Attempted to use uninitialized variable '%s'\n", Variables[exp->ident].name);
-				exit(1);
-			}
-			
-			GenerateCode(OP_GET);
-			GenerateInt(exp->ident);
+			assert(exp->idSym->type == SYM_GLOBAL ||
+				exp->idSym->type == SYM_LOCAL);
+
+			if (exp->idSym->type == SYM_GLOBAL)
+				GenerateCode(OP_GET);
+			else if (exp->idSym->type == SYM_LOCAL)
+				GenerateCode(OP_GETLOCAL);
+
+			GenerateInt(exp->idSym->var.index);
 		} break;
 		
 		case EXP_CALL:
@@ -1647,18 +1842,24 @@ void CompileExpr(Expr* exp)
 			for(int i = 0; i < exp->call.numArgs; ++i)
 				CompileExpr(exp->call.args[i]);
 			
-			int callee = RegisterFunction(exp->call.calleeName);
+			Symbol* sym = ReferenceFunction(exp->call.calleeName);
+			if (!sym)
+			{
+				fprintf(stderr, "Attempted to call undefined function '%s'.\n", exp->call.calleeName);
+				exit(1);
+			}
 
-			if(callee < 0)
+			if(sym->type == SYM_FOREIGN_FUNCTION)
 			{
 				GenerateCode(OP_CALLF);
-				GenerateInt(-(callee + 1));
+				GenerateInt(exp->call.numArgs);
+				GenerateInt(sym->foreignFunc.index);
 			}
 			else
 			{
 				GenerateCode(OP_CALL);
 				GenerateInt(exp->call.numArgs);
-				GenerateInt(callee);
+				GenerateInt(sym->func.index);
 			}
 		} break;
 		
@@ -1673,39 +1874,6 @@ void CompileExpr(Expr* exp)
 			GenerateCode(OP_PUSH);
 			GenerateInt(exp->string);
 		} break;
-
-		case EXP_LOCAL:
-		{
-			// local expressions do not create code
-		} break;
-		
-		case EXP_LOCALREF:
-		{
-			GenerateCode(OP_GETLOCAL);
-			GenerateInt(exp->local.index);
-		} break;
-		
-		case EXP_READ:
-		{
-			for(int i = 0; i < exp->read.numIds; ++i)
-			{	
-				GenerateCode(OP_READ);
-				if(!exp->read.isLocal[i])
-					GenerateCode(OP_SET);
-				else
-					GenerateCode(OP_SETLOCAL);
-				GenerateInt(exp->read.ids[i]);
-			}
-		} break;
-		
-		case EXP_WRITE:
-		{
-			for(int i = 0; i < exp->write.numExprs; ++i)
-			{
-				CompileExpr(exp->write.exprs[i]);
-				GenerateCode(OP_PRINT);
-			}
-		} break;
 		
 		case EXP_BINARY:
 		{	
@@ -1713,22 +1881,22 @@ void CompileExpr(Expr* exp)
 			{
 				case '=':
 				{
-					if(exp->binary.lhs->type == EXP_ID)
+					if (exp->binary.lhs->type == EXP_ID && 
+						(exp->binary.lhs->idSym->type == SYM_GLOBAL || exp->binary.lhs->idSym->type == SYM_LOCAL))
 					{
 						CompileExpr(exp->binary.rhs);
-						GenerateCode(OP_SET);
-						GenerateInt(exp->binary.lhs->ident);
-						Variables[exp->binary.lhs->ident].initialized = 1;
-					}
-					else if(exp->binary.lhs->type == EXP_LOCAL || exp->binary.lhs->type == EXP_LOCALREF)
-					{
-						CompileExpr(exp->binary.rhs);
-						GenerateCode(OP_SETLOCAL);
-						GenerateInt(exp->binary.lhs->local.index);
+
+						if (exp->binary.lhs->idSym->type == SYM_GLOBAL)
+							GenerateCode(OP_SET);
+						else if (exp->binary.lhs->idSym->type == SYM_LOCAL)
+							GenerateCode(OP_SETLOCAL);
+
+						GenerateInt(exp->binary.lhs->idSym->var.index);
+						exp->binary.lhs->idSym->var.initialized = true;
 					}
 					else
 					{
-						fprintf(stderr, "LHS of assignment operation must be a local or a global variable\n");
+						fprintf(stderr, "LHS of assignment operation must be a variable\n");
 						exit(1);
 					}
 				} break;
@@ -1808,7 +1976,8 @@ void CompileExpr(Expr* exp)
 				{
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_NEQU);
+					GenerateCode(OP_EQU);
+					GenerateCode(OP_LOG_NOT);
 				} break;
 				
 				case TOK_LTE:
@@ -1823,6 +1992,20 @@ void CompileExpr(Expr* exp)
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_GTE);
+				} break;
+
+				case TOK_AND:
+				{
+					CompileExpr(exp->binary.lhs);
+					CompileExpr(exp->binary.rhs);
+					GenerateCode(OP_LOG_AND);
+				} break;
+
+				case TOK_OR:
+				{
+					CompileExpr(exp->binary.lhs);
+					CompileExpr(exp->binary.rhs);
+					GenerateCode(OP_LOG_OR);
 				} break;
 			}
 		} break;
@@ -1843,6 +2026,16 @@ void CompileExpr(Expr* exp)
 					GenerateInt(RegisterNumber(-1));
 					GenerateCode(OP_MUL);
 				} break;
+
+				case TOK_NOT:
+				{
+					GenerateCode(OP_LOG_NOT);
+				} break;
+
+				default:
+					fprintf(stderr, "Unsupported unary operator %c (%d)\n", exp->unary.op, exp->unary.op);
+					exit(1);
+					break;
 			}
 		} break;
 		
@@ -1852,16 +2045,17 @@ void CompileExpr(Expr* exp)
 			int skipGotoPc = ProgramLength;
 			GenerateInt(0);
 			
-			FunctionPcs[exp->proc.name] = ProgramLength;
+			FunctionPcs[exp->proc.decl->func.index] = ProgramLength;
 			
-			for(int i = 0; i < exp->proc.numLocals; ++i)
+			for(int i = 0; i < exp->proc.decl->func.nlocals; ++i)
 			{
 				GenerateCode(OP_PUSH);
 				GenerateInt(RegisterNumber(0));
 			}
 			
-			if(exp->proc.exprHead)
-				CompileProgram(exp->proc.exprHead);
+			if (exp->proc.body)
+				CompileExpr(exp->proc.body);
+
 			GenerateCode(OP_RETURN);
 			GenerateIntAt(ProgramLength, skipGotoPc);
 		} break;
@@ -1874,29 +2068,62 @@ void CompileExpr(Expr* exp)
 			int skipGotoPc = ProgramLength;
 			GenerateInt(0);
 			
-			if(exp->ifx.bodyHead)
-				CompileProgram(exp->ifx.bodyHead);
+			if(exp->ifx.body)
+				CompileExpr(exp->ifx.body);
 			
+			GenerateCode(OP_GOTO);
+			int exitGotoPc = ProgramLength;
+			GenerateInt(0);
+
 			GenerateIntAt(ProgramLength, skipGotoPc);
 
 			if (exp->ifx.alt)
 				CompileExpr(exp->ifx.alt);
+
+			GenerateIntAt(ProgramLength, exitGotoPc);
 		} break;
 		
 		case EXP_WHILE:
 		{
 			int condPc = ProgramLength;
+			
 			CompileExpr(exp->whilex.cond);
+			
 			GenerateCode(OP_GOTOZ);
 			int skipGotoPc = ProgramLength;
 			GenerateInt(0);
-			if(exp->whilex.exprHead)
-				CompileProgram(exp->whilex.exprHead);
+			
+			if(exp->whilex.body)
+				CompileExpr(exp->whilex.body);
+			
 			GenerateCode(OP_GOTO);
 			GenerateInt(condPc);
+
 			GenerateIntAt(ProgramLength, skipGotoPc);
 		} break;
 		
+		case EXP_FOR:
+		{
+			CompileExpr(exp->forx.init);
+
+			int condPc = ProgramLength;
+			CompileExpr(exp->forx.cond);
+
+			GenerateCode(OP_GOTOZ);
+			int skipGotoPc = ProgramLength;
+			GenerateInt(0);
+
+			if (exp->forx.body)
+				CompileExpr(exp->forx.body);
+
+			CompileExpr(exp->forx.step);
+			
+			GenerateCode(OP_GOTO);
+			GenerateInt(condPc);
+
+			GenerateIntAt(ProgramLength, skipGotoPc);
+		} break;
+
 		case EXP_RETURN:
 		{
 			if(exp->retExpr)
@@ -1926,7 +2153,7 @@ void Expr_destroy(Expr* exp)
 {
 	switch(exp->type)
 	{
-		case EXP_ID: case EXP_NUM: case EXP_STRING: case EXP_LOCAL: case EXP_LOCALREF: break;
+		case EXP_ID: case EXP_NUM: case EXP_STRING: break;
 		
 		case EXP_CALL: 
 		{
@@ -1934,17 +2161,43 @@ void Expr_destroy(Expr* exp)
 			for(int i = 0; i < exp->call.numArgs; ++i)
 				Expr_destroy(exp->call.args[i]);
 		} break;
+
+		case EXP_BLOCK:
+		{
+			Expr* node = exp->block.exprHead;
+
+			while (node)
+			{
+				Expr* next = node->next;
+				Expr_destroy(node);
+				node = next;
+			}
+		} break;
 		
-		case EXP_READ: break;
-		case EXP_WRITE: for(int i = 0; i < exp->write.numExprs; ++i) Expr_destroy(exp->write.exprs[i]); break;
 		case EXP_BINARY: Expr_destroy(exp->binary.lhs); Expr_destroy(exp->binary.rhs); break;
 		case EXP_PAREN: Expr_destroy(exp->paren); break;
-		case EXP_PROC: if(exp->proc.exprHead) DeleteProgram(exp->proc.exprHead); break;
-		case EXP_IF: Expr_destroy(exp->ifx.cond); if (exp->ifx.bodyHead) DeleteProgram(exp->ifx.bodyHead); if (exp->ifx.alt) Expr_destroy(exp->ifx.alt); break;
-		case EXP_WHILE: Expr_destroy(exp->whilex.cond); if(exp->whilex.exprHead) DeleteProgram(exp->whilex.exprHead); break;
+		
+		case EXP_PROC: 
+		{
+			if (exp->proc.body) 
+				Expr_destroy(exp->proc.body);
+		} break;
+
+		case EXP_IF: Expr_destroy(exp->ifx.cond); if (exp->ifx.body) Expr_destroy(exp->ifx.body); if (exp->ifx.alt) Expr_destroy(exp->ifx.alt); break;
+		case EXP_WHILE: Expr_destroy(exp->whilex.cond); if(exp->whilex.body) Expr_destroy(exp->whilex.body); break;
 		case EXP_RETURN: if(exp->retExpr) Expr_destroy(exp->retExpr); break;
 		case EXP_UNARY: Expr_destroy(exp->unary.exp); break;
-		default: break;
+
+		case EXP_FOR:
+		{
+			Expr_destroy(exp->forx.init);
+			Expr_destroy(exp->forx.cond);
+			Expr_destroy(exp->forx.step);
+
+			Expr_destroy(exp->forx.body);
+		} break;
+
+		default: assert(false); break;
 	}
 	free(exp);
 }
@@ -1973,7 +2226,7 @@ void DebugMachineProgram()
 			case OP_MUL:			printf("mul\n"); break;
 			case OP_DIV:			printf("div\n"); break;
 			case OP_EQU:			printf("equ\n"); break;
-			case OP_NEQU:			printf("nequ\n"); break;
+			case OP_LOG_NOT:		printf("log_not\n"); break;
 			case OP_LT:				printf("lt\n"); break;
 			case OP_LTE:			printf("lte\n"); break;
 			case OP_GT:				printf("gt\n"); break;
@@ -1994,47 +2247,86 @@ void DebugMachineProgram()
 	}
 }
 
-void InitInterpreter()
+static void CheckInitialized()
 {
-	ResetMachine();
-	NumObjects = 0;
-	MaxNumObjects = 8;
+	Symbol* node = GlobalSymbols;
+
+	bool error = false;
+	const char* fmt = "Attempted to use uninitialized variable '%s'.\n";
+
+	while(node)
+	{
+		assert(node->type != SYM_LOCAL);
+
+		if (node->type == SYM_GLOBAL)
+		{
+			if (!node->var.initialized)
+			{
+				fprintf(stderr, fmt, node->name);
+				error = true;
+			}
+		}
+		else if (node->type == SYM_FUNCTION)
+		{
+			// Only check locals, arguments are initialized implicitly
+			Symbol* local = node->func.localsHead;
+
+			while (local)
+			{
+				assert(local->type == SYM_LOCAL);
+
+				if (!local->var.initialized)
+				{
+					fprintf(stderr, fmt, local->name);
+					error = true;
+				}
+
+				local = local->next;
+			}
+		}
+
+		node = node->next;
+	}
+
+	if (error)
+		exit(1);
 }
 
-void DeleteInterpreter()
+// Goes through the registered symbols (GlobalSymbols) and assigns all foreign
+// functions to their respective index in ForeignFunctions
+static void BuildForeignFunctions(void)
 {
-	DeleteVariables();
-	DeleteFunctions();
-	DeleteForeignFunctions();
-	DeleteConstants();
-	StackSize = 0;
-	VariableAmount = 0;
-	GarbageCollect();
-	ResetMachine();
+	Symbol* node = GlobalSymbols;
+
+	while (node)
+	{
+		if (node->type == SYM_FOREIGN_FUNCTION)
+			ForeignFunctions[node->foreignFunc.index] = node->foreignFunc.callee;
+
+		node = node->next;
+	}
 }
 
 void CompileFile(FILE* in)
 {
 	CurTok = 0;
 	Expr* prog = ParseProgram(in);
+
+	// Allocate room for vm execution info
+	GlobalVars = calloc(NumGlobalVars, sizeof(Value));
+	FunctionPcs = calloc(NumFunctions, sizeof(int));
+	ForeignFunctions = calloc(NumForeignFunctions, sizeof(ForeignFunction));
+
+	assert(GlobalVars &&
+		FunctionPcs &&
+		ForeignFunctions);
+
+	BuildForeignFunctions();
+
 	CompileProgram(prog);
 	GenerateCode(OP_HALT);
+
+	CheckInitialized();		// Done after compilation because it might have registered undefined functions during the compilation stage
+	
 	DeleteProgram(prog);
-}
-
-void RunProgram()
-{
-	RunMachine();
-}
-
-void InterpretFile(FILE* in)
-{
-	CurTok = 0;
-	Expr* prog = ParseProgram(in);
-	CompileProgram(prog);
-	GenerateCode(OP_HALT);
-	// DebugMachineProgram();
-	DeleteProgram(prog);
-
-	RunMachine();
 }
