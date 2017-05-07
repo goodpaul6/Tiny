@@ -277,6 +277,16 @@ static Value ArrayPop(const Value* args, int count)
 	return array->values[--array->length];
 }
 
+static Value Lib_IniNew(const Value* args, int count)
+{
+	IniFile* ini = emalloc(sizeof(IniFile));
+
+	ini->count = 0;
+	ini->sections = NULL;
+
+	return NewNative(ini, &IniFileProp);
+}
+
 static Value Lib_IniParse(const Value* args, int count)
 {
 	const char* filename = args[0].obj->string;
@@ -343,7 +353,7 @@ static Value Lib_IniGet(const Value* args, int count)
 
 static Value Lib_IniSet(const Value* args, int count)
 {
-	const IniFile* ini = args[0].obj->nat.addr;
+	IniFile* ini = args[0].obj->nat.addr;
 	const char* section = args[1].obj->string;
 	const char* key = args[2].obj->string;
 	const char* value = args[3].obj->string;
@@ -353,12 +363,12 @@ static Value Lib_IniSet(const Value* args, int count)
 
 static Value Lib_IniDelete(const Value* args, int count)
 {
-	const IniFile* ini = args[0].obj->nat.addr;
+	IniFile* ini = args[0].obj->nat.addr;
 	const char* section = args[1].obj->string;
 	const char* key = args[2].obj->string;
 	bool removeSection = args[3].number > 0;
 
-	return NewNumber((double)IniDelete(ini, section, key, removeSection));
+	return NewNumber(IniDelete(ini, section, key, removeSection));
 }
 
 static Value Lib_IniSections(const Value* args, int count)
@@ -406,6 +416,12 @@ static Value Lib_IniKeys(const Value* args, int count)
 		array->values[i] = NewString(estrdup(ini->keys[i]));
 
 	return NewNative(array, &ArrayProp);
+}
+
+static Value Lib_IniString(const Value* args, int count)
+{
+	const IniFile* ini = args[0].obj->nat.addr;
+	return NewString(IniString(ini));
 }
 
 typedef struct
@@ -824,14 +840,24 @@ static void BindStandardLibrary()
 	BindForeignFunction(Lib_DictClear, "dict_clear");
 
 	DefineConstNumber("INI_SUCCESS", INI_SUCCESS);
+	DefineConstNumber("INI_NEW_KEY", INI_NEW_KEY);
+	DefineConstNumber("INI_NEW_SECTION", INI_NEW_SECTION);
+
 	DefineConstNumber("INI_NO_SECTION", INI_NO_SECTION);
 	DefineConstNumber("INI_NO_KEY", INI_NO_KEY);
 	
+	BindForeignFunction(Lib_IniNew, "ini_new");
 	BindForeignFunction(Lib_IniParse, "ini_parse");
+
 	BindForeignFunction(Lib_IniGet, "ini_get");
+	BindForeignFunction(Lib_IniSet, "ini_set");
+	BindForeignFunction(Lib_IniDelete, "ini_delete");
+
 	BindForeignFunction(Lib_IniSections, "ini_sections");
 	BindForeignFunction(Lib_IniName, "ini_name");
 	BindForeignFunction(Lib_IniKeys, "ini_keys");
+
+	BindForeignFunction(Lib_IniString, "ini_string");
 
 	BindForeignFunction(Strcat, "strcat");
 	BindForeignFunction(Lib_Ston, "ston");

@@ -603,9 +603,9 @@ static Symbol* DeclareLocal(const char* name)
 	{
 		assert(node->type == SYM_LOCAL);
 
-		if (strcmp(node->name, name) == 0)
+		if (!node->var.scopeEnded && strcmp(node->name, name) == 0)
 		{
-			fprintf(stderr, "Attempted to declare multiple local variables in function '%s' with the same name '%s'.\n", CurrFunc->name, name);
+			fprintf(stderr, "Attempted to declare multiple local variables in the same scope '%s' with the same name '%s'.\n", CurrFunc->name, name);
 			exit(1);
 		}
 

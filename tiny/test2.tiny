@@ -1,31 +1,114 @@
-DEFAULT_INI_DATA :: "\n\nhost=www.example.com\n[hello]\n\n\nname=John\n\nip=192.168.2.1\n"
+print("Welcome to INI Viewer 1995.")
 
-filename := input("Where would you like to write ini file: ")
-use_default := input("Use default data (Y/N): ")
-ini_data := DEFAULT_INI_DATA
+data := ini_new()
+print("Created empty INI structure.")
 
-if use_default != "Y" {
-	print("Type out the INI data and input 'done' to finish")
+func loop() {
+	while 1 {
+		act := input("What would you like to do? ")
+	
+		if act == "stop" {
+			print("Done.")
+			exit(0)
+		} else if act == "view" {
+			sections := ini_sections(data)
 
-	ini_data = ""
-	last_input := input()
+			printf("There are %d sections.\n", array_len(sections))
 
-	while last_input != "done" {
-		ini_data = strcat(ini_data, strcat(last_input, "\n"))
-		last_input = input()
+			for i := 0; i < array_len(sections); i += 1 {
+				name := ini_name(array_get(sections, i))
+				keys := ini_keys(array_get(sections, i))
+
+				printf("[%s]\n", name)
+
+				for j := 0; j < array_len(keys); j += 1 {
+					value := ini_get(data, name, array_get(keys, j))
+					printf("%s=%s\n", array_get(keys, j), value)
+				}
+			}
+		} else if act == "new" {
+			sure := input("Are you sure you want to discard any unsaved changes? ")
+
+			if sure == "Y" or sure == "y" {
+				data = ini_new()
+				print("Created empty INI structure.")
+			} else {
+				print("Cancelled operation.")
+			}
+		} else if act == "load" {
+			filename := input("What file? ")
+
+			new_data := ini_parse(filename)
+
+			if not new_data {
+				print("Failed to load.")
+			} else {
+				data = new_data
+				print("Successfully loaded.")
+			}
+		} else if act == "get" {
+			section := input("Section: ")
+			key := input("Key: ")
+
+			val := ini_get(data, section, key)
+
+			if val == INI_NO_KEY {
+				print("No such key exists.")
+			} else if val == INI_NO_SECTION {
+				print("No such section exists.")
+			} else {
+				printf("[%s]\n%s=%s\n", section, key, val)
+			}
+		} else if act == "set" {
+			section := input("Section: ")
+			key := input("Key: ")
+			value := input("Value: ")
+
+			result := ini_set(data, section, key, value)
+
+			if result == INI_SUCCESS {
+				print("Successfully set key value.")
+			} else if result == INI_NEW_KEY {
+				print("Successfully added key value.")
+			} else if result == INI_NEW_SECTION {
+				print("Successfully added section and key value.")
+			} else {
+				print("Operation failed.")
+			}
+		} else if act == "delete" {
+			section := input("Section: ")
+			key := input("Key: ")
+			rsec := input("Remove Section (Y/N): ")
+
+			result := ini_delete(data, section, key, rsec == "Y" or rsec == "y")
+
+			if result == INI_SUCCESS {
+				print("Successfully deleted key value.")
+			} else if result == INI_NO_KEY {
+				print("No such key exists.")
+			} else if result == INI_NO_SECTION {
+				print("No such section exists.")
+			}
+		} else if act == "save" {
+			fname := input("To what file? ")
+
+			file := fopen(fname, "w")
+
+			if not file {
+				printf("Failed to open file %s for writing.\n", fname)
+				exit(1)
+			}
+
+			str := ini_string(data)
+
+			fwrite(file, str)
+			fclose(file)
+
+			print("Successfully saved data.")
+		} else {
+			print("I don't understand.")
+		}
 	}
-
-	print("\nThanks.")
 }
 
-printf("Total bytes to write: %d\n", strlen(ini_data))
-
-file := fopen(filename, "w")
-
-bytes_written := fwrite(file, ini_data)
-
-printf("Bytes written: %d\n", bytes_written)
-
-fclose(file)
-
-print("Done.")
+loop()

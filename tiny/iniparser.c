@@ -352,6 +352,45 @@ IniResult IniDelete(IniFile* ini, const char* section, const char* key, bool rem
 	return INI_SUCCESS;
 }
 
+char* IniString(const IniFile* ini)
+{
+	int length = 0;
+
+	// Compute size
+	for (int i = 0; i < ini->count; ++i)
+	{
+		const IniSection* sec = &ini->sections[i];
+
+		// [name]\n
+		length += 1 + strlen(sec->name) + 2;
+
+		for (int j = 0; j < sec->count; ++j)
+		{
+			// key=value\n
+			length += strlen(sec->keys[j]) + 1 + strlen(sec->values[j]) + 1;
+		}
+	}
+
+	char* str = emalloc(length + 1);
+
+	// Write string
+	int bytesWritten = 0;
+
+	for (int i = 0; i < ini->count; ++i)
+	{
+		const IniSection* sec = &ini->sections[i];
+
+		bytesWritten += sprintf(str + bytesWritten, "[%s]\n", sec->name);
+
+		for (int j = 0; j < sec->count; ++j)
+			bytesWritten += sprintf(str + bytesWritten, "%s=%s\n", sec->keys[j], sec->values[j]);
+	}
+
+	assert(bytesWritten == length);
+
+	return str;
+}
+
 void DestroyIni(IniFile* ini)
 {
 	for (int i = 0; i < ini->count; ++i)

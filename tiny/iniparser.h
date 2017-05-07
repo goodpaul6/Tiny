@@ -33,10 +33,17 @@ extern const NativeProp IniFileProp;
 extern const NativeProp IniSectionProp;
 
 bool ParseIni(IniFile* ini, const char* string);
+
 // Adds a key-value pair if it doesn't exist, and adds section if it doesn't exist
 IniResult IniSet(IniFile* ini, const char* section, const char* key, const char* value);
+
 // if removeSection is true, then it will remove the section if there are no
 // keys left; if key is null, this is disregarded and the section is deleted
 // unconditionally
 IniResult IniDelete(IniFile* ini, const char* section, const char* key, bool removeSection);
+
+// Allocates and writes a string containing the ini data
+// NOTE: Does not preserve spacing of original file
+char* IniString(const IniFile* ini);
+
 void DestroyIni(IniFile* ini);
