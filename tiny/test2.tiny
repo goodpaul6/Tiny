@@ -1,119 +1,31 @@
-# a basic text-based game
+DEFAULT_INI_DATA :: "\n\nhost=www.example.com\n[hello]\n\n\nname=John\n\nip=192.168.2.1\n"
 
-# monster descriptions
+filename := input("Where would you like to write ini file: ")
+use_default := input("Use default data (Y/N): ")
+ini_data := DEFAULT_INI_DATA
 
-mon_potato = dict(
-	"name", "Potato",
-	"health", 10,
-	"attack", 5,
-	"appearance", "tasty"
-)
+if use_default != "Y" {
+	print("Type out the INI data and input 'done' to finish")
 
-mon_goblin = dict(
-	"name", "Goblin",
-	"health", 20,
-	"attack", 10,
-	"appearance", "grotesque"
-)
+	ini_data = ""
+	last_input := input()
 
-monsters = array(mon_potato, mon_goblin)
-
-# player
-
-player_health = 100
-player_attack = 20
-player_potato_count = 0
-
-# constants
-
-TRUE = 1
-FALSE = 0
-RAND_MAX = 32767
-WIN_POTATO_COUNT = 5
-
-# game 
-
-cur_mon_name = ""
-cur_mon_health = 0
-cur_mon_attack = 0
-cur_mon_appearance = 0
-
-print("You venture into the woods in search of potatoes to feed your starving family...")
-
-sleep(1000)
-
-func build_monster() {
-	$mon_desc = array_get(monsters, rand() % array_len(monsters))
-	
-	cur_mon_name = dict_get($mon_desc, "name")
-	cur_mon_health = dict_get($mon_desc, "health")
-	cur_mon_attack = dict_get($mon_desc, "attack")
-	cur_mon_appearance = dict_get($mon_desc, "appearance")
-}
-
-func chance() {
-	return rand() / RAND_MAX
-}
-
-while TRUE {
-	build_monster()
-	fleed = FALSE
-
-	print("You see something lurking in the distance...")
-	sleep(1000)
-	print("It looks", cur_mon_appearance)
-	sleep(1000)
-	print("Oh no! It's a", cur_mon_name, "and it's trying to kill you!")
-
-	while cur_mon_health > 0 and not fleed {		
-		sleep(500)
-		choice = input("What will you do?\n[A] Attack\n[F] Flee\n")
-
-		while choice != "A" and choice != "F" {
-			choice = input("That is not a valid choice. Try again: ")
-		}
-
-		if choice == "A" {
-			if chance() > 0.3 {
-				cur_mon_health = cur_mon_health - player_attack
-				print("You attack it with all your might!")
-					
-				if cur_mon_health <= 0 {
-					print("You have defeated the", cur_mon_name)
-					sleep(500)
-
-					if cur_mon_name == "Potato" {
-						player_potato_count = player_potato_count + 1
-						if player_potato_count >= WIN_POTATO_COUNT {
-							print("You have enough potatoes to feed your family for today. You leave the forest.")
-							exit(1)
-						}
-					} else {
-						print("There's nothing of worth to be taken from the", cur_mon_name)
-					}
-				} else {
-					print("It only has", cur_mon_health, "hp left.")
-				}
-			} else {
-				print("Your attack misses!")
-			}
-		} else if choice == "F" {
-			if chance() > 0.6 {
-				print("You flee successfully!")
-				fleed = TRUE
-			} else {
-				print("You're unable to flee!")
-			}
-		}
-
-		if not fleed and cur_mon_health > 0 {
-			if chance() > 0.8 {
-				print("The", cur_mon_name, "misses its attack!")
-			} else {
-				player_health = player_health - cur_mon_attack
-				print("The", cur_mon_name, "attacks you successfully! You only have", player_health, "hp left.")
-			}
-		}
+	while last_input != "done" {
+		ini_data = strcat(ini_data, strcat(last_input, "\n"))
+		last_input = input()
 	}
+
+	print("\nThanks.")
 }
 
+printf("Total bytes to write: %d\n", strlen(ini_data))
+
+file := fopen(filename, "w")
+
+bytes_written := fwrite(file, ini_data)
+
+printf("Bytes written: %d\n", bytes_written)
+
+fclose(file)
+
+print("Done.")

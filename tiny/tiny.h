@@ -59,8 +59,7 @@ typedef struct
 	};
 } Value;
 
-// Returns the number of items pushed onto the stack (they will be preserved when the function returns)
-typedef int (*ForeignFunction)(const Value* args, int count);
+typedef Value (*ForeignFunction)(const Value* args, int count);
 
 extern int ProgramCounter;
 extern const char* FileName;
@@ -82,6 +81,9 @@ int GetProcId(const char* name);
 void CallProc(int id, int nargs);
 
 void BindForeignFunction(ForeignFunction func, const char* name);
+
+void DefineConstNumber(const char* name, double number);
+void DefineConstString(const char* name, const char* string);
 
 void ResetCompiler(void);
 void CompileFile(FILE* in);

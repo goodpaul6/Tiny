@@ -232,6 +232,126 @@ bool ParseIni(IniFile* ini, const char* string)
 	return true;
 }
 
+IniResult IniSet(IniFile* ini, const char* section, const char* key, const char* value)
+{
+	assert(section && key && value);
+
+	for (int i = 0; i < ini->count; ++i)
+	{
+		if (strcmp(ini->sections[i].name, section) == 0)
+		{
+			IniSection* sec = &ini->sections[i];
+			
+			for (int i = 0; i < sec->count; ++i)
+			{
+				if (strcmp(sec->keys[i], key) == 0)
+				{
+					free(sec->values[i]);
+					sec->values[i] = estrdup(value);
+					
+					return INI_SUCCESS;
+				}
+			}
+
+			// No such key exists, so make it
+			sec->keys = erealloc(sec->keys, sizeof(char*) * (sec->count + 1));
+			sec->values = erealloc(sec->values, sizeof(char*) * (sec->count + 1));
+
+			sec->keys[sec->count] = estrdup(key);
+			sec->values[sec->count] = estrdup(value);
+
+			sec->count += 1;
+			return INI_NEW_KEY;
+		}
+	}
+
+	// No such section exists, so create it
+	ini->sections = erealloc(ini->sections, sizeof(IniSection) * (ini->count + 1));
+	
+	IniSection* sec = &ini->sections[ini->count];
+	sec->name = estrdup(section);
+
+	ini->count += 1;
+
+	sec->count = 1;
+	
+	sec->keys = emalloc(sizeof(char*));
+	sec->values = emalloc(sizeof(char*));
+
+	sec->keys[0] = estrdup(key);
+	sec->values[0] = estrdup(value);
+
+	return INI_NEW_SECTION;
+}
+
+IniResult IniDelete(IniFile* ini, const char* section, const char* key, bool removeSection)
+{
+	assert(section);
+	
+	int secIndex = -1;
+	IniSection* sec = NULL;
+
+	for (int i = 0; i < ini->count; ++i)
+	{
+		if (strcmp(ini->sections[i].name, section) == 0)
+		{
+			sec = &ini->sections[i];
+			secIndex = i;
+			break;
+		}
+	}
+
+	if (!sec)
+	{
+		fprintf(stderr, "Unable to delete key from section '%s' in IniFile. No such section exists.\n", section);
+		return INI_NO_SECTION;
+	}
+
+	if (key)
+	{
+		bool found = false;
+
+		for (int i = 0; i < sec->count; ++i)
+		{
+			if (strcmp(sec->keys[i], key) == 0)
+			{
+				free(sec->keys[i]);
+				free(sec->values[i]);
+
+				// Shift key and value pointers back to fill in the hole
+				memcpy(&sec->keys[i], &sec->keys[i + 1], sizeof(char*) * (sec->count - i - 1));
+				memcpy(&sec->values[i], &sec->values[i + 1], sizeof(char*) * (sec->count - i - 1));
+				
+				sec->count -= 1;
+				found = true;
+				break;
+			}
+		}
+
+		if (!found)
+		{
+			fprintf(stderr, "Unable to delete key '%s' from section '%s' in IniFile. No such key exists.\n", key, section);
+			return INI_NO_KEY;
+		}
+	}
+	
+	if (!key || (removeSection && sec->count == 0))
+	{
+		free(sec->keys);
+		free(sec->values);
+		free(sec->name);
+
+		free(sec);
+
+		// shift back to fill hole
+		memcpy(sec, sec + 1, sizeof(IniSection) * (ini->count - secIndex - 1));
+
+		ini->count -= 1;
+	}
+
+	return INI_SUCCESS;
+}
+
 void DestroyIni(IniFile* ini)
 {
 	for (int i = 0; i < ini->count; ++i)

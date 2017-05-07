@@ -1,5 +1,3 @@
-﻿  tinystd.c
-c:\users\apaar\dropbox\c utilities\single file projects\tiny\tiny\tinystd.c(262): warning C4018: '>=': signed/unsigned mismatch
-c:\users\apaar\dropbox\c utilities\single file projects\tiny\tiny\tinystd.c(466): warning C4018: '<': signed/unsigned mismatch
+﻿  tiny.c
   tiny.vcxproj -> C:\Users\Apaar\Dropbox\C utilities\Single File Projects\tiny\Debug\tiny.exe
   tiny.vcxproj -> C:\Users\Apaar\Dropbox\C utilities\Single File Projects\tiny\Debug\tiny.pdb (Full PDB)

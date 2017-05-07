@@ -129,7 +129,6 @@
     <None Include="test.ini" />
     <None Include="test1.tiny" />
     <None Include="test2.tiny" />
-    <None Include="test3.tiny" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

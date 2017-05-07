@@ -10,6 +10,8 @@
 #include "dict.h"
 #include "iniparser.h"
 
+#define VAL_NULL (NewNumber(-1))
+
 #ifdef _WIN32
 typedef int BOOL;
 typedef unsigned long DWORD;
@@ -46,16 +48,14 @@ void __stdcall Sleep(
 
 #endif
 
-static int Strlen(const Value* args, int count)
+static Value Strlen(const Value* args, int count)
 {
 	Value val = args[0];
 
 	if (val.type == VAL_OBJ && val.obj->type == OBJ_STRING)
-		DoPush(NewNumber(strlen(val.obj->string)));
+		return NewNumber(strlen(val.obj->string));
 	else
-		DoPush(NewNumber(-1));
-
-	return 1;
+		return VAL_NULL;
 }
 
 static const NativeProp FileProp = {
@@ -65,7 +65,7 @@ static const NativeProp FileProp = {
 	NULL
 };
 
-static int Lib_Fopen(const Value* args, int count)
+static Value Lib_Fopen(const Value* args, int count)
 {
 	const char* filename = args[0].obj->string;
 	const char* mode = args[1].obj->string;
@@ -73,14 +73,12 @@ static int Lib_Fopen(const Value* args, int count)
 	FILE* file = fopen(filename, mode);
 
 	if (!file)
-		DoPush(NewNumber(0));
-	else
-		DoPush(NewNative(file, &FileProp));
+		return VAL_NULL;
 
-	return 1;
+	return NewNative(file, &FileProp);
 }
 
-static int Lib_Fsize(const Value* args, int count)
+static Value Lib_Fsize(const Value* args, int count)
 {
 	FILE* file = args[0].obj->nat.addr;
 
@@ -88,11 +86,10 @@ static int Lib_Fsize(const Value* args, int count)
 	long size = ftell(file);
 	rewind(file);
 
-	DoPush(NewNumber((double)size));
-	return 1;
+	return NewNumber((double)size);
 }
 
-static int Lib_Fread(const Value* args, int count)
+static Value Lib_Fread(const Value* args, int count)
 {
 	FILE* file = args[0].obj->nat.addr;
 	int num = (int)args[1].number;
@@ -102,35 +99,35 @@ static int Lib_Fread(const Value* args, int count)
 	fread(str, 1, num, file);
 	str[num] = '\0';
 
-	DoPush(NewString(str));
-	return 1;
+	return NewString(str);
 }
 
-static int Lib_Fseek(const Value* args, int count)
+static Value Lib_Fseek(const Value* args, int count)
 {
 	FILE* file = args[0].obj->nat.addr;
 	int pos = (int)args[1].number;
 
 	fseek(file, pos, SEEK_SET);
-	return 0;
+
+	return VAL_NULL;
 }
 
-static int Lib_Fwrite(const Value* args, int count)
+static Value Lib_Fwrite(const Value* args, int count)
 {
 	FILE* file = args[0].obj->nat.addr;
 	const char* str = args[1].obj->string;
 	int num = count == 3 ? (int)args[2].number : strlen(str);
 
-	DoPush(NewNumber(fwrite(str, 1, num, file)));
-	return 1;
+	return NewNumber(fwrite(str, 1, num, file));
 }
 
-static int Lib_Fclose(const Value* args, int count)
+static Value Lib_Fclose(const Value* args, int count)
 {
 	FILE* file = args[0].obj->nat.addr;
 
 	fclose(file);
-	return 0;
+
+	return VAL_NULL;
 }
 
 typedef struct sArray
@@ -165,7 +162,7 @@ const NativeProp ArrayProp = {
 	NULL	// TODO: Implement ArrayString
 };
 
-static int CreateArray(const Value* args, int count)
+static Value CreateArray(const Value* args, int count)
 {
 	Array* array = emalloc(sizeof(Array));
 
@@ -185,27 +182,26 @@ static int CreateArray(const Value* args, int count)
 			array->values[i] = args[i];
 	}
 	
-	DoPush(NewNative(array, &ArrayProp));
-	return 1;
+	return NewNative(array, &ArrayProp);
 }
 
-static int ArrayLen(const Value* args, int count)
+static Value ArrayLen(const Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 
-	DoPush(NewNumber((double)array->length));
-	return 1;
+	return NewNumber((double)array->length);
 }
 
-static int ArrayClear(const Value* args, int count)
+static Value ArrayClear(const Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 
 	array->length = 0;
-	return 0;
+
+	return VAL_NULL;
 }
 
-static int ArrayResize(const Value* args, int count)
+static Value ArrayResize(const Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 	int len = (int)args[1].number;
@@ -221,10 +217,10 @@ static int ArrayResize(const Value* args, int count)
 		array->values = erealloc(array->values, array->capacity * sizeof(Value));
 	}
 
-	return 0;
+	return VAL_NULL;
 }
 
-static int ArrayPush(const Value* args, int count)
+static Value ArrayPush(const Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 	Value value = args[1];
@@ -241,19 +237,18 @@ static int ArrayPush(const Value* args, int count)
 	array->values[array->length] = value;
 	array->length += 1;
 
-	return 0;
+	return VAL_NULL;
 }
 
-static int ArrayGet(const Value* args, int count)
+static Value ArrayGet(const Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 	int index = (int)args[1].number;
 
-	DoPush(array->values[index]);
-	return 1;
+	return array->values[index];
 }
 
-static int ArraySet(const Value* args, int count)
+static Value ArraySet(const Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 	int index = (int)args[1].number;
@@ -266,10 +261,10 @@ static int ArraySet(const Value* args, int count)
 	}
 
 	array->values[index] = value;
-	return 0;
+	return VAL_NULL;
 }
 
-static int ArrayPop(const Value* args, int count)
+static Value ArrayPop(const Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 
@@ -279,11 +274,10 @@ static int ArrayPop(const Value* args, int count)
 		exit(1);
 	}
 
-	DoPush(array->values[--array->length]);
-	return 1;
+	return array->values[--array->length];
 }
 
-static int Lib_IniParse(const Value* args, int count)
+static Value Lib_IniParse(const Value* args, int count)
 {
 	const char* filename = args[0].obj->string;
 
@@ -292,8 +286,7 @@ static int Lib_IniParse(const Value* args, int count)
 	if (!file)
 	{
 		fprintf(stderr, "Failed to open file '%s' for reading.\n", filename);
-		DoPush(NewNumber(0));
-		return 1;
+		return VAL_NULL;
 	}
 	
 	fseek(file, 0, SEEK_END);
@@ -308,57 +301,67 @@ static int Lib_IniParse(const Value* args, int count)
 	fclose(file);
 
 	IniFile* ini = emalloc(sizeof(IniFile));
+	Value result;
 
 	if (ParseIni(ini, str))
-		DoPush(NewNative(ini, &IniFileProp));
+		result = NewNative(ini, &IniFileProp);
 	else
 	{
 		free(file);
-		DoPush(NewNumber(0));
+		result = VAL_NULL;
 	}
 
 	free(str);
 
-	return 1;
+	return result;
 }
 
-static int Lib_IniSection(const Value* args, int count)
+static Value Lib_IniGet(const Value* args, int count)
 {
 	const IniFile* ini = args[0].obj->nat.addr;
-	const char* name = args[1].obj->string;
+	const char* section = args[1].obj->string;
+	const char* key = args[2].obj->string;
 
 	for (int i = 0; i < ini->count; ++i)
 	{
-		if (strcmp(ini->sections[i].name, name) == 0)
+		if (strcmp(ini->sections[i].name, section) == 0)
 		{
-			DoPush(NewNative(&ini->sections[i], &IniSectionProp));
-			return 1;
+			const IniSection* sec = &ini->sections[i];
+
+			for (int i = 0; i < sec->count; ++i)
+			{
+				if (strcmp(sec->keys[i], key) == 0)
+					return NewString(estrdup(sec->values[i]));
+			}
+
+			return NewNumber(INI_NO_KEY);
 		}
 	}
 
-	DoPush(NewNumber(0));
-	return 1;
+	return NewNumber(INI_NO_SECTION);
 }
 
-static int Lib_IniValue(const Value* args, int count)
+static Value Lib_IniSet(const Value* args, int count)
 {
-	const IniSection* ini = args[0].obj->nat.addr;
-	const char* key = args[1].obj->string;
+	const IniFile* ini = args[0].obj->nat.addr;
+	const char* section = args[1].obj->string;
+	const char* key = args[2].obj->string;
+	const char* value = args[3].obj->string;
 
-	for (int i = 0; i < ini->count; ++i)
-	{
-		if (strcmp(ini->keys[i], key) == 0)
-		{
-			DoPush(NewString(estrdup(ini->values[i])));
-			return 1;
-		}
-	}
-
-	DoPush(NewNumber(0));
-	return 1;
+	return NewNumber(IniSet(ini, section, key, value));
 }
 
-static int Lib_IniSections(const Value* args, int count)
+static Value Lib_IniDelete(const Value* args, int count)
+{
+	const IniFile* ini = args[0].obj->nat.addr;
+	const char* section = args[1].obj->string;
+	const char* key = args[2].obj->string;
+	bool removeSection = args[3].number > 0;
+
+	return NewNumber((double)IniDelete(ini, section, key, removeSection));
+}
+
+static Value Lib_IniSections(const Value* args, int count)
 {
 	const IniFile* ini = args[0].obj->nat.addr;
 
@@ -375,19 +378,17 @@ static int Lib_IniSections(const Value* args, int count)
 	for (int i = 0; i < ini->count; ++i)
 		array->values[i] = NewNative(&ini->sections[i], &IniSectionProp);
 	
-	DoPush(NewNative(array, &ArrayProp));
-	return 1;
+	return NewNative(array, &ArrayProp);
 }
 
-static int Lib_IniName(const Value* args, int count)
+static Value Lib_IniName(const Value* args, int count)
 {
 	const IniSection* ini = args[0].obj->nat.addr;
 	
-	DoPush(NewString(estrdup(ini->name)));
-	return 1;
+	return NewString(estrdup(ini->name));
 }
 
-static int Lib_IniKeys(const Value* args, int count)
+static Value Lib_IniKeys(const Value* args, int count)
 {
 	const IniSection* ini = args[0].obj->nat.addr;
 
@@ -404,8 +405,7 @@ static int Lib_IniKeys(const Value* args, int count)
 	for (int i = 0; i < ini->count; ++i)
 		array->values[i] = NewString(estrdup(ini->keys[i]));
 
-	DoPush(NewNative(array, &ArrayProp));
-	return 1;
+	return NewNative(array, &ArrayProp);
 }
 
 typedef struct
@@ -429,7 +429,7 @@ static const NativeProp BytesProp = {
 	NULL
 };
 
-static int Lib_CreateBytes(const Value* args, int count)
+static Value Lib_CreateBytes(const Value* args, int count)
 {
 	Value val = args[0];
 
@@ -472,28 +472,25 @@ static int Lib_CreateBytes(const Value* args, int count)
 		}
 	}
 
-	DoPush(NewNative(bytes, &BytesProp));
-	return 1;
+	return NewNative(bytes, &BytesProp);
 }
 
-static int Lib_BytesGet(const Value* args, int count)
+static Value Lib_BytesGet(const Value* args, int count)
 {
 	Bytes* bytes = args[0].obj->nat.addr;
 	int index = (int)args[1].number;
 
-	DoPush(NewNumber(bytes->data[index]));
-	return 1;
+	return NewNumber(bytes->data[index]);
 }
 
-static int Lib_BytesLen(const Value* args, int count)
+static Value Lib_BytesLen(const Value* args, int count)
 {
 	Bytes* bytes = args[0].obj->nat.addr;
 
-	DoPush(NewNumber(bytes->length));
-	return 1;
+	return NewNumber(bytes->length);
 }
 
-static int CreateDict(const Value* args, int count)
+static Value CreateDict(const Value* args, int count)
 {
 	Dict* dict = emalloc(sizeof(Dict));
 
@@ -508,36 +505,30 @@ static int CreateDict(const Value* args, int count)
 	for (int i = 0; i < count; i += 2)
 		DictPut(dict, args[i].obj->string, &args[i + 1]);
 
-	DoPush(NewNative(dict, &DictProp));
-	return 1;
+	return NewNative(dict, &DictProp);
 }
 
-static int Lib_DictPut(const Value* args, int count)
+static Value Lib_DictPut(const Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
 	const char* key = args[1].obj->string;
 	Value value = args[2];
 
 	DictPut(dict, key, &value);
-	return 0;
+	return VAL_NULL;
 }
 
-static int Lib_DictExists(const Value* args, int count)
+static Value Lib_DictExists(const Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
 	const char* key = args[1].obj->string;
 
 	const Value* value = DictGet(dict, key);
 
-	if (value)
-		DoPush(NewNumber(1));
-	else
-		DoPush(NewNumber(0));
-
-	return 1;
+	return NewNumber(value ? 1 : -1);
 }
 
-static int Lib_DictGet(const Value* args, int count)
+static Value Lib_DictGet(const Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
 	const char* key = args[1].obj->string;
@@ -546,28 +537,26 @@ static int Lib_DictGet(const Value* args, int count)
 
 	if (value)
 		DoPush(*value);
-	else
-		DoPush(NewNumber(0));
 
-	return 1;
+	return VAL_NULL;
 }
 
-static int Lib_DictRemove(const Value* args, int count)
+static Value Lib_DictRemove(const Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
 	const char* key = args[1].obj->string;
 	
 	DictRemove(dict, key);
-	return 0;
+	return VAL_NULL;
 }
 
-static int Lib_DictClear(const Value* args, int count)
+static Value Lib_DictClear(const Value* args, int count)
 {
 	DictClear(args[0].obj->nat.addr);
-	return 0;
+	return VAL_NULL;
 }
 
-static int Lib_DictKeys(const Value* args, int count)
+static Value Lib_DictKeys(const Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
 	Array* array = emalloc(sizeof(Array));
@@ -587,11 +576,10 @@ static int Lib_DictKeys(const Value* args, int count)
 		}
 	}
 
-	DoPush(NewNative(array, &ArrayProp));
-	return 1;
+	return NewNative(array, &ArrayProp);
 }
 
-static int Strcat(const Value* args, int count)
+static Value Strcat(const Value* args, int count)
 {
 	char* str1 = args[0].obj->string;
 	char* str2 = args[1].obj->string;
@@ -604,22 +592,20 @@ static int Strcat(const Value* args, int count)
 	strcpy(newString + len1, str2);
 	newString[len1 + len2] = '\0';
 	
-	DoPush(NewString(newString));
-	return 1;
+	return NewString(newString);
 }
 
-static int Lib_Ston(const Value* args, int count)
+static Value Lib_Ston(const Value* args, int count)
 {
 	char* str = args[0].obj->string;
 	double value = strtod(str, NULL);
 	
-	DoPush(NewNumber(value));
-	return 1;
+	return NewNumber(value);
 }
 
 #define NUMTOSTR_CONV_BUFFER_SIZE	32
 
-static int Lib_Ntos(const Value* args, int count)
+static Value Lib_Ntos(const Value* args, int count)
 {
 	double num = args[0].number;
 	
@@ -628,29 +614,26 @@ static int Lib_Ntos(const Value* args, int count)
 
 	string[c] = '\0';
 
-	DoPush(NewString(string));
-	return 1;
+	return NewString(string);
 }
 
-static int Lib_Time(const Value* args, int count)
+static Value Lib_Time(const Value* args, int count)
 {
-	DoPush(NewNumber((double)time(NULL)));
-	return 1;
+	return NewNumber((double)time(NULL));
 }
 
-static int SeedRand(const Value* args, int count)
+static Value SeedRand(const Value* args, int count)
 {
 	srand((unsigned int)args[0].number);
-	return 0;
+	return VAL_NULL;
 }
 
-static int Rand(const Value* args, int count)
+static Value Rand(const Value* args, int count)
 {
-	DoPush(NewNumber(rand()));
-	return 1;
+	return NewNumber(rand());
 }
 
-static int Lib_Input(const Value* args, int count)
+static Value Lib_Input(const Value* args, int count)
 {
 	if (count >= 1)
 		printf("%s", args[0].obj->string);
@@ -677,11 +660,10 @@ static int Lib_Input(const Value* args, int count)
 
 	buffer[i] = '\0';
 
-	DoPush(NewString(buffer));
-	return 1;
+	return NewString(buffer);
 }
 
-static int Lib_Print(const Value* args, int count)
+static Value Lib_Print(const Value* args, int count)
 {
 	for (int i = 0; i < count; ++i)
 	{
@@ -707,10 +689,10 @@ static int Lib_Print(const Value* args, int count)
 	}
 
 	putc('\n', stdout);
-	return 0;
+	return VAL_NULL;
 }
 
-static int Lib_Printf(const Value* args, int count)
+static Value Lib_Printf(const Value* args, int count)
 {
 	const char* fmt = args[0].obj->string;
 
@@ -765,50 +747,48 @@ static int Lib_Printf(const Value* args, int count)
 			putc(*fmt++, stdout);
 	}
 
-	return 0;
+	return VAL_NULL;
 }
 
-static int Exit(const Value* args, int count)
+static Value Exit(const Value* args, int count)
 {
 	int arg = (int)args[0].number;
 
 	exit(arg);
+	
+	return VAL_NULL;
 }
 
-static int Lib_Floor(const Value* args, int count)
+static Value Lib_Floor(const Value* args, int count)
 {
-	DoPush(NewNumber(floor(args[0].number)));
-	return 1;
+	return NewNumber(floor(args[0].number));
 }
 
-static int Lib_Ceil(const Value* args, int count)
+static Value Lib_Ceil(const Value* args, int count)
 {
-	DoPush(NewNumber(ceil(args[0].number)));
-	return 1;
+	return NewNumber(ceil(args[0].number));
 }
 
-static int Lib_PerfCount(const Value* args, int count)
+static Value Lib_PerfCount(const Value* args, int count)
 {
 	LARGE_INTEGER result;
 	QueryPerformanceCounter(&result);
 
-	DoPush(NewNumber(result.QuadPart));
-	return 1;
+	return NewNumber(result.QuadPart);
 }
 
-static int Lib_PerfFreq(const Value* args, int count)
+static Value Lib_PerfFreq(const Value* args, int count)
 {
 	LARGE_INTEGER result;
 	QueryPerformanceFrequency(&result);
 
-	DoPush(NewNumber(result.QuadPart));
-	return 1;
+	return NewNumber(result.QuadPart);
 }
 
-static int Lib_Sleep(const Value* args, int count)
+static Value Lib_Sleep(const Value* args, int count)
 {
 	Sleep((int)args[0].number);
-	return 0;
+	return VAL_NULL;
 }
 
 static void BindStandardLibrary()
@@ -843,9 +823,12 @@ static void BindStandardLibrary()
 	BindForeignFunction(Lib_DictKeys, "dict_keys");
 	BindForeignFunction(Lib_DictClear, "dict_clear");
 
+	DefineConstNumber("INI_SUCCESS", INI_SUCCESS);
+	DefineConstNumber("INI_NO_SECTION", INI_NO_SECTION);
+	DefineConstNumber("INI_NO_KEY", INI_NO_KEY);
+	
 	BindForeignFunction(Lib_IniParse, "ini_parse");
-	BindForeignFunction(Lib_IniSection, "ini_section");
-	BindForeignFunction(Lib_IniValue, "ini_value");
+	BindForeignFunction(Lib_IniGet, "ini_get");
 	BindForeignFunction(Lib_IniSections, "ini_sections");
 	BindForeignFunction(Lib_IniName, "ini_name");
 	BindForeignFunction(Lib_IniKeys, "ini_keys");
@@ -861,8 +844,8 @@ static void BindStandardLibrary()
 	BindForeignFunction(Lib_Floor, "floor");
 	BindForeignFunction(Lib_Ceil, "ceil");
 
-	BindForeignFunction(Lib_PerfCount, "perfcount");
-	BindForeignFunction(Lib_PerfFreq, "perffreq");
+	BindForeignFunction(Lib_PerfCount, "perf_count");
+	BindForeignFunction(Lib_PerfFreq, "perf_freq");
 	BindForeignFunction(Lib_Sleep, "sleep");
 
 	BindForeignFunction(Lib_Input, "input");

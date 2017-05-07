@@ -1,47 +1,55 @@
 func fib(n) {
-	$a = 1
-	$r = 0
+	a := 0
+	b := 1
 
-	for $i = 0; $i < $n; $i = $i + 1 {
-		$new_a = $r
-		$r = $r + $a
-		$a = $new_a
+	for i := 0; i < n; i += 1 {
+		new_a := b
+		b += a
+		a = new_a
 	}
 
-	return $r
+	return b
 }
 
-func main() {
-	$n = ston(input("How fibonacci numbers do you want? "))
-	
-	print("Computing...")
+n := input("How many fibonacci numbers do you want? ")
+n = ston(n)
 
-	$nums = array()
-	array_resize($nums, $n)
+print("Computing...")
 
-	$start_time = time()
+nums := array()
+array_resize(nums, n)
 
-	for $i = 0; $i < $n; $i = $i + 1 {
-		array_set($nums, $i, fib($i + 1))
-	}
+ticks := perf_count()
 
-	$elapsed = time() - $start_time
-
-	print("That took", $elapsed, "seconds")
-
-	print("Done computing.")
-
-	$filename = input("Where would you like to output the numbers? ")
-
-	$file = fopen($filename, "w")
-
-	for $i = 0; $i < $n; $i = $i + 1 { 
-		fwrite($file, strcat(ntos(array_get($nums, $i)), "\n"))
-	}
-
-	fclose($file)
-
-	print("Done.")
+for i := 0; i < n; i += 1 {
+	val := fib(i)
+	array_set(nums, i, val)
 }
 
-main()
+elapsed := perf_count() - ticks
+
+print("Done computing numbers.")
+printf("That took %g seconds.\n", elapsed / perf_freq())
+
+filename := input("Where would you like to output them? ")
+
+file := fopen(filename, "w")
+
+if not file {
+	printf("Couldn't open file '%s' for writing.\n", filename)
+	exit(1)
+}
+
+ticks = perf_count()
+
+for i = 0; i < n; i += 1 {
+	sn := ntos(array_get(nums, i))
+	fwrite(file, strcat(sn, "\n"))
+}
+
+elapsed = perf_count() - ticks
+
+fclose(file)
+
+print("Done.")
+printf("That took %g seconds.\n", elapsed / perf_freq())

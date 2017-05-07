@@ -40,16 +40,13 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
+    <None Include="test.ini">
+      <Filter>Resource Files</Filter>
+    </None>
     <None Include="test1.tiny">
       <Filter>Resource Files</Filter>
     </None>
     <None Include="test2.tiny">
-      <Filter>Resource Files</Filter>
-    </None>
-    <None Include="test3.tiny">
-      <Filter>Resource Files</Filter>
-    </None>
-    <None Include="test.ini">
       <Filter>Resource Files</Filter>
     </None>
   </ItemGroup>

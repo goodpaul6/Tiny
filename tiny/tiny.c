@@ -164,6 +164,7 @@ typedef enum
 {
 	SYM_GLOBAL,
 	SYM_LOCAL,
+	SYM_CONST,
 	SYM_FUNCTION,
 	SYM_FOREIGN_FUNCTION
 } SymbolType;
@@ -185,6 +186,12 @@ typedef struct sSymbol
 
 		struct
 		{
+			int index;			// Numbers and strings map to unique indices into the Constants array so
+								// there's no need to distinguish between them at the symbol level
+		} constant;
+
+		struct
+		{
 			int index;
 			int nargs, nlocals;
 
@@ -199,6 +206,8 @@ typedef struct sSymbol
 		} foreignFunc;
 	};
 } Symbol;
+
+Value RetVal;
 
 Value Stack[MAX_STACK];
 int StackSize = 0;
@@ -306,6 +315,9 @@ void ResetCompiler(void)
 
 void MarkAll()
 {
+	if (RetVal.type == VAL_OBJ)
+		Mark(RetVal.obj);
+
 	for (int i = 0; i < StackSize; ++i)
 	{
 		if (Stack[i].type == VAL_OBJ)
@@ -321,6 +333,9 @@ void MarkAll()
 
 void ResetMachine()
 {
+	RetVal.type = VAL_NUM;
+	RetVal.number = -1;
+
 	StackSize = 0;
 	FramePointer = 0;
 	IndirStackSize = 0;
@@ -343,21 +358,21 @@ static void GenerateCode(Word inst)
 	Program[ProgramLength++] = inst;
 }
 
-void GenerateInt(int value)
+static void GenerateInt(int value)
 {
 	Word* wp = (Word*)(&value);
 	for(int i = 0; i < 4; ++i)
 		GenerateCode(*wp++);
 }
 
-void GenerateIntAt(int value, int pc)
+static void GenerateIntAt(int value, int pc)
 {
 	Word* wp = (Word*)(&value);
 	for(int i = 0; i < 4; ++i)
 		Program[pc + i] = *wp++;
 }
 
-int RegisterNumber(double value)
+static int RegisterNumber(double value)
 {
 	for(int i = 0; i < ConstantAmount; ++i)
 	{
@@ -375,7 +390,7 @@ int RegisterNumber(double value)
 	return num->index;
 }
 
-int RegisterString(char* string)
+static int RegisterString(const char* string)
 {
 	for(int i = 0; i < ConstantAmount; ++i)
 	{
@@ -464,14 +479,67 @@ static void CloseScope()
 	--CurrScope;
 }
 
-static Symbol* RegisterGlobalVar(const char* name)
+static Symbol* ReferenceVariable(const char* name)
 {
+	if (CurrFunc)
+	{
+		// Check local variables
+		Symbol* node = CurrFunc->func.localsHead;
+
+		while (node)
+		{
+			assert(node->type == SYM_LOCAL);
+
+			// Make sure that it's available in the current scope too
+			if (!node->var.scopeEnded && strcmp(node->name, name) == 0)
+				return node;
+
+			node = node->next;
+		}
+
+		// Check arguments
+		node = CurrFunc->func.argsHead;
+
+		while (node)
+		{
+			assert(node->type == SYM_LOCAL);
+
+			if (strcmp(node->name, name) == 0)
+				return node;
+
+			node = node->next;
+		}
+	}
+
+	// Check global variables/constants
 	Symbol* node = GlobalSymbols;
 
 	while (node)
 	{
-		if (node->type == SYM_GLOBAL && strcmp(node->name, name) == 0)
-			return node;
+		if (node->type == SYM_GLOBAL || node->type == SYM_CONST)
+		{
+			if (strcmp(node->name, name) == 0)
+				return node;
+		}
+
+		node = node->next;
+	}
+
+	// This variable doesn't exist
+	return NULL;
+}
+
+static Symbol* DeclareGlobalVar(const char* name)
+{
+	Symbol* node = ReferenceVariable(name);
+
+	while (node)
+	{
+		if ((node->type == SYM_GLOBAL || node->type == SYM_CONST) && strcmp(node->name, name) == 0)
+		{
+			fprintf(stderr, "Attempted to declare multiple global entities with the same name '%s'.", name);
+			exit(1);
+		}
 
 		node = node->next;
 	}
@@ -525,38 +593,25 @@ static Symbol* DeclareArgument(const char* name)
 	return newNode;
 }
 
-static Symbol* RegisterLocal(const char* name)
+static Symbol* DeclareLocal(const char* name)
 {
 	assert(CurrFunc);
 
-	// Check local variables
 	Symbol* node = CurrFunc->func.localsHead;
-
-	while (node)
-	{
-		assert(node->type == SYM_LOCAL);
-		
-		// Make sure that it's available in the current scope too
-		if (!node->var.scopeEnded && strcmp(node->name, name) == 0)
-			return node;
-
-		node = node->next;
-	}
-
-	// Check arguments
-	node = CurrFunc->func.argsHead;
 
 	while (node)
 	{
 		assert(node->type == SYM_LOCAL);
 
 		if (strcmp(node->name, name) == 0)
-			return node;
+		{
+			fprintf(stderr, "Attempted to declare multiple local variables in function '%s' with the same name '%s'.\n", CurrFunc->name, name);
+			exit(1);
+		}
 
 		node = node->next;
 	}
 
-	// If neither local nor arg exists, create a new local
 	Symbol* newNode = Symbol_create(SYM_LOCAL, name);
 
 	newNode->var.initialized = false;
@@ -570,6 +625,29 @@ static Symbol* RegisterLocal(const char* name)
 	CurrFunc->func.nlocals += 1;
 
 	return newNode;
+}
+
+static Symbol* DeclareConst(const char* name, int index)
+{
+	Symbol* node = ReferenceVariable(name);
+
+	if (node && (node->type != SYM_LOCAL && node->type != SYM_FUNCTION && node->type != SYM_FOREIGN_FUNCTION))
+	{
+		fprintf(stderr, "Attempted to define constant with the same name '%s' as another value.\n", name);
+		exit(1);
+	}
+
+	if (CurrFunc)
+		fprintf(stderr, "Warning: Constant '%s' declared inside function bodies will still have global scope.\n", name);
+	
+	Symbol* newNode = Symbol_create(SYM_CONST, name);
+
+	newNode->constant.index = index;
+
+	newNode->next = GlobalSymbols;
+	GlobalSymbols = newNode;
+
+	return node;
 }
 
 static Symbol* DeclareFunction(const char* name)
@@ -658,7 +736,17 @@ void BindForeignFunction(ForeignFunction func, const char* name)
 	NumForeignFunctions += 1;
 }
 
-enum 
+void DefineConstNumber(const char* name, double number)
+{
+	DeclareConst(name, RegisterNumber(number));
+}
+
+void DefineConstString(const char* name, const char* string)
+{
+	DeclareConst(name, RegisterString(string));
+}
+
+enum
 {
 	OP_PUSH,
 	OP_POP,
@@ -698,6 +786,8 @@ enum
 
 	OP_GETLOCAL,
 	OP_SETLOCAL,
+
+	OP_GET_RETVAL,
 
 	OP_HALT
 };
@@ -868,7 +958,11 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			Value a = DoPop();
-			DoPush(NewNumber(a.number > 0 ? 0 : 1));
+
+			if (a.type == VAL_NUM)
+				DoPush(NewNumber(a.number > 0 ? -1 : 1));
+			else
+				DoPush(NewNumber(-1));	// Anything other than a negative number is always true
 		} break;
 
 		case OP_LOG_AND:
@@ -929,7 +1023,11 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			int newPc = ReadInteger();
-			if(DoPop().number == 0)
+			
+			Value val = DoPop();
+
+			// Only negative numbers result in jumps
+			if(val.type == VAL_NUM && val.number <= 0)
 				ProgramCounter = newPc;
 		} break;
 		
@@ -945,14 +1043,16 @@ void ExecuteCycle()
 		
 		case OP_RETURN:
 		{
+			RetVal.type = VAL_NUM;
+			RetVal.number = -1;
+
 			DoPopIndir();
 		} break;
 		
 		case OP_RETURN_VALUE:
 		{
-			Value retVal = DoPop();
+			RetVal = DoPop();
 			DoPopIndir();
-			DoPush(retVal);
 		} break;
 		
 		case OP_CALLF:
@@ -965,14 +1065,10 @@ void ExecuteCycle()
 			// the state of the stack prior to the function arguments being pushed
 			int prevSize = StackSize - nargs;
 
-			int valueCount = ForeignFunctions[fIdx](&Stack[prevSize], nargs);
+			RetVal = ForeignFunctions[fIdx](&Stack[prevSize], nargs);
 			
-			// Move the values to where the arguments started
-			if(valueCount > 0)
-				memcpy(&Stack[prevSize], &Stack[StackSize - valueCount], sizeof(Value) * valueCount);
-
-			// Resize the stack so that it has the arguments removed but the return values included
-			StackSize = prevSize + valueCount;
+			// Resize the stack so that it has the arguments removed
+			StackSize = prevSize;
 		} break;
 
 		case OP_GETLOCAL:
@@ -988,6 +1084,12 @@ void ExecuteCycle()
 			int localIdx = ReadInteger();
 			Value val = DoPop();
 			Stack[FramePointer + localIdx] = val;
+		} break;
+
+		case OP_GET_RETVAL:
+		{
+			++ProgramCounter;
+			DoPush(RetVal);
 		} break;
 
 		case OP_HALT:
@@ -1013,24 +1115,33 @@ enum
 	TOK_BEGIN = -1,
 	TOK_END = -2,
 	TOK_IDENT = -3,
-	TOK_NUMBER = -7,
-	TOK_STRING = -8,
-	TOK_PROC = -9,
-	TOK_IF = -10,
-	TOK_EQUALS = -11,
-	TOK_NOTEQUALS = -12,
-	TOK_LTE = -13,
-	TOK_GTE = -14,
-	TOK_RETURN = -15,
-	TOK_WHILE = -16,
-	TOK_FOR = -17,
-	TOK_DO = -18,
-	TOK_THEN = -19,
-	TOK_ELSE = -20,
-	TOK_EOF = -21,
-	TOK_NOT = -22,
-	TOK_AND = -23,
-	TOK_OR = -24
+	TOK_DECLARE = -4,		// :=
+	TOK_DECLARECONST = -5,	// ::
+	TOK_PLUSEQUAL = -6,		// +=
+	TOK_MINUSEQUAL = -7,	// -=
+	TOK_MULEQUAL = -8,		// *=
+	TOK_DIVEQUAL = -9,		// /=
+	TOK_MODEQUAL = -10,		// %=
+	TOK_OREQUAL	= -11,		// |=
+	TOK_ANDEQUAL = -12,		// &=
+	TOK_NUMBER = -13,
+	TOK_STRING = -14,
+	TOK_PROC = -15,
+	TOK_IF = -16,
+	TOK_EQUALS = -17,
+	TOK_NOTEQUALS = -18,
+	TOK_LTE = -19,
+	TOK_GTE = -20,
+	TOK_RETURN = -21,
+	TOK_WHILE = -22,
+	TOK_FOR = -23,
+	TOK_DO = -24,
+	TOK_THEN = -25,
+	TOK_ELSE = -26,
+	TOK_EOF = -27,
+	TOK_NOT = -28,
+	TOK_AND = -29,
+	TOK_OR = -30
 };
 
 #define MAX_TOK_LEN		256
@@ -1138,8 +1249,34 @@ int GetToken(FILE* in)
 					case '\\': last = '\\'; break;
 					case '"': last = '"'; break;
 					default:
-						fprintf(stderr, "Unsupported escape sequence '\\%c'.\n", last);
-						exit(1);
+						if (isdigit(last)) // Octal number
+						{
+							int n1 = last - '0';
+							last = getc(in);
+
+							if (!isdigit(last))
+							{
+								fprintf(stderr, "Expected three digits in octal escape sequence but only got one.\n");
+								exit(1);
+							}
+
+							int n2 = last - '0';
+							last = getc(in);
+
+							if (!isdigit(last))
+							{
+								fprintf(stderr, "Expected three digits in octal escape sequence but only got two.\n");
+								exit(1);
+							}
+
+							int n3 = last - '0';
+							last = n3 + n2 * 8 + n1 * 8 * 8;
+						}
+						else
+						{
+							fprintf(stderr, "Unsupported escape sequence '\\%c'.\n", last);
+							exit(1);
+						}
 						break;
 				}
 			}
@@ -1195,7 +1332,93 @@ int GetToken(FILE* in)
 			return TOK_GTE;
 		}
 	}
-		
+
+	if (last == ':')
+	{
+		if (Peek(in) == '=')
+		{
+			getc(in);
+			last = getc(in);
+			return TOK_DECLARE;
+		}
+		else if (Peek(in) == ':')
+		{
+			getc(in);
+			last = getc(in);
+			return TOK_DECLARECONST;
+		}
+	}
+
+	if (last == '+')
+	{
+		if (Peek(in) == '=')
+		{
+			getc(in);
+			last = getc(in);
+			return TOK_PLUSEQUAL;
+		}
+	}
+	
+	if (last == '-')
+	{
+		if (Peek(in) == '=')
+		{
+			getc(in);
+			last = getc(in);
+			return TOK_MINUSEQUAL;
+		}
+	}
+
+	if (last == '*')
+	{
+		if (Peek(in) == '=')
+		{
+			getc(in);
+			last = getc(in);
+			return TOK_MULEQUAL;
+		}
+	}
+
+	if (last == '/')
+	{
+		if (Peek(in) == '=')
+		{
+			getc(in);
+			last = getc(in);
+			return TOK_DIVEQUAL;
+		}
+	}
+
+	if (last == '%')
+	{
+		if (Peek(in) == '=')
+		{
+			getc(in);
+			last = getc(in);
+			return TOK_MODEQUAL;
+		}
+	}
+
+	if (last == '&')
+	{
+		if (Peek(in) == '=')
+		{
+			getc(in);
+			last = getc(in);
+			return TOK_ANDEQUAL;
+		}
+	}
+
+	if (last == '|')
+	{
+		if (Peek(in) == '=')
+		{
+			getc(in);
+			last = getc(in);
+			return TOK_OREQUAL;
+		}
+	}
+
 	int lastChar = last;
 	last = getc(in);
 	return lastChar;
@@ -1230,8 +1453,12 @@ typedef struct sExpr
 		int number;
 		int string;
 
-		Symbol* idSym;
-	
+		struct
+		{
+			char* name;
+			Symbol* sym;
+		} id;
+
 		struct
 		{
 			char* calleeName;
@@ -1285,11 +1512,6 @@ typedef struct sExpr
 			struct sExpr* step;
 			struct sExpr* body;
 		} forx;
-		
-		struct
-		{
-			int index;
-		} local; // used for both EXP_LOCAL and EXP_LOCALREF
 		
 		struct sExpr* retExpr;
 	};
@@ -1383,9 +1605,10 @@ Expr* ParseFactor(FILE* in)
 				Expr* exp;
 				
 				exp = Expr_create(EXP_ID);
-				exp->idSym = RegisterGlobalVar(ident);
+				
+				exp->id.sym = ReferenceVariable(ident);
+				exp->id.name = ident;
 
-				free(ident);
 				return exp;
 			}
 			
@@ -1412,9 +1635,7 @@ Expr* ParseFactor(FILE* in)
 				}
 			}
 
-			exp->call.calleeName = estrdup(ident);
-			
-			free(ident);
+			exp->call.calleeName = ident;
 
 			GetNextToken(in);
 			return exp;
@@ -1443,27 +1664,6 @@ Expr* ParseFactor(FILE* in)
 			Expr* exp = Expr_create(EXP_STRING);
 			exp->string = RegisterString(TokenBuffer);
 			GetNextToken(in);
-			return exp;
-		} break;
-		
-		case '$':
-		{
-			if (!CurrFunc)
-			{
-				fprintf(stderr, "Attempted to use local variable outside of function body.\n");
-				exit(1);
-			}
-
-			GetNextToken(in);
-
-			ExpectToken(TOK_IDENT, "Expected identifier after '$'.\n");
-
-			Expr* exp = Expr_create(EXP_ID);
-
-			exp->idSym = RegisterLocal(TokenBuffer);
-
-			GetNextToken(in);
-
 			return exp;
 		} break;
 		
@@ -1618,7 +1818,10 @@ int GetTokenPrec()
 		
 		case TOK_AND: case TOK_OR:		prec = 2; break;
 
-		case '=':						prec = 1; break;
+		case TOK_PLUSEQUAL: case TOK_MINUSEQUAL: case TOK_MULEQUAL: case TOK_DIVEQUAL:
+		case TOK_MODEQUAL: case TOK_ANDEQUAL: case TOK_OREQUAL:
+		case TOK_DECLARECONST:
+		case TOK_DECLARE: case '=':						prec = 1; break;
 	}
 	
 	return prec;
@@ -1635,6 +1838,23 @@ Expr* ParseBinRhs(FILE* in, int exprPrec, Expr* lhs)
 
 		int binOp = CurTok;
 
+		// They're trying to declare a variable (we can only know this when we 
+		// encounter this token)
+		if (binOp == TOK_DECLARE)
+		{
+			if (lhs->type != EXP_ID)
+			{
+				fprintf(stderr, "Expected identifier to the left-hand side of ':='.\n");
+				exit(1);
+			}
+
+			// If we're inside a function declare a local, otherwise a global
+			if (CurrFunc)
+				lhs->id.sym = DeclareLocal(lhs->id.name);
+			else
+				lhs->id.sym = DeclareGlobalVar(lhs->id.name);
+		}
+
 		GetNextToken(in);
 
 		Expr* rhs = ParseFactor(in);
@@ -1642,6 +1862,25 @@ Expr* ParseBinRhs(FILE* in, int exprPrec, Expr* lhs)
 		
 		if(prec < nextPrec)
 			rhs = ParseBinRhs(in, prec + 1, rhs);
+
+		if (binOp == TOK_DECLARECONST)
+		{
+			if (lhs->type != EXP_ID)
+			{
+				fprintf(stderr, "Expected identifier to the left-hand side of '::'.\n");
+				exit(1);
+			}
+
+			if (rhs->type == EXP_NUM)
+				DeclareConst(lhs->id.name, rhs->number);
+			else if (rhs->type == EXP_STRING)
+				DeclareConst(lhs->id.name, rhs->string);
+			else
+			{
+				fprintf(stderr, "Expected number or string to be bound to constant '%s'.\n", lhs->id.name);
+				exit(1);
+			}
+		}
 
 		Expr* newLhs = Expr_create(EXP_BINARY);
 		
@@ -1701,7 +1940,7 @@ void PrintExpr(Expr* exp)
 
 		case EXP_ID:
 		{	
-			printf("%s", exp->idSym->name);
+			printf("%s", exp->id.name);
 		} break;
 		
 		case EXP_CALL:
@@ -1809,161 +2048,160 @@ void PrintProgram(Expr* program)
 
 void CompileProgram(Expr* program);
 
-void CompileExpr(Expr* exp)
+static void CompileGetId(Expr* exp)
 {
-	switch(exp->type)
+	assert(exp->type == EXP_ID);
+
+	if (!exp->id.sym)
 	{
-		case EXP_BLOCK:
-		{
-			Expr* node = exp->block.exprHead;
+		fprintf(stderr, "Referencing undeclared identifier '%s'.\n", exp->id.name);
+		exit(1);
+	}
 
-			while (node)
-			{
-				CompileExpr(node);
-				node = node->next;
-			}
-		} break;
+	assert(exp->id.sym->type == SYM_GLOBAL ||
+		exp->id.sym->type == SYM_LOCAL ||
+		exp->id.sym->type == SYM_CONST);
 
+	if (exp->id.sym->type != SYM_CONST)
+	{
+		if (exp->id.sym->type == SYM_GLOBAL)
+			GenerateCode(OP_GET);
+		else if (exp->id.sym->type == SYM_LOCAL)
+			GenerateCode(OP_GETLOCAL);
+
+		GenerateInt(exp->id.sym->var.index);
+	}
+	else
+	{
+		GenerateCode(OP_PUSH);
+		GenerateInt(exp->id.sym->constant.index);
+	}
+}
+
+static void CompileExpr(Expr* exp);
+
+static void CompileCall(Expr* exp)
+{
+	assert(exp->type == EXP_CALL);
+
+	for (int i = 0; i < exp->call.numArgs; ++i)
+		CompileExpr(exp->call.args[i]);
+
+	Symbol* sym = ReferenceFunction(exp->call.calleeName);
+	if (!sym)
+	{
+		fprintf(stderr, "Attempted to call undefined function '%s'.\n", exp->call.calleeName);
+		exit(1);
+	}
+
+	if (sym->type == SYM_FOREIGN_FUNCTION)
+	{
+		GenerateCode(OP_CALLF);
+		GenerateInt(exp->call.numArgs);
+		GenerateInt(sym->foreignFunc.index);
+	}
+	else
+	{
+		GenerateCode(OP_CALL);
+		GenerateInt(exp->call.numArgs);
+		GenerateInt(sym->func.index);
+	}
+}
+
+static void CompileExpr(Expr* exp)
+{
+	switch (exp->type)
+	{
 		case EXP_ID:
 		{
-			assert(exp->idSym->type == SYM_GLOBAL ||
-				exp->idSym->type == SYM_LOCAL);
-
-			if (exp->idSym->type == SYM_GLOBAL)
-				GenerateCode(OP_GET);
-			else if (exp->idSym->type == SYM_LOCAL)
-				GenerateCode(OP_GETLOCAL);
-
-			GenerateInt(exp->idSym->var.index);
+			CompileGetId(exp);
 		} break;
-		
-		case EXP_CALL:
-		{
-			for(int i = 0; i < exp->call.numArgs; ++i)
-				CompileExpr(exp->call.args[i]);
-			
-			Symbol* sym = ReferenceFunction(exp->call.calleeName);
-			if (!sym)
-			{
-				fprintf(stderr, "Attempted to call undefined function '%s'.\n", exp->call.calleeName);
-				exit(1);
-			}
 
-			if(sym->type == SYM_FOREIGN_FUNCTION)
-			{
-				GenerateCode(OP_CALLF);
-				GenerateInt(exp->call.numArgs);
-				GenerateInt(sym->foreignFunc.index);
-			}
-			else
-			{
-				GenerateCode(OP_CALL);
-				GenerateInt(exp->call.numArgs);
-				GenerateInt(sym->func.index);
-			}
-		} break;
-		
 		case EXP_NUM:
 		{
 			GenerateCode(OP_PUSH);
 			GenerateInt(exp->number);
-		} break; 
+		} break;
 
 		case EXP_STRING:
 		{
 			GenerateCode(OP_PUSH);
 			GenerateInt(exp->string);
 		} break;
-		
+
+		case EXP_CALL:
+		{
+			CompileCall(exp);
+			GenerateCode(OP_GET_RETVAL);
+		} break;
+
 		case EXP_BINARY:
-		{	
-			switch(exp->binary.op)
+		{
+			switch (exp->binary.op)
 			{
-				case '=':
-				{
-					if (exp->binary.lhs->type == EXP_ID && 
-						(exp->binary.lhs->idSym->type == SYM_GLOBAL || exp->binary.lhs->idSym->type == SYM_LOCAL))
-					{
-						CompileExpr(exp->binary.rhs);
-
-						if (exp->binary.lhs->idSym->type == SYM_GLOBAL)
-							GenerateCode(OP_SET);
-						else if (exp->binary.lhs->idSym->type == SYM_LOCAL)
-							GenerateCode(OP_SETLOCAL);
-
-						GenerateInt(exp->binary.lhs->idSym->var.index);
-						exp->binary.lhs->idSym->var.initialized = true;
-					}
-					else
-					{
-						fprintf(stderr, "LHS of assignment operation must be a variable\n");
-						exit(1);
-					}
-				} break;
-				
 				case '+':
 				{
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_ADD);
 				} break;
-				
+
 				case '*':
 				{
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_MUL);
 				} break;
-				
+
 				case '/':
 				{
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_DIV);
 				} break;
-				
+
 				case '%':
 				{
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_MOD);
 				} break;
-				
+
 				case '|':
 				{
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_OR);
 				} break;
-				
+
 				case '&':
 				{
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_AND);
 				} break;
-				
+
 				case '-':
 				{
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_SUB);
 				} break;
-				
+
 				case '<':
 				{
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_LT);
 				} break;
-				
+
 				case '>':
 				{
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_GT);
 				} break;
-				
+
 
 				case TOK_EQUALS:
 				{
@@ -1971,7 +2209,7 @@ void CompileExpr(Expr* exp)
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_EQU);
 				} break;
-				
+
 				case TOK_NOTEQUALS:
 				{
 					CompileExpr(exp->binary.lhs);
@@ -1979,14 +2217,14 @@ void CompileExpr(Expr* exp)
 					GenerateCode(OP_EQU);
 					GenerateCode(OP_LOG_NOT);
 				} break;
-				
+
 				case TOK_LTE:
 				{
 					CompileExpr(exp->binary.lhs);
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_LTE);
 				} break;
-				
+
 				case TOK_GTE:
 				{
 					CompileExpr(exp->binary.lhs);
@@ -2007,20 +2245,25 @@ void CompileExpr(Expr* exp)
 					CompileExpr(exp->binary.rhs);
 					GenerateCode(OP_LOG_OR);
 				} break;
+
+				default:
+					fprintf(stderr, "Found assignment when expecting expression.\n");
+					exit(1);
+					break;
 			}
 		} break;
-		
+
 		case EXP_PAREN:
 		{
 			CompileExpr(exp->paren);
 		} break;
-		
+
 		case EXP_UNARY:
 		{
 			CompileExpr(exp->unary.exp);
-			switch(exp->unary.op)
+			switch (exp->unary.op)
 			{
-				case '-': 
+				case '-':
 				{
 					GenerateCode(OP_PUSH);
 					GenerateInt(RegisterNumber(-1));
@@ -2034,6 +2277,133 @@ void CompileExpr(Expr* exp)
 
 				default:
 					fprintf(stderr, "Unsupported unary operator %c (%d)\n", exp->unary.op, exp->unary.op);
+					exit(1);
+					break;
+			}
+		} break;
+	}
+}
+
+static void CompileStatement(Expr* exp)
+{
+	switch(exp->type)
+	{
+		case EXP_CALL:
+		{
+			CompileCall(exp);
+		} break;
+
+		case EXP_BLOCK:
+		{
+			Expr* node = exp->block.exprHead;
+
+			while (node)
+			{
+				CompileStatement(node);
+				node = node->next;
+			}
+		} break;
+
+		case EXP_BINARY:
+		{	
+			switch(exp->binary.op)
+			{
+				case TOK_DECLARECONST:
+					// Constants generate no code
+					break;
+				
+				case '=': case TOK_DECLARE: // These two are handled identically in terms of code generated
+
+				case TOK_PLUSEQUAL: case TOK_MINUSEQUAL: case TOK_MULEQUAL: case TOK_DIVEQUAL:
+				case TOK_MODEQUAL: case TOK_ANDEQUAL: case TOK_OREQUAL:
+				{
+					if (exp->binary.lhs->type == EXP_ID)
+					{
+						switch (exp->binary.op)
+						{
+							case TOK_PLUSEQUAL:
+							{
+								CompileGetId(exp->binary.lhs);
+								CompileExpr(exp->binary.rhs);
+								GenerateCode(OP_ADD);
+							} break;
+
+							case TOK_MINUSEQUAL:
+							{
+								CompileGetId(exp->binary.lhs);
+								CompileExpr(exp->binary.rhs);
+								GenerateCode(OP_SUB);
+							} break;
+
+							case TOK_MULEQUAL:
+							{
+								CompileGetId(exp->binary.lhs);
+								CompileExpr(exp->binary.rhs);
+								GenerateCode(OP_MUL);
+							} break;
+
+							case TOK_DIVEQUAL:
+							{
+								CompileGetId(exp->binary.lhs);
+								CompileExpr(exp->binary.rhs);
+								GenerateCode(OP_DIV);
+							} break;
+
+							case TOK_MODEQUAL:
+							{
+								CompileGetId(exp->binary.lhs);
+								CompileExpr(exp->binary.rhs);
+								GenerateCode(OP_MOD);
+							} break;
+
+							case TOK_ANDEQUAL:
+							{
+								CompileGetId(exp->binary.lhs);
+								CompileExpr(exp->binary.rhs);
+								GenerateCode(OP_AND);
+							} break;
+
+							case TOK_OREQUAL:
+							{
+								CompileGetId(exp->binary.lhs);
+								CompileExpr(exp->binary.rhs);
+								GenerateCode(OP_OR);
+							} break;
+
+							default:
+								CompileExpr(exp->binary.rhs);
+								break;
+						}
+
+						if (!exp->binary.lhs->id.sym)
+						{
+							// The variable being referenced doesn't exist
+							fprintf(stderr, "Assigning to undeclared identifier '%s'.\n", exp->binary.lhs->id.name);
+							exit(1);
+						}
+
+						if (exp->binary.lhs->id.sym->type == SYM_GLOBAL)
+							GenerateCode(OP_SET);
+						else if (exp->binary.lhs->id.sym->type == SYM_LOCAL)
+							GenerateCode(OP_SETLOCAL);
+						else		// Probably a constant, can't change it
+						{
+							fprintf(stderr, "Cannot assign to id '%s'.\n", exp->binary.lhs->id.name);
+							exit(1);
+						}
+
+						GenerateInt(exp->binary.lhs->id.sym->var.index);
+						exp->binary.lhs->id.sym->var.initialized = true;
+					}
+					else
+					{
+						fprintf(stderr, "LHS of assignment operation must be a variable\n");
+						exit(1);
+					}
+				} break;
+
+				default:
+					fprintf(stderr, "Invalid operation when expecting statement.\n");
 					exit(1);
 					break;
 			}
@@ -2054,7 +2424,7 @@ void CompileExpr(Expr* exp)
 			}
 			
 			if (exp->proc.body)
-				CompileExpr(exp->proc.body);
+				CompileStatement(exp->proc.body);
 
 			GenerateCode(OP_RETURN);
 			GenerateIntAt(ProgramLength, skipGotoPc);
@@ -2069,7 +2439,7 @@ void CompileExpr(Expr* exp)
 			GenerateInt(0);
 			
 			if(exp->ifx.body)
-				CompileExpr(exp->ifx.body);
+				CompileStatement(exp->ifx.body);
 			
 			GenerateCode(OP_GOTO);
 			int exitGotoPc = ProgramLength;
@@ -2078,7 +2448,7 @@ void CompileExpr(Expr* exp)
 			GenerateIntAt(ProgramLength, skipGotoPc);
 
 			if (exp->ifx.alt)
-				CompileExpr(exp->ifx.alt);
+				CompileStatement(exp->ifx.alt);
 
 			GenerateIntAt(ProgramLength, exitGotoPc);
 		} break;
@@ -2094,7 +2464,7 @@ void CompileExpr(Expr* exp)
 			GenerateInt(0);
 			
 			if(exp->whilex.body)
-				CompileExpr(exp->whilex.body);
+				CompileStatement(exp->whilex.body);
 			
 			GenerateCode(OP_GOTO);
 			GenerateInt(condPc);
@@ -2104,7 +2474,7 @@ void CompileExpr(Expr* exp)
 		
 		case EXP_FOR:
 		{
-			CompileExpr(exp->forx.init);
+			CompileStatement(exp->forx.init);
 
 			int condPc = ProgramLength;
 			CompileExpr(exp->forx.cond);
@@ -2114,9 +2484,9 @@ void CompileExpr(Expr* exp)
 			GenerateInt(0);
 
 			if (exp->forx.body)
-				CompileExpr(exp->forx.body);
+				CompileStatement(exp->forx.body);
 
-			CompileExpr(exp->forx.step);
+			CompileStatement(exp->forx.step);
 			
 			GenerateCode(OP_GOTO);
 			GenerateInt(condPc);
@@ -2142,7 +2512,7 @@ void CompileProgram(Expr* program)
 	Expr* exp = program;
 	while(exp)
 	{
-		CompileExpr(exp);
+		CompileStatement(exp);
 		exp = exp->next;
 	}
 }
@@ -2153,7 +2523,12 @@ void Expr_destroy(Expr* exp)
 {
 	switch(exp->type)
 	{
-		case EXP_ID: case EXP_NUM: case EXP_STRING: break;
+		case EXP_ID: 
+		{
+			free(exp->id.name);
+		} break;
+
+		case EXP_NUM: case EXP_STRING: break;
 		
 		case EXP_CALL: 
 		{
