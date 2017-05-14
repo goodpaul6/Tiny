@@ -4,7 +4,7 @@ data := ini_new()
 print("Created empty INI structure.")
 
 func loop() {
-	while 1 {
+	while true {
 		act := input("What would you like to do? ")
 	
 		if act == "stop" {
@@ -40,7 +40,7 @@ func loop() {
 
 			new_data := ini_parse(filename)
 
-			if not new_data {
+			if new_data == null {
 				print("Failed to load.")
 			} else {
 				data = new_data
@@ -94,7 +94,7 @@ func loop() {
 
 			file := fopen(fname, "w")
 
-			if not file {
+			if file == null {
 				printf("Failed to open file %s for writing.\n", fname)
 				exit(1)
 			}

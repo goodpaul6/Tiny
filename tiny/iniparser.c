@@ -15,14 +15,14 @@ static void IniFree(void* pi)
 	free(ini);
 }
 
-const NativeProp IniFileProp = {
+const Tiny_NativeProp IniFileProp = {
 	"ini_file",
 	NULL,
 	IniFree,
 	NULL
 };
 
-const NativeProp IniSectionProp = {
+const Tiny_NativeProp IniSectionProp = {
 	"ini_section",
 	NULL,
 	NULL,
@@ -55,7 +55,10 @@ static int CountMembers(const char* string)
 	while (pos)
 	{
 		++count;
-		pos = strchr(pos + 1, '=');
+		pos = strchr(pos + 1, '\n');	// Scan to next line
+
+		if (pos)
+			pos = strchr(pos + 1, '=');	// Scan to next equal pos
 		
 		if (nextSection && pos >= nextSection)
 			break;
@@ -100,8 +103,12 @@ bool ParseIni(IniFile* ini, const char* string)
 					lineEnd = pos;
 			}
 
-			assert(lineEnd && lineEnd < equalPos);
-			string = lineEnd + 1;	// now pointing to start of new line
+			if (lineEnd && lineEnd < equalPos)
+				string = lineEnd + 1;	// now pointing to start of new line
+			else
+			{
+				// We're already at the start of the line
+			}
 		}
 		else
 		{
@@ -234,7 +241,10 @@ bool ParseIni(IniFile* ini, const char* string)
 
 IniResult IniSet(IniFile* ini, const char* section, const char* key, const char* value)
 {
-	assert(section && key && value);
+	assert(key && value);
+
+	if (!section)
+		section = "";	// Global section has empty name
 
 	for (int i = 0; i < ini->count; ++i)
 	{
@@ -268,7 +278,16 @@ IniResult IniSet(IniFile* ini, const char* section, const char* key, const char*
 	// No such section exists, so create it
 	ini->sections = erealloc(ini->sections, sizeof(IniSection) * (ini->count + 1));
 	
-	IniSection* sec = &ini->sections[ini->count];
+	int pos = ini->count;
+
+	if (strlen(section) == 0)
+	{
+		// Make sure empty section is the 0th section, shift the others up
+		pos = 0;
+		memmove(&ini->sections[1], &ini->sections[0], sizeof(IniSection) * ini->count);
+	}
+
+	IniSection* sec = &ini->sections[pos];
 	sec->name = estrdup(section);
 
 	ini->count += 1;
@@ -286,8 +305,9 @@ IniResult IniSet(IniFile* ini, const char* section, const char* key, const char*
 
 IniResult IniDelete(IniFile* ini, const char* section, const char* key, bool removeSection)
 {
-	assert(section);
-	
+	if (!section)
+		section = "";
+
 	int secIndex = -1;
 	IniSection* sec = NULL;
 
@@ -319,8 +339,8 @@ IniResult IniDelete(IniFile* ini, const char* section, const char* key, bool rem
 				free(sec->values[i]);
 
 				// Shift key and value pointers back to fill in the hole
-				memcpy(&sec->keys[i], &sec->keys[i + 1], sizeof(char*) * (sec->count - i - 1));
-				memcpy(&sec->values[i], &sec->values[i + 1], sizeof(char*) * (sec->count - i - 1));
+				memmove(&sec->keys[i], &sec->keys[i + 1], sizeof(char*) * (sec->count - i - 1));
+				memmove(&sec->values[i], &sec->values[i + 1], sizeof(char*) * (sec->count - i - 1));
 				
 				sec->count -= 1;
 				found = true;
@@ -341,10 +361,8 @@ IniResult IniDelete(IniFile* ini, const char* section, const char* key, bool rem
 		free(sec->values);
 		free(sec->name);
 
-		free(sec);
-
 		// shift back to fill hole
-		memcpy(sec, sec + 1, sizeof(IniSection) * (ini->count - secIndex - 1));
+		memmove(&ini->sections[secIndex], &ini->sections[secIndex + 1], sizeof(IniSection) * (ini->count - secIndex - 1));
 
 		ini->count -= 1;
 	}
@@ -361,8 +379,11 @@ char* IniString(const IniFile* ini)
 	{
 		const IniSection* sec = &ini->sections[i];
 
+		int nameLen = strlen(sec->name);
+
 		// [name]\n
-		length += 1 + strlen(sec->name) + 2;
+		if(nameLen > 0)
+			length += 1 + nameLen + 2;
 
 		for (int j = 0; j < sec->count; ++j)
 		{
@@ -380,7 +401,8 @@ char* IniString(const IniFile* ini)
 	{
 		const IniSection* sec = &ini->sections[i];
 
-		bytesWritten += sprintf(str + bytesWritten, "[%s]\n", sec->name);
+		if(strlen(sec->name) > 0)
+			bytesWritten += sprintf(str + bytesWritten, "[%s]\n", sec->name);
 
 		for (int j = 0; j < sec->count; ++j)
 			bytesWritten += sprintf(str + bytesWritten, "%s=%s\n", sec->keys[j], sec->values[j]);

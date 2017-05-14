@@ -1,4 +1,4 @@
-// tiny -- an bytecode-based interpreter for the tiny language
+// tiny.c -- an bytecode-based interpreter for the tiny language
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
@@ -7,6 +7,9 @@
 #include <stdbool.h>
 
 #include "tiny.h"
+#include "tiny_detail.h"
+
+const Tiny_Value Tiny_Null = { TINY_VAL_NULL };
 
 void* emalloc(size_t size)
 {
@@ -44,14 +47,14 @@ int ProgramLength;
 int ProgramCounter;
 int FramePointer;
 
-Object* GCHead;
+Tiny_Object* GCHead;
 int NumObjects;
 int MaxNumObjects;
 
-void DeleteObject(Object* obj)
+static void DeleteObject(Tiny_Object* obj)
 {
-	if(obj->type == OBJ_STRING) free(obj->string);
-	if (obj->type == OBJ_NATIVE)
+	if(obj->type == TINY_VAL_STRING) free(obj->string);
+	if (obj->type == TINY_VAL_NATIVE)
 	{
 		if (obj->nat.prop && obj->nat.prop->free)
 			obj->nat.prop->free(obj->nat.addr);
@@ -60,7 +63,7 @@ void DeleteObject(Object* obj)
 	free(obj);
 }
 
-void Mark(Object* obj)
+void Tiny_Mark(Tiny_Object* obj)
 {
 	if(!obj) 
 	{
@@ -70,7 +73,7 @@ void Mark(Object* obj)
 	
 	if(obj->marked) return;
 	
-	if(obj->type == OBJ_NATIVE)
+	if(obj->type == TINY_VAL_NATIVE)
 	{
 		if(obj->nat.prop && obj->nat.prop->mark)
 			obj->nat.prop->mark(obj->nat.addr);
@@ -79,16 +82,16 @@ void Mark(Object* obj)
 	obj->marked = 1;
 }
 
-void MarkAll();
+static void MarkAll();
 
-void Sweep()
+static void Sweep()
 {
-	Object** object = &GCHead;
+	Tiny_Object** object = &GCHead;
 	while(*object)
 	{
 		if(!(*object)->marked)
 		{
-			Object* unreached = *object;
+			Tiny_Object* unreached = *object;
 			--NumObjects;
 			*object = unreached->next;
 			DeleteObject(unreached);
@@ -101,16 +104,16 @@ void Sweep()
 	}
 }
 
-void GarbageCollect()
+static void GarbageCollect()
 {
 	MarkAll();
 	Sweep();
 	MaxNumObjects = NumObjects * 2;
 }
 
-Object* NewObject(ObjectType type)
+static Tiny_Object* NewObject(Tiny_ValueType type)
 {
-	Object* obj = emalloc(sizeof(Object));
+	Tiny_Object* obj = emalloc(sizeof(Tiny_Object));
 	
 	obj->type = type;
 	obj->next = GCHead;
@@ -122,39 +125,124 @@ Object* NewObject(ObjectType type)
 	return obj;
 }
 
-Value NewNative(void* ptr, const NativeProp* prop)
+Tiny_Value Tiny_NewNative(void* ptr, const Tiny_NativeProp* prop)
 {
-	Object* obj = NewObject(OBJ_NATIVE);
+	Tiny_Object* obj = NewObject(TINY_VAL_NATIVE);
 	
 	obj->nat.addr = ptr;
 	obj->nat.prop = prop;
 
-	Value val;
+	Tiny_Value val;
 
-	val.type = VAL_OBJ;
+	val.type = TINY_VAL_NATIVE;
 	val.obj = obj;
 
 	return val;
 }
 
-Value NewNumber(double value)
+Tiny_ValueType Tiny_GetType(const Tiny_Value val)
 {
-	Value val;
+	return val.type;
+}
 
-	val.type = VAL_NUM;
+bool Tiny_GetBool(const Tiny_Value val, bool* pbool)
+{
+	if (val.type != TINY_VAL_BOOL) return false;
+
+	*pbool = val.boolean;
+	return true;
+}
+
+bool Tiny_GetNum(const Tiny_Value val, double* pnum)
+{
+	if (val.type != TINY_VAL_NUM) return false;
+
+	*pnum = val.number;
+	return true;
+}
+
+bool Tiny_GetString(const Tiny_Value val, const char** pstr)
+{
+	if (val.type != TINY_VAL_STRING) return false;
+
+	*pstr = val.obj->string;
+	return true;
+}
+
+bool Tiny_GetAddr(const Tiny_Value val, void** paddr)
+{
+	if (val.type != TINY_VAL_NATIVE) return false;
+
+	*paddr = val.obj->nat.addr;
+	return true;
+}
+
+bool Tiny_GetProp(const Tiny_Value val, const Tiny_NativeProp** pprop)
+{
+	if (val.type != TINY_VAL_NATIVE) return false;
+
+	*pprop = val.obj->nat.prop;
+	return true;
+}
+
+bool Tiny_ExpectBool(const Tiny_Value val)
+{
+	assert(val.type == TINY_VAL_BOOL);
+	return val.boolean;
+}
+
+double Tiny_ExpectNum(const Tiny_Value val)
+{
+	assert(val.type == TINY_VAL_NUM);
+	return val.number;
+}
+
+const char* Tiny_ExpectString(const Tiny_Value val)
+{
+	assert(val.type == TINY_VAL_STRING);
+	return val.obj->string;
+}
+
+void* Tiny_ExpectAddr(const Tiny_Value val)
+{
+	assert(val.type == TINY_VAL_NATIVE);
+	return val.obj->nat.addr;
+}
+
+const Tiny_NativeProp* Tiny_ExpectProp(const Tiny_Value val)
+{
+	assert(val.type == TINY_VAL_NATIVE);
+	return val.obj->nat.prop;
+}
+
+Tiny_Value Tiny_NewBool(bool value)
+{
+	Tiny_Value val;
+
+	val.type = TINY_VAL_BOOL;
+	val.boolean = value;
+
+	return val;
+}
+
+Tiny_Value Tiny_NewNumber(double value)
+{
+	Tiny_Value val;
+
+	val.type = TINY_VAL_NUM;
 	val.number = value;
 
 	return val;
 }
 
-Value NewString(char* string)
+Tiny_Value Tiny_NewString(char* string)
 {
-	Object* obj = NewObject(OBJ_STRING);
+	Tiny_Object* obj = NewObject(TINY_VAL_STRING);
 	obj->string = string;
 
-	Value val;
+	Tiny_Value val;
 
-	val.type = VAL_OBJ;
+	val.type = TINY_VAL_STRING;
 	val.obj = obj;
 
 	return val;
@@ -201,28 +289,28 @@ typedef struct sSymbol
 
 		struct
 		{
-			ForeignFunction callee;
+			Tiny_ForeignFunction callee;
 			int index;
 		} foreignFunc;
 	};
 } Symbol;
 
-Value RetVal;
+Tiny_Value RetVal;
 
-Value Stack[MAX_STACK];
+Tiny_Value Stack[MAX_STACK];
 int StackSize = 0;
 
 int IndirStack[MAX_INDIR];
 int IndirStackSize;
 
 int NumGlobalVars = 0;
-Value* GlobalVars = NULL;
+Tiny_Value* GlobalVars = NULL;
 
 int NumFunctions = 0;
 int* FunctionPcs = NULL;
 
 int NumForeignFunctions = 0;
-ForeignFunction* ForeignFunctions = NULL;
+Tiny_ForeignFunction* ForeignFunctions = NULL;
 
 int CurrScope = 0;
 Symbol* CurrFunc = NULL;
@@ -270,7 +358,7 @@ ConstInfo* NewConst(ConstType type)
 
 static void Symbol_destroy(Symbol* sym);
 
-void ResetCompiler(void)
+void Tiny_ResetCompiler(void)
 {
 	// Reset position
 	FileName = "unknown";
@@ -313,27 +401,32 @@ void ResetCompiler(void)
 	free(ForeignFunctions);
 }
 
+static inline bool IsObject(Tiny_Value val)
+{
+	return val.type == TINY_VAL_STRING || val.type == TINY_VAL_NATIVE;
+}
+
 void MarkAll()
 {
-	if (RetVal.type == VAL_OBJ)
-		Mark(RetVal.obj);
+	if (IsObject(RetVal))
+		Tiny_Mark(RetVal.obj);
 
 	for (int i = 0; i < StackSize; ++i)
 	{
-		if (Stack[i].type == VAL_OBJ)
-			Mark(Stack[i].obj);
+		if (IsObject(Stack[i]))
+			Tiny_Mark(Stack[i].obj);
 	}
 
 	for (int i = 0; i < NumGlobalVars; ++i)
 	{
-		if (GlobalVars[i].type == VAL_OBJ)
-			Mark(GlobalVars[i].obj);
+		if (IsObject(Stack[i]))
+			Tiny_Mark(GlobalVars[i].obj);
 	}
 }
 
-void ResetMachine()
+void Tiny_ResetMachine()
 {
-	RetVal.type = VAL_NUM;
+	RetVal.type = TINY_VAL_NUM;
 	RetVal.number = -1;
 
 	StackSize = 0;
@@ -342,7 +435,7 @@ void ResetMachine()
 	
 	while (GCHead)
 	{
-		Object* next = GCHead->next;
+		Tiny_Object* next = GCHead->next;
 		DeleteObject(GCHead);
 		GCHead = next;
 	}
@@ -696,10 +789,10 @@ int GetProcId(const char* name)
 	return -1;
 }
 
-void ExecuteCycle(void);
-void DoPushIndir(int nargs);
+static void ExecuteCycle(void);
+static void DoPushIndir(int nargs);
 
-void CallProc(int id, int nargs)
+static void CallProc(int id, int nargs)
 {
 	if(id < 0) return;
 	
@@ -710,7 +803,7 @@ void CallProc(int id, int nargs)
 		ExecuteCycle();
 }
 
-void BindForeignFunction(ForeignFunction func, const char* name)
+void Tiny_BindForeignFunction(Tiny_ForeignFunction func, const char* name)
 {
 	Symbol* node = GlobalSymbols;
 
@@ -736,18 +829,22 @@ void BindForeignFunction(ForeignFunction func, const char* name)
 	NumForeignFunctions += 1;
 }
 
-void DefineConstNumber(const char* name, double number)
+void Tiny_DefineConstNumber(const char* name, double number)
 {
 	DeclareConst(name, RegisterNumber(number));
 }
 
-void DefineConstString(const char* name, const char* string)
+void Tiny_DefineConstString(const char* name, const char* string)
 {
 	DeclareConst(name, RegisterString(string));
 }
 
 enum
 {
+	OP_PUSH_NULL,
+	OP_PUSH_TRUE,
+	OP_PUSH_FALSE,
+
 	OP_PUSH,
 	OP_POP,
 	
@@ -804,7 +901,7 @@ int ReadInteger()
 	return val;
 }
 
-inline void DoPush(Value value)
+inline void DoPush(Tiny_Value value)
 {
 	if(StackSize >= MAX_STACK) 
 	{
@@ -815,7 +912,7 @@ inline void DoPush(Value value)
 	Stack[StackSize++] = value;
 }
 
-inline Value DoPop()
+inline Tiny_Value DoPop()
 {
 	if(StackSize <= 0) 
 	{
@@ -849,12 +946,12 @@ void DoRead()
 	
 	buffer[i] = '\0';
 	
-	Object* obj = NewObject(OBJ_STRING);
+	Tiny_Object* obj = NewObject(TINY_VAL_STRING);
 	obj->string = buffer;
 
-	Value val;
+	Tiny_Value val;
 
-	val.type = VAL_OBJ;
+	val.type = TINY_VAL_STRING;
 	val.obj = obj;
 
 	DoPush(val);
@@ -886,6 +983,24 @@ void ExecuteCycle()
 {
 	switch(Program[ProgramCounter])
 	{
+		case OP_PUSH_NULL:
+		{
+			++ProgramCounter;
+			DoPush(Tiny_Null);
+		} break;
+		
+		case OP_PUSH_TRUE:
+		{
+			++ProgramCounter;
+			DoPush(Tiny_NewBool(true));
+		} break;
+
+		case OP_PUSH_FALSE:
+		{
+			++ProgramCounter;
+			DoPush(Tiny_NewBool(false));
+		} break;
+
 		case OP_PUSH:
 		{
 			++ProgramCounter;
@@ -893,9 +1008,9 @@ void ExecuteCycle()
 			ConstInfo cip = Constants[cidx];
 
 			if (cip.type == CST_NUM)
-				DoPush(NewNumber(cip.number));
+				DoPush(Tiny_NewNumber(cip.number));
 			else if (cip.type == CST_STR)
-				DoPush(NewString(estrdup(cip.string)));
+				DoPush(Tiny_NewString(estrdup(cip.string)));
 		} break;
 		
 		case OP_POP:
@@ -904,15 +1019,17 @@ void ExecuteCycle()
 			++ProgramCounter;
 		} break;
 		
-		#define BIN_OP(OP, operator) case OP_##OP: { Value val2 = DoPop(); Value val1 = DoPop(); DoPush(NewNumber(val1.number operator val2.number)); ++ProgramCounter; } break;
-		#define BIN_OP_INT(OP, operator) case OP_##OP: { Value val2 = DoPop(); Value val1 = DoPop(); DoPush(NewNumber((int)val1.number operator (int)val2.number)); ++ProgramCounter; } break;
-		
+		#define BIN_OP(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(); Tiny_Value val1 = DoPop(); DoPush(Tiny_NewNumber(val1.number operator val2.number)); ++ProgramCounter; } break;
+		#define BIN_OP_INT(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(); Tiny_Value val1 = DoPop(); DoPush(Tiny_NewNumber((int)val1.number operator (int)val2.number)); ++ProgramCounter; } break;
+
+		#define REL_OP(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(); Tiny_Value val1 = DoPop(); DoPush(Tiny_NewBool(val1.number operator val2.number)); ++ProgramCounter; } break;
+
 		case OP_MUL:
 		{
-			Value val2 = DoPop();
-			Value val1 = DoPop();
+			Tiny_Value val2 = DoPop();
+			Tiny_Value val1 = DoPop();
 
-			DoPush(NewNumber(val1.number * val2.number));
+			DoPush(Tiny_NewNumber(val1.number * val2.number));
 
 			++ProgramCounter;
 		} break;
@@ -923,72 +1040,71 @@ void ExecuteCycle()
 		BIN_OP_INT(MOD, %)
 		BIN_OP_INT(OR, |)
 		BIN_OP_INT(AND, &)
-		BIN_OP(LT, <)
-		BIN_OP(LTE, <=)
-		BIN_OP(GT, >)
-		BIN_OP(GTE, >=)
+		
+		REL_OP(LT, <)
+		REL_OP(LTE, <=)
+		REL_OP(GT, >)
+		REL_OP(GTE, >=)
 
 		#undef BIN_OP
-		
+		#undef BIN_OP_INT
+		#undef REL_OP
+
 		case OP_EQU:
 		{
 			++ProgramCounter;
-			Value b = DoPop();
-			Value a = DoPop();
+			Tiny_Value b = DoPop();
+			Tiny_Value a = DoPop();
 
 			if (a.type != b.type)
-				DoPush(NewNumber(0));
+				DoPush(Tiny_NewBool(false));
 			else
 			{
-				if (a.type == VAL_NUM)
-					DoPush(NewNumber(a.number == b.number));
-				else
-				{
-					if (a.obj->type != b.obj->type)
-						DoPush(NewNumber(0));
-					else if(a.obj->type == OBJ_STRING)
-						DoPush(NewNumber(strcmp(a.obj->string, b.obj->string) == 0));
-					else if (a.obj->type == OBJ_NATIVE)
-						DoPush(NewNumber(a.obj->nat.addr == b.obj->nat.addr));
-				}
+				if (a.type == TINY_VAL_NULL)
+					DoPush(Tiny_NewBool(true));
+				else if (a.type == TINY_VAL_BOOL)
+					DoPush(Tiny_NewBool(a.boolean == b.boolean));
+				else if (a.type == TINY_VAL_NUM)
+					DoPush(Tiny_NewBool(a.number == b.number));
+				else if (a.type == TINY_VAL_STRING)
+					DoPush(Tiny_NewBool(strcmp(a.obj->string, b.obj->string) == 0));
+				else if (a.type == TINY_VAL_NATIVE)
+					DoPush(Tiny_NewBool(a.obj->nat.addr == b.obj->nat.addr));
 			}
 		} break;
 
 		case OP_LOG_NOT:
 		{
 			++ProgramCounter;
-			Value a = DoPop();
+			Tiny_Value a = DoPop();
 
-			if (a.type == VAL_NUM)
-				DoPush(NewNumber(a.number > 0 ? -1 : 1));
-			else
-				DoPush(NewNumber(-1));	// Anything other than a negative number is always true
+			DoPush(Tiny_NewBool(!Tiny_ExpectBool(a)));
 		} break;
 
 		case OP_LOG_AND:
 		{
 			++ProgramCounter;
-			Value b = DoPop();
-			Value a = DoPop();
+			Tiny_Value b = DoPop();
+			Tiny_Value a = DoPop();
 
-			DoPush(NewNumber((int)a.number && (int)b.number));
+			DoPush(Tiny_NewBool(Tiny_ExpectBool(a) && Tiny_ExpectBool(b)));
 		} break;
 
 		case OP_LOG_OR:
 		{
 			++ProgramCounter;
-			Value b = DoPop();
-			Value a = DoPop();
+			Tiny_Value b = DoPop();
+			Tiny_Value a = DoPop();
 
-			DoPush(NewNumber((int)a.number || (int)b.number));
+			DoPush(Tiny_NewBool(Tiny_ExpectBool(a) || Tiny_ExpectBool(b)));
 		} break;
 
 		case OP_PRINT:
 		{
-			Value val = DoPop();
-			if(val.type == VAL_NUM) printf("%g\n", val.number);
-			else if (val.obj->type == OBJ_STRING) printf("%s\n", val.obj->string);
-			else if (val.obj->type == OBJ_NATIVE) printf("<native at %p>\n", val.obj->nat.addr);
+			Tiny_Value val = DoPop();
+			if(val.type == TINY_VAL_NUM) printf("%g\n", val.number);
+			else if (val.obj->type == TINY_VAL_STRING) printf("%s\n", val.obj->string);
+			else if (val.obj->type == TINY_VAL_NATIVE) printf("<native at %p>\n", val.obj->nat.addr);
 			++ProgramCounter;
 		} break;
 
@@ -1024,10 +1140,9 @@ void ExecuteCycle()
 			++ProgramCounter;
 			int newPc = ReadInteger();
 			
-			Value val = DoPop();
+			Tiny_Value val = DoPop();
 
-			// Only negative numbers result in jumps
-			if(val.type == VAL_NUM && val.number <= 0)
+			if(!Tiny_ExpectBool(val))
 				ProgramCounter = newPc;
 		} break;
 		
@@ -1043,7 +1158,7 @@ void ExecuteCycle()
 		
 		case OP_RETURN:
 		{
-			RetVal.type = VAL_NUM;
+			RetVal.type = TINY_VAL_NUM;
 			RetVal.number = -1;
 
 			DoPopIndir();
@@ -1082,7 +1197,7 @@ void ExecuteCycle()
 		{
 			++ProgramCounter;
 			int localIdx = ReadInteger();
-			Value val = DoPop();
+			Tiny_Value val = DoPop();
 			Stack[FramePointer + localIdx] = val;
 		} break;
 
@@ -1103,7 +1218,7 @@ void ExecuteCycle()
 		GarbageCollect();
 }
 
-void RunMachine()
+void Tiny_RunMachine()
 {
 	ProgramCounter = 0;
 	while(ProgramCounter < ProgramLength && ProgramCounter >= 0)
@@ -1141,7 +1256,10 @@ enum
 	TOK_EOF = -27,
 	TOK_NOT = -28,
 	TOK_AND = -29,
-	TOK_OR = -30
+	TOK_OR = -30,
+	TOK_NULL = -31,
+	TOK_TRUE = -32,
+	TOK_FALSE = -33
 };
 
 #define MAX_TOK_LEN		256
@@ -1190,18 +1308,9 @@ int GetToken(FILE* in)
 		if (strcmp(TokenBuffer, "not") == 0) return TOK_NOT;
 		if (strcmp(TokenBuffer, "and") == 0) return TOK_AND;
 		if (strcmp(TokenBuffer, "or") == 0) return TOK_OR;
-
-		if(strcmp(TokenBuffer, "true") == 0)
-		{
-			TokenNumber = 1;
-			return TOK_NUMBER;
-		}
-		
-		if(strcmp(TokenBuffer, "false") == 0)
-		{
-			TokenNumber = 0;
-			return TOK_NUMBER;
-		}
+		if (strcmp(TokenBuffer, "null") == 0) return TOK_NULL;
+		if (strcmp(TokenBuffer, "true") == 0) return TOK_TRUE;
+		if (strcmp(TokenBuffer, "false") == 0) return TOK_FALSE;
 		
 		return TOK_IDENT;
 	}
@@ -1428,6 +1537,8 @@ typedef enum
 {
 	EXP_ID,
 	EXP_CALL,
+	EXP_NULL,
+	EXP_BOOL,
 	EXP_NUM,
 	EXP_STRING,
 	EXP_BINARY,
@@ -1450,6 +1561,8 @@ typedef struct sExpr
 
 	union
 	{
+		bool boolean;
+
 		int number;
 		int string;
 
@@ -1571,6 +1684,27 @@ Expr* ParseFactor(FILE* in)
 {
 	switch(CurTok)
 	{
+		case TOK_NULL:
+		{
+			Expr* exp = Expr_create(EXP_NULL);
+
+			GetNextToken(in);
+
+			return exp;
+		} break;
+
+		case TOK_TRUE:
+		case TOK_FALSE:
+		{
+			Expr* exp = Expr_create(EXP_BOOL);
+
+			exp->boolean = CurTok == TOK_TRUE;
+
+			GetNextToken(in);
+
+			return exp;
+		} break;
+
 		case '{':
 		{
 			GetNextToken(in);
@@ -2112,9 +2246,19 @@ static void CompileExpr(Expr* exp)
 {
 	switch (exp->type)
 	{
+		case EXP_NULL:
+		{
+			GenerateCode(OP_PUSH_NULL);
+		} break;
+
 		case EXP_ID:
 		{
 			CompileGetId(exp);
+		} break;
+
+		case EXP_BOOL:
+		{
+			GenerateCode(exp->boolean ? OP_PUSH_TRUE : OP_PUSH_FALSE);
 		} break;
 
 		case EXP_NUM:
@@ -2528,7 +2672,7 @@ void Expr_destroy(Expr* exp)
 			free(exp->id.name);
 		} break;
 
-		case EXP_NUM: case EXP_STRING: break;
+		case EXP_NULL: case EXP_BOOL: case EXP_NUM: case EXP_STRING: break;
 		
 		case EXP_CALL: 
 		{
@@ -2682,15 +2826,18 @@ static void BuildForeignFunctions(void)
 	}
 }
 
-void CompileFile(FILE* in)
+void Tiny_CompileFile(const char* filename, FILE* in)
 {
+	LineNumber = 1;
+	FileName = filename;
+
 	CurTok = 0;
 	Expr* prog = ParseProgram(in);
 
 	// Allocate room for vm execution info
-	GlobalVars = calloc(NumGlobalVars, sizeof(Value));
+	GlobalVars = calloc(NumGlobalVars, sizeof(Tiny_Value));
 	FunctionPcs = calloc(NumFunctions, sizeof(int));
-	ForeignFunctions = calloc(NumForeignFunctions, sizeof(ForeignFunction));
+	ForeignFunctions = calloc(NumForeignFunctions, sizeof(Tiny_ForeignFunction));
 
 	assert(GlobalVars &&
 		FunctionPcs &&

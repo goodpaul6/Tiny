@@ -2,16 +2,9 @@
 #define TINY_H
 
 #include <stdio.h>
+#include <stdbool.h>
 
-struct sObject;
-
-typedef enum
-{
-	OBJ_STRING,
-	OBJ_NATIVE
-} ObjectType;
-
-// Table stores properties about a native
+// Stores properties about a native
 // object. This should be statically allocated
 // and only one should exist for each type of
 // Native value.
@@ -21,75 +14,62 @@ typedef struct
 	void(*mark)(void*);
 	void(*free)(void*);
 	void(*toString)(void*);
-} NativeProp;
-
-typedef struct sObject
-{
-	char marked;
-	
-	ObjectType type;
-	struct sObject* next;
-
-	union
-	{
-		char* string;
-
-		struct
-		{
-			void* addr;
-			const NativeProp* prop;	// Can be used to check type of native (ex. obj->nat.prop == &ArrayProp // this is an Array)
-		} nat;
-	};
-} Object;
+} Tiny_NativeProp;
 
 typedef enum
 {
-	VAL_NUM,
-	VAL_OBJ
-} ValueType;
+	TINY_VAL_NULL,
+	TINY_VAL_BOOL,
+	TINY_VAL_NUM,
+	TINY_VAL_STRING,
+	TINY_VAL_NATIVE
+} Tiny_ValueType;
 
-typedef struct
-{
-	ValueType type;
+typedef struct Tiny_Object Tiny_Object;
+typedef struct Tiny_Value Tiny_Value;
 
-	union
-	{
-		double number;
-		Object* obj;
-	};
-} Value;
+typedef Tiny_Value (*Tiny_ForeignFunction)(const Tiny_Value* args, int count);
 
-typedef Value (*ForeignFunction)(const Value* args, int count);
-
-extern int ProgramCounter;
-extern const char* FileName;
+extern const Tiny_Value Tiny_Null;
 
 void* emalloc(size_t size);
 void* erealloc(void* mem, size_t newSize);
 char* estrdup(const char* string);
 
-void Mark(Object* obj);
+void Tiny_Mark(Tiny_Object* obj);
 
-Value NewNative(void* ptr, const NativeProp* prop);
-Value NewNumber(double value);
-Value NewString(char* string);
+Tiny_Value Tiny_NewBool(bool value);
+Tiny_Value Tiny_NewNumber(double value);
+Tiny_Value Tiny_NewString(char* string);
+Tiny_Value Tiny_NewNative(void* ptr, const Tiny_NativeProp* prop);
 
-void DoPush(Value value);
-Value DoPop();
+Tiny_ValueType Tiny_GetType(const Tiny_Value val);
 
-int GetProcId(const char* name);
-void CallProc(int id, int nargs);
+#define Tiny_IsNull(v) (Tiny_GetType(v) == TINY_VAL_NULL)
+#define Tiny_IsObject(v) (Tiny_GetType(v) == TINY_VAL_STRING || Tiny_GetType(v) == TINY_VAL_NATIVE)
 
-void BindForeignFunction(ForeignFunction func, const char* name);
+bool Tiny_GetBool(const Tiny_Value val, bool* pbool);
+bool Tiny_GetNum(const Tiny_Value val, double* pnum);
+bool Tiny_GetString(const Tiny_Value val, const char** pstr);
+bool Tiny_GetAddr(const Tiny_Value val, void** paddr);
+bool Tiny_GetProp(const Tiny_Value val, const Tiny_NativeProp** pprop);
 
-void DefineConstNumber(const char* name, double number);
-void DefineConstString(const char* name, const char* string);
+bool Tiny_ExpectBool(const Tiny_Value val);
+double Tiny_ExpectNum(const Tiny_Value val);
+const char* Tiny_ExpectString(const Tiny_Value val);
+void* Tiny_ExpectAddr(const Tiny_Value val);
+const Tiny_NativeProp* Tiny_ExpectProp(const Tiny_Value val);
 
-void ResetCompiler(void);
-void CompileFile(FILE* in);
+void Tiny_BindForeignFunction(Tiny_ForeignFunction func, const char* name);
 
-void ResetMachine(void);
-void RunMachine(void);
+void Tiny_DefineConstNumber(const char* name, double number);
+void Tiny_DefineConstString(const char* name, const char* string);
+
+void Tiny_ResetCompiler(void);
+void Tiny_CompileFile(const char* filename, FILE* in);
+
+void Tiny_ResetMachine(void);
+void Tiny_RunMachine(void);
 
 #endif
  

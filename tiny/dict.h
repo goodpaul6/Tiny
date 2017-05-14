@@ -1,6 +1,7 @@
 #pragma once
 
 #include "tiny.h"
+#include "tiny_detail.h"
 
 #define DICT_BUCKET_COUNT 1024
 
@@ -8,7 +9,7 @@ typedef struct sDictNode
 {
 	struct sDictNode* next;
 	char* key;
-	Value val;
+	Tiny_Value val;
 } DictNode;
 
 typedef struct
@@ -17,12 +18,12 @@ typedef struct
 	DictNode* buckets[DICT_BUCKET_COUNT];
 } Dict;
 
-extern const NativeProp DictProp;
+extern const Tiny_NativeProp DictProp;
 
 void InitDict(Dict* dict);
 
-void DictPut(Dict* dict, const char* key, const Value* value);
-const Value* DictGet(Dict* dict, const char* key);
+void DictPut(Dict* dict, const char* key, const Tiny_Value* value);
+const Tiny_Value* DictGet(Dict* dict, const char* key);
 void DictRemove(Dict* dict, const char* key);
 void DictClear(Dict* dict);
 

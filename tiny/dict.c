@@ -17,12 +17,12 @@ static void DictMark(void* pd)
 
 	for (int i = 0; i < DICT_BUCKET_COUNT; ++i)
 	{
-		if (dict->buckets[i] && dict->buckets[i]->val.type == VAL_OBJ)
-			Mark(dict->buckets[i]->val.obj);
+		if (Tiny_IsObject(dict->buckets[i]->val))
+			Tiny_Mark(dict->buckets[i]->val.obj);
 	}
 }
 
-const NativeProp DictProp = {
+const Tiny_NativeProp DictProp = {
 	"dict",
 	DictMark,
 	DictFree
@@ -69,7 +69,7 @@ void DestroyDict(Dict* dict)
 	}
 }
 
-static DictNode* CreateDictNode(const char* key, const Value* val)
+static DictNode* CreateDictNode(const char* key, const Tiny_Value* val)
 {
 	DictNode* node = emalloc(sizeof(DictNode));
 
@@ -80,7 +80,7 @@ static DictNode* CreateDictNode(const char* key, const Value* val)
 	return node;
 }
 
-void DictPut(Dict* dict, const char* key, const Value* val)
+void DictPut(Dict* dict, const char* key, const Tiny_Value* val)
 {
 	unsigned long index = HashString(key) % DICT_BUCKET_COUNT;
 
@@ -92,7 +92,7 @@ void DictPut(Dict* dict, const char* key, const Value* val)
 	dict->nodeCount += 1;
 }
 
-const Value* DictGet(Dict* dict, const char* key)
+const Tiny_Value* DictGet(Dict* dict, const char* key)
 {
 	unsigned long index = HashString(key) % DICT_BUCKET_COUNT;
 

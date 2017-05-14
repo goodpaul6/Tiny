@@ -10,7 +10,7 @@
 #include "dict.h"
 #include "iniparser.h"
 
-#define VAL_NULL (NewNumber(-1))
+#define VAL_NULL (Tiny_Null);
 
 #ifdef _WIN32
 typedef int BOOL;
@@ -48,24 +48,24 @@ void __stdcall Sleep(
 
 #endif
 
-static Value Strlen(const Value* args, int count)
+static Tiny_Value Strlen(const Tiny_Value* args, int count)
 {
-	Value val = args[0];
+	Tiny_Value val = args[0];
 
-	if (val.type == VAL_OBJ && val.obj->type == OBJ_STRING)
-		return NewNumber(strlen(val.obj->string));
+	if (val.type == TINY_VAL_STRING)
+		return Tiny_NewNumber(strlen(val.obj->string));
 	else
 		return VAL_NULL;
 }
 
-static const NativeProp FileProp = {
+static const Tiny_NativeProp FileProp = {
 	"file",
 	NULL,
 	NULL,
 	NULL
 };
 
-static Value Lib_Fopen(const Value* args, int count)
+static Tiny_Value Lib_Fopen(const Tiny_Value* args, int count)
 {
 	const char* filename = args[0].obj->string;
 	const char* mode = args[1].obj->string;
@@ -75,10 +75,10 @@ static Value Lib_Fopen(const Value* args, int count)
 	if (!file)
 		return VAL_NULL;
 
-	return NewNative(file, &FileProp);
+	return Tiny_NewNative(file, &FileProp);
 }
 
-static Value Lib_Fsize(const Value* args, int count)
+static Tiny_Value Lib_Fsize(const Tiny_Value* args, int count)
 {
 	FILE* file = args[0].obj->nat.addr;
 
@@ -86,10 +86,10 @@ static Value Lib_Fsize(const Value* args, int count)
 	long size = ftell(file);
 	rewind(file);
 
-	return NewNumber((double)size);
+	return Tiny_NewNumber((double)size);
 }
 
-static Value Lib_Fread(const Value* args, int count)
+static Tiny_Value Lib_Fread(const Tiny_Value* args, int count)
 {
 	FILE* file = args[0].obj->nat.addr;
 	int num = (int)args[1].number;
@@ -99,10 +99,10 @@ static Value Lib_Fread(const Value* args, int count)
 	fread(str, 1, num, file);
 	str[num] = '\0';
 
-	return NewString(str);
+	return Tiny_NewString(str);
 }
 
-static Value Lib_Fseek(const Value* args, int count)
+static Tiny_Value Lib_Fseek(const Tiny_Value* args, int count)
 {
 	FILE* file = args[0].obj->nat.addr;
 	int pos = (int)args[1].number;
@@ -112,16 +112,16 @@ static Value Lib_Fseek(const Value* args, int count)
 	return VAL_NULL;
 }
 
-static Value Lib_Fwrite(const Value* args, int count)
+static Tiny_Value Lib_Fwrite(const Tiny_Value* args, int count)
 {
 	FILE* file = args[0].obj->nat.addr;
 	const char* str = args[1].obj->string;
 	int num = count == 3 ? (int)args[2].number : strlen(str);
 
-	return NewNumber(fwrite(str, 1, num, file));
+	return Tiny_NewNumber(fwrite(str, 1, num, file));
 }
 
-static Value Lib_Fclose(const Value* args, int count)
+static Tiny_Value Lib_Fclose(const Tiny_Value* args, int count)
 {
 	FILE* file = args[0].obj->nat.addr;
 
@@ -132,7 +132,7 @@ static Value Lib_Fclose(const Value* args, int count)
 
 typedef struct sArray
 {
-	Value* values;
+	Tiny_Value* values;
 	size_t length, capacity;
 } Array;
 
@@ -150,19 +150,19 @@ static void ArrayMark(void* ptr)
 
 	for (size_t i = 0; i < array->length; ++i)
 	{
-		if(array->values[i].type == VAL_OBJ)
-			Mark(array->values[i].obj);
+		if(Tiny_IsObject(array->values[i]))
+			Tiny_Mark(array->values[i].obj);
 	}
 }
 
-const NativeProp ArrayProp = {
+const Tiny_NativeProp ArrayProp = {
 	"array",
 	ArrayMark,
 	ArrayFree,
 	NULL	// TODO: Implement ArrayString
 };
 
-static Value CreateArray(const Value* args, int count)
+static Tiny_Value CreateArray(const Tiny_Value* args, int count)
 {
 	Array* array = emalloc(sizeof(Array));
 
@@ -176,23 +176,23 @@ static Value CreateArray(const Value* args, int count)
 		
 		array->length = len;
 		array->capacity = len;
-		array->values = emalloc(sizeof(Value) * len);
+		array->values = emalloc(sizeof(Tiny_Value) * len);
 
 		for (int i = 0; i < count; ++i)
 			array->values[i] = args[i];
 	}
 	
-	return NewNative(array, &ArrayProp);
+	return Tiny_NewNative(array, &ArrayProp);
 }
 
-static Value ArrayLen(const Value* args, int count)
+static Tiny_Value ArrayLen(const Tiny_Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 
-	return NewNumber((double)array->length);
+	return Tiny_NewNumber((double)array->length);
 }
 
-static Value ArrayClear(const Value* args, int count)
+static Tiny_Value ArrayClear(const Tiny_Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 
@@ -201,7 +201,7 @@ static Value ArrayClear(const Value* args, int count)
 	return VAL_NULL;
 }
 
-static Value ArrayResize(const Value* args, int count)
+static Tiny_Value ArrayResize(const Tiny_Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 	int len = (int)args[1].number;
@@ -214,16 +214,16 @@ static Value ArrayResize(const Value* args, int count)
 			array->capacity = 4;
 		else
 			array->capacity *= 2;
-		array->values = erealloc(array->values, array->capacity * sizeof(Value));
+		array->values = erealloc(array->values, array->capacity * sizeof(Tiny_Value));
 	}
 
 	return VAL_NULL;
 }
 
-static Value ArrayPush(const Value* args, int count)
+static Tiny_Value ArrayPush(const Tiny_Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
-	Value value = args[1];
+	Tiny_Value value = args[1];
 
 	while(array->length + 1 >= array->capacity)
 	{
@@ -231,7 +231,7 @@ static Value ArrayPush(const Value* args, int count)
 			array->capacity = 4;
 		else
 			array->capacity *= 2;
-		array->values = erealloc(array->values, array->capacity * sizeof(Value));
+		array->values = erealloc(array->values, array->capacity * sizeof(Tiny_Value));
 	}
 
 	array->values[array->length] = value;
@@ -240,7 +240,7 @@ static Value ArrayPush(const Value* args, int count)
 	return VAL_NULL;
 }
 
-static Value ArrayGet(const Value* args, int count)
+static Tiny_Value ArrayGet(const Tiny_Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 	int index = (int)args[1].number;
@@ -248,11 +248,11 @@ static Value ArrayGet(const Value* args, int count)
 	return array->values[index];
 }
 
-static Value ArraySet(const Value* args, int count)
+static Tiny_Value ArraySet(const Tiny_Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 	int index = (int)args[1].number;
-	Value value = args[2];
+	Tiny_Value value = args[2];
 
 	if (index < 0 || index >= array->length)
 	{
@@ -264,7 +264,7 @@ static Value ArraySet(const Value* args, int count)
 	return VAL_NULL;
 }
 
-static Value ArrayPop(const Value* args, int count)
+static Tiny_Value ArrayPop(const Tiny_Value* args, int count)
 {
 	Array* array = args[0].obj->nat.addr;
 
@@ -277,17 +277,17 @@ static Value ArrayPop(const Value* args, int count)
 	return array->values[--array->length];
 }
 
-static Value Lib_IniNew(const Value* args, int count)
+static Tiny_Value Lib_IniNew(const Tiny_Value* args, int count)
 {
 	IniFile* ini = emalloc(sizeof(IniFile));
 
 	ini->count = 0;
 	ini->sections = NULL;
 
-	return NewNative(ini, &IniFileProp);
+	return Tiny_NewNative(ini, &IniFileProp);
 }
 
-static Value Lib_IniParse(const Value* args, int count)
+static Tiny_Value Lib_IniParse(const Tiny_Value* args, int count)
 {
 	const char* filename = args[0].obj->string;
 
@@ -311,10 +311,10 @@ static Value Lib_IniParse(const Value* args, int count)
 	fclose(file);
 
 	IniFile* ini = emalloc(sizeof(IniFile));
-	Value result;
+	Tiny_Value result;
 
 	if (ParseIni(ini, str))
-		result = NewNative(ini, &IniFileProp);
+		result = Tiny_NewNative(ini, &IniFileProp);
 	else
 	{
 		free(file);
@@ -326,7 +326,7 @@ static Value Lib_IniParse(const Value* args, int count)
 	return result;
 }
 
-static Value Lib_IniGet(const Value* args, int count)
+static Tiny_Value Lib_IniGet(const Tiny_Value* args, int count)
 {
 	const IniFile* ini = args[0].obj->nat.addr;
 	const char* section = args[1].obj->string;
@@ -341,37 +341,40 @@ static Value Lib_IniGet(const Value* args, int count)
 			for (int i = 0; i < sec->count; ++i)
 			{
 				if (strcmp(sec->keys[i], key) == 0)
-					return NewString(estrdup(sec->values[i]));
+					return Tiny_NewString(estrdup(sec->values[i]));
 			}
 
-			return NewNumber(INI_NO_KEY);
+			return Tiny_NewNumber(INI_NO_KEY);
 		}
 	}
 
-	return NewNumber(INI_NO_SECTION);
+	return Tiny_NewNumber(INI_NO_SECTION);
 }
 
-static Value Lib_IniSet(const Value* args, int count)
+static Tiny_Value Lib_IniSet(const Tiny_Value* args, int count)
 {
 	IniFile* ini = args[0].obj->nat.addr;
 	const char* section = args[1].obj->string;
 	const char* key = args[2].obj->string;
 	const char* value = args[3].obj->string;
 
-	return NewNumber(IniSet(ini, section, key, value));
+	return Tiny_NewNumber(IniSet(ini, section, key, value));
 }
 
-static Value Lib_IniDelete(const Value* args, int count)
+static Tiny_Value Lib_IniDelete(const Tiny_Value* args, int count)
 {
 	IniFile* ini = args[0].obj->nat.addr;
 	const char* section = args[1].obj->string;
 	const char* key = args[2].obj->string;
 	bool removeSection = args[3].number > 0;
 
-	return NewNumber(IniDelete(ini, section, key, removeSection));
+	if (strlen(key) == 0)
+		key = NULL;
+
+	return Tiny_NewNumber(IniDelete(ini, section, key, removeSection));
 }
 
-static Value Lib_IniSections(const Value* args, int count)
+static Tiny_Value Lib_IniSections(const Tiny_Value* args, int count)
 {
 	const IniFile* ini = args[0].obj->nat.addr;
 
@@ -381,24 +384,24 @@ static Value Lib_IniSections(const Value* args, int count)
 	array->length = ini->count;
 
 	if (array->length > 0)
-		array->values = emalloc(sizeof(Value) * array->length);
+		array->values = emalloc(sizeof(Tiny_Value) * array->length);
 	else
 		array->values = NULL;
 
 	for (int i = 0; i < ini->count; ++i)
-		array->values[i] = NewNative(&ini->sections[i], &IniSectionProp);
+		array->values[i] = Tiny_NewNative(&ini->sections[i], &IniSectionProp);
 	
-	return NewNative(array, &ArrayProp);
+	return Tiny_NewNative(array, &ArrayProp);
 }
 
-static Value Lib_IniName(const Value* args, int count)
+static Tiny_Value Lib_IniName(const Tiny_Value* args, int count)
 {
 	const IniSection* ini = args[0].obj->nat.addr;
 	
-	return NewString(estrdup(ini->name));
+	return Tiny_NewString(estrdup(ini->name));
 }
 
-static Value Lib_IniKeys(const Value* args, int count)
+static Tiny_Value Lib_IniKeys(const Tiny_Value* args, int count)
 {
 	const IniSection* ini = args[0].obj->nat.addr;
 
@@ -408,20 +411,20 @@ static Value Lib_IniKeys(const Value* args, int count)
 	array->length = ini->count;
 
 	if (array->length > 0)
-		array->values = emalloc(sizeof(Value) * array->length);
+		array->values = emalloc(sizeof(Tiny_Value) * array->length);
 	else
 		array->values = NULL;
 
 	for (int i = 0; i < ini->count; ++i)
-		array->values[i] = NewString(estrdup(ini->keys[i]));
+		array->values[i] = Tiny_NewString(estrdup(ini->keys[i]));
 
-	return NewNative(array, &ArrayProp);
+	return Tiny_NewNative(array, &ArrayProp);
 }
 
-static Value Lib_IniString(const Value* args, int count)
+static Tiny_Value Lib_IniString(const Tiny_Value* args, int count)
 {
 	const IniFile* ini = args[0].obj->nat.addr;
-	return NewString(IniString(ini));
+	return Tiny_NewString(IniString(ini));
 }
 
 typedef struct
@@ -438,28 +441,28 @@ static void BytesFree(void* ptr)
 	free(b);
 }
 
-static const NativeProp BytesProp = {
+static const Tiny_NativeProp BytesProp = {
 	"bytes",
 	NULL,
 	BytesFree,
 	NULL
 };
 
-static Value Lib_CreateBytes(const Value* args, int count)
+static Tiny_Value Lib_CreateBytes(const Tiny_Value* args, int count)
 {
-	Value val = args[0];
+	Tiny_Value val = args[0];
 
-	if (val.type != VAL_OBJ)
+	if (val.type != TINY_VAL_STRING && val.type != TINY_VAL_NATIVE)
 	{
 		fprintf(stderr, "bytes expected a string or array as its first parameter but got a number instead.\n");
 		exit(1);
 	}
 
-	Object* obj = val.obj;
+	Tiny_Object* obj = val.obj;
 
 	Bytes* bytes = emalloc(sizeof(Bytes));
 
-	if (obj->type == OBJ_STRING)
+	if (obj->type == TINY_VAL_STRING)
 	{
 		bytes->length = strlen(obj->string);
 		bytes->data = emalloc(bytes->length);
@@ -467,14 +470,14 @@ static Value Lib_CreateBytes(const Value* args, int count)
 		memcpy(bytes->data, obj->string, bytes->length);
 
 	}
-	else if (obj->type == OBJ_NATIVE)
+	else if (obj->type == TINY_VAL_NATIVE)
 	{
 		if (obj->nat.prop == &ArrayProp)
 		{
 			Array* array = obj->nat.addr;
 
 			if (array->length == 0)
-				DoPush(NewNative(NULL, &BytesProp));
+				return Tiny_NewNative(NULL, &BytesProp);
 			else
 			{
 				unsigned char* data = emalloc(array->length);
@@ -488,25 +491,25 @@ static Value Lib_CreateBytes(const Value* args, int count)
 		}
 	}
 
-	return NewNative(bytes, &BytesProp);
+	return Tiny_NewNative(bytes, &BytesProp);
 }
 
-static Value Lib_BytesGet(const Value* args, int count)
+static Tiny_Value Lib_BytesGet(const Tiny_Value* args, int count)
 {
 	Bytes* bytes = args[0].obj->nat.addr;
 	int index = (int)args[1].number;
 
-	return NewNumber(bytes->data[index]);
+	return Tiny_NewNumber(bytes->data[index]);
 }
 
-static Value Lib_BytesLen(const Value* args, int count)
+static Tiny_Value Lib_BytesLen(const Tiny_Value* args, int count)
 {
 	Bytes* bytes = args[0].obj->nat.addr;
 
-	return NewNumber(bytes->length);
+	return Tiny_NewNumber(bytes->length);
 }
 
-static Value CreateDict(const Value* args, int count)
+static Tiny_Value CreateDict(const Tiny_Value* args, int count)
 {
 	Dict* dict = emalloc(sizeof(Dict));
 
@@ -521,43 +524,43 @@ static Value CreateDict(const Value* args, int count)
 	for (int i = 0; i < count; i += 2)
 		DictPut(dict, args[i].obj->string, &args[i + 1]);
 
-	return NewNative(dict, &DictProp);
+	return Tiny_NewNative(dict, &DictProp);
 }
 
-static Value Lib_DictPut(const Value* args, int count)
+static Tiny_Value Lib_DictPut(const Tiny_Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
 	const char* key = args[1].obj->string;
-	Value value = args[2];
+	Tiny_Value value = args[2];
 
 	DictPut(dict, key, &value);
 	return VAL_NULL;
 }
 
-static Value Lib_DictExists(const Value* args, int count)
+static Tiny_Value Lib_DictExists(const Tiny_Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
 	const char* key = args[1].obj->string;
 
-	const Value* value = DictGet(dict, key);
+	const Tiny_Value* value = DictGet(dict, key);
 
-	return NewNumber(value ? 1 : -1);
+	return Tiny_NewNumber(value ? 1 : -1);
 }
 
-static Value Lib_DictGet(const Value* args, int count)
+static Tiny_Value Lib_DictGet(const Tiny_Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
 	const char* key = args[1].obj->string;
 
-	const Value* value = DictGet(dict, key);
+	const Tiny_Value* value = DictGet(dict, key);
 
 	if (value)
-		DoPush(*value);
+		return *value;
 
 	return VAL_NULL;
 }
 
-static Value Lib_DictRemove(const Value* args, int count)
+static Tiny_Value Lib_DictRemove(const Tiny_Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
 	const char* key = args[1].obj->string;
@@ -566,20 +569,20 @@ static Value Lib_DictRemove(const Value* args, int count)
 	return VAL_NULL;
 }
 
-static Value Lib_DictClear(const Value* args, int count)
+static Tiny_Value Lib_DictClear(const Tiny_Value* args, int count)
 {
 	DictClear(args[0].obj->nat.addr);
 	return VAL_NULL;
 }
 
-static Value Lib_DictKeys(const Value* args, int count)
+static Tiny_Value Lib_DictKeys(const Tiny_Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
 	Array* array = emalloc(sizeof(Array));
 
 	array->capacity = dict->nodeCount;
 	array->length = 0;
-	array->values = emalloc(sizeof(Value) * dict->nodeCount);
+	array->values = emalloc(sizeof(Tiny_Value) * dict->nodeCount);
 
 	for (int i = 0; i < DICT_BUCKET_COUNT; ++i)
 	{
@@ -587,15 +590,15 @@ static Value Lib_DictKeys(const Value* args, int count)
 
 		while (node)
 		{
-			array->values[array->length++] = NewString(estrdup(node->key));
+			array->values[array->length++] = Tiny_NewString(estrdup(node->key));
 			node = node->next;
 		}
 	}
 
-	return NewNative(array, &ArrayProp);
+	return Tiny_NewNative(array, &ArrayProp);
 }
 
-static Value Strcat(const Value* args, int count)
+static Tiny_Value Strcat(const Tiny_Value* args, int count)
 {
 	char* str1 = args[0].obj->string;
 	char* str2 = args[1].obj->string;
@@ -608,20 +611,20 @@ static Value Strcat(const Value* args, int count)
 	strcpy(newString + len1, str2);
 	newString[len1 + len2] = '\0';
 	
-	return NewString(newString);
+	return Tiny_NewString(newString);
 }
 
-static Value Lib_Ston(const Value* args, int count)
+static Tiny_Value Lib_Ston(const Tiny_Value* args, int count)
 {
 	char* str = args[0].obj->string;
 	double value = strtod(str, NULL);
 	
-	return NewNumber(value);
+	return Tiny_NewNumber(value);
 }
 
 #define NUMTOSTR_CONV_BUFFER_SIZE	32
 
-static Value Lib_Ntos(const Value* args, int count)
+static Tiny_Value Lib_Ntos(const Tiny_Value* args, int count)
 {
 	double num = args[0].number;
 	
@@ -630,26 +633,26 @@ static Value Lib_Ntos(const Value* args, int count)
 
 	string[c] = '\0';
 
-	return NewString(string);
+	return Tiny_NewString(string);
 }
 
-static Value Lib_Time(const Value* args, int count)
+static Tiny_Value Lib_Time(const Tiny_Value* args, int count)
 {
-	return NewNumber((double)time(NULL));
+	return Tiny_NewNumber((double)time(NULL));
 }
 
-static Value SeedRand(const Value* args, int count)
+static Tiny_Value SeedRand(const Tiny_Value* args, int count)
 {
 	srand((unsigned int)args[0].number);
 	return VAL_NULL;
 }
 
-static Value Rand(const Value* args, int count)
+static Tiny_Value Rand(const Tiny_Value* args, int count)
 {
-	return NewNumber(rand());
+	return Tiny_NewNumber(rand());
 }
 
-static Value Lib_Input(const Value* args, int count)
+static Tiny_Value Lib_Input(const Tiny_Value* args, int count)
 {
 	if (count >= 1)
 		printf("%s", args[0].obj->string);
@@ -676,28 +679,25 @@ static Value Lib_Input(const Value* args, int count)
 
 	buffer[i] = '\0';
 
-	return NewString(buffer);
+	return Tiny_NewString(buffer);
 }
 
-static Value Lib_Print(const Value* args, int count)
+static Tiny_Value Lib_Print(const Tiny_Value* args, int count)
 {
 	for (int i = 0; i < count; ++i)
 	{
-		Value val = args[i];
+		Tiny_Value val = args[i];
 
-		if (val.type == VAL_NUM)
+		if (val.type == TINY_VAL_NUM)
 			printf("%g", val.number);
-		else if (val.type == VAL_OBJ)
+		else if (val.type == TINY_VAL_STRING)
+			printf("%s", val.obj->string);
+		else if (val.type == TINY_VAL_NATIVE)
 		{
-			if (val.obj->type == OBJ_STRING)
-				printf("%s", val.obj->string);
-			else if (val.obj->type == OBJ_NATIVE)
-			{
-				if (val.obj->nat.prop && val.obj->nat.prop->name)
-					printf("<native '%s' at %p>", val.obj->nat.prop->name, val.obj->nat.addr);
-				else
-					printf("<native at %p>", val.obj->nat.addr);
-			}
+			if (val.obj->nat.prop && val.obj->nat.prop->name)
+				printf("<native '%s' at %p>", val.obj->nat.prop->name, val.obj->nat.addr);
+			else
+				printf("<native at %p>", val.obj->nat.addr);
 		}
 
 		if (i + 1 < count)
@@ -708,7 +708,7 @@ static Value Lib_Print(const Value* args, int count)
 	return VAL_NULL;
 }
 
-static Value Lib_Printf(const Value* args, int count)
+static Tiny_Value Lib_Printf(const Tiny_Value* args, int count)
 {
 	const char* fmt = args[0].obj->string;
 
@@ -738,20 +738,14 @@ static Value Lib_Printf(const Value* args, int count)
 				{
 					switch (args[arg].type)
 					{
-						case VAL_NUM: printf("%g", args[arg].number); break;
-						case VAL_OBJ:
+						case TINY_VAL_NUM: printf("%g", args[arg].number); break;
+						case TINY_VAL_STRING: printf("%s", args[arg].obj->string);
+						case TINY_VAL_NATIVE:
 						{
-							switch (args[arg].obj->type)
-							{
-								case OBJ_STRING: printf("%s", args[arg].obj->string);
-								case OBJ_NATIVE:
-								{
-									if (args[arg].obj->nat.prop && args[arg].obj->nat.prop->name)
-										printf("<native '%s' at %p>", args[arg].obj->nat.prop->name, args[arg].obj->nat.addr);
-									else
-										printf("<native at %p>", args[arg].obj->nat.addr);
-								} break;
-							} break;
+							if (args[arg].obj->nat.prop && args[arg].obj->nat.prop->name)
+								printf("<native '%s' at %p>", args[arg].obj->nat.prop->name, args[arg].obj->nat.addr);
+							else
+								printf("<native at %p>", args[arg].obj->nat.addr);
 						} break;
 					}
 				} break;
@@ -766,7 +760,7 @@ static Value Lib_Printf(const Value* args, int count)
 	return VAL_NULL;
 }
 
-static Value Exit(const Value* args, int count)
+static Tiny_Value Exit(const Tiny_Value* args, int count)
 {
 	int arg = (int)args[0].number;
 
@@ -775,33 +769,33 @@ static Value Exit(const Value* args, int count)
 	return VAL_NULL;
 }
 
-static Value Lib_Floor(const Value* args, int count)
+static Tiny_Value Lib_Floor(const Tiny_Value* args, int count)
 {
-	return NewNumber(floor(args[0].number));
+	return Tiny_NewNumber(floor(args[0].number));
 }
 
-static Value Lib_Ceil(const Value* args, int count)
+static Tiny_Value Lib_Ceil(const Tiny_Value* args, int count)
 {
-	return NewNumber(ceil(args[0].number));
+	return Tiny_NewNumber(ceil(args[0].number));
 }
 
-static Value Lib_PerfCount(const Value* args, int count)
+static Tiny_Value Lib_PerfCount(const Tiny_Value* args, int count)
 {
 	LARGE_INTEGER result;
 	QueryPerformanceCounter(&result);
 
-	return NewNumber(result.QuadPart);
+	return Tiny_NewNumber(result.QuadPart);
 }
 
-static Value Lib_PerfFreq(const Value* args, int count)
+static Tiny_Value Lib_PerfFreq(const Tiny_Value* args, int count)
 {
 	LARGE_INTEGER result;
 	QueryPerformanceFrequency(&result);
 
-	return NewNumber(result.QuadPart);
+	return Tiny_NewNumber(result.QuadPart);
 }
 
-static Value Lib_Sleep(const Value* args, int count)
+static Tiny_Value Lib_Sleep(const Tiny_Value* args, int count)
 {
 	Sleep((int)args[0].number);
 	return VAL_NULL;
@@ -809,91 +803,90 @@ static Value Lib_Sleep(const Value* args, int count)
 
 static void BindStandardLibrary()
 {
-	BindForeignFunction(Strlen, "strlen");
+	Tiny_BindForeignFunction(Strlen, "strlen");
 
-	BindForeignFunction(Lib_Fopen, "fopen");
-	BindForeignFunction(Lib_Fclose, "fclose");
-	BindForeignFunction(Lib_Fread, "fread");
-	BindForeignFunction(Lib_Fwrite, "fwrite");
-	BindForeignFunction(Lib_Fseek, "fseek");
-	BindForeignFunction(Lib_Fsize, "fsize");
+	Tiny_BindForeignFunction(Lib_Fopen, "fopen");
+	Tiny_BindForeignFunction(Lib_Fclose, "fclose");
+	Tiny_BindForeignFunction(Lib_Fread, "fread");
+	Tiny_BindForeignFunction(Lib_Fwrite, "fwrite");
+	Tiny_BindForeignFunction(Lib_Fseek, "fseek");
+	Tiny_BindForeignFunction(Lib_Fsize, "fsize");
 
-	BindForeignFunction(CreateArray, "array");
-	BindForeignFunction(ArrayClear, "array_clear");
-	BindForeignFunction(ArrayResize, "array_resize");
-	BindForeignFunction(ArrayGet, "array_get");
-	BindForeignFunction(ArraySet, "array_set");
-	BindForeignFunction(ArrayLen, "array_len");
-	BindForeignFunction(ArrayPush, "array_push");
-	BindForeignFunction(ArrayPop, "array_pop");
+	Tiny_BindForeignFunction(CreateArray, "array");
+	Tiny_BindForeignFunction(ArrayClear, "array_clear");
+	Tiny_BindForeignFunction(ArrayResize, "array_resize");
+	Tiny_BindForeignFunction(ArrayGet, "array_get");
+	Tiny_BindForeignFunction(ArraySet, "array_set");
+	Tiny_BindForeignFunction(ArrayLen, "array_len");
+	Tiny_BindForeignFunction(ArrayPush, "array_push");
+	Tiny_BindForeignFunction(ArrayPop, "array_pop");
 
-	BindForeignFunction(Lib_CreateBytes, "bytes");
-	BindForeignFunction(Lib_BytesGet, "bytes_get");
-	BindForeignFunction(Lib_BytesLen, "bytes_len");
+	Tiny_BindForeignFunction(Lib_CreateBytes, "bytes");
+	Tiny_BindForeignFunction(Lib_BytesGet, "bytes_get");
+	Tiny_BindForeignFunction(Lib_BytesLen, "bytes_len");
 
-	BindForeignFunction(CreateDict, "dict");
-	BindForeignFunction(Lib_DictPut, "dict_put");
-	BindForeignFunction(Lib_DictExists, "dict_exists");
-	BindForeignFunction(Lib_DictGet, "dict_get");
-	BindForeignFunction(Lib_DictRemove, "dict_remove");
-	BindForeignFunction(Lib_DictKeys, "dict_keys");
-	BindForeignFunction(Lib_DictClear, "dict_clear");
+	Tiny_BindForeignFunction(CreateDict, "dict");
+	Tiny_BindForeignFunction(Lib_DictPut, "dict_put");
+	Tiny_BindForeignFunction(Lib_DictExists, "dict_exists");
+	Tiny_BindForeignFunction(Lib_DictGet, "dict_get");
+	Tiny_BindForeignFunction(Lib_DictRemove, "dict_remove");
+	Tiny_BindForeignFunction(Lib_DictKeys, "dict_keys");
+	Tiny_BindForeignFunction(Lib_DictClear, "dict_clear");
 
-	DefineConstNumber("INI_SUCCESS", INI_SUCCESS);
-	DefineConstNumber("INI_NEW_KEY", INI_NEW_KEY);
-	DefineConstNumber("INI_NEW_SECTION", INI_NEW_SECTION);
+	Tiny_DefineConstNumber("INI_SUCCESS", INI_SUCCESS);
+	Tiny_DefineConstNumber("INI_NEW_KEY", INI_NEW_KEY);
+	Tiny_DefineConstNumber("INI_NEW_SECTION", INI_NEW_SECTION);
 
-	DefineConstNumber("INI_NO_SECTION", INI_NO_SECTION);
-	DefineConstNumber("INI_NO_KEY", INI_NO_KEY);
+	Tiny_DefineConstNumber("INI_NO_SECTION", INI_NO_SECTION);
+	Tiny_DefineConstNumber("INI_NO_KEY", INI_NO_KEY);
 	
-	BindForeignFunction(Lib_IniNew, "ini_new");
-	BindForeignFunction(Lib_IniParse, "ini_parse");
+	Tiny_BindForeignFunction(Lib_IniNew, "ini_new");
+	Tiny_BindForeignFunction(Lib_IniParse, "ini_parse");
 
-	BindForeignFunction(Lib_IniGet, "ini_get");
-	BindForeignFunction(Lib_IniSet, "ini_set");
-	BindForeignFunction(Lib_IniDelete, "ini_delete");
+	Tiny_BindForeignFunction(Lib_IniGet, "ini_get");
+	Tiny_BindForeignFunction(Lib_IniSet, "ini_set");
+	Tiny_BindForeignFunction(Lib_IniDelete, "ini_delete");
 
-	BindForeignFunction(Lib_IniSections, "ini_sections");
-	BindForeignFunction(Lib_IniName, "ini_name");
-	BindForeignFunction(Lib_IniKeys, "ini_keys");
+	Tiny_BindForeignFunction(Lib_IniSections, "ini_sections");
+	Tiny_BindForeignFunction(Lib_IniName, "ini_name");
+	Tiny_BindForeignFunction(Lib_IniKeys, "ini_keys");
 
-	BindForeignFunction(Lib_IniString, "ini_string");
+	Tiny_BindForeignFunction(Lib_IniString, "ini_string");
 
-	BindForeignFunction(Strcat, "strcat");
-	BindForeignFunction(Lib_Ston, "ston");
-	BindForeignFunction(Lib_Ntos, "ntos");
+	Tiny_BindForeignFunction(Strcat, "strcat");
+	Tiny_BindForeignFunction(Lib_Ston, "ston");
+	Tiny_BindForeignFunction(Lib_Ntos, "ntos");
 	
-	BindForeignFunction(Lib_Time, "time");
-	BindForeignFunction(SeedRand, "srand");
-	BindForeignFunction(Rand, "rand");
+	Tiny_BindForeignFunction(Lib_Time, "time");
+	Tiny_BindForeignFunction(SeedRand, "srand");
+	Tiny_BindForeignFunction(Rand, "rand");
 
-	BindForeignFunction(Lib_Floor, "floor");
-	BindForeignFunction(Lib_Ceil, "ceil");
+	Tiny_BindForeignFunction(Lib_Floor, "floor");
+	Tiny_BindForeignFunction(Lib_Ceil, "ceil");
 
-	BindForeignFunction(Lib_PerfCount, "perf_count");
-	BindForeignFunction(Lib_PerfFreq, "perf_freq");
-	BindForeignFunction(Lib_Sleep, "sleep");
+	Tiny_BindForeignFunction(Lib_PerfCount, "perf_count");
+	Tiny_BindForeignFunction(Lib_PerfFreq, "perf_freq");
+	Tiny_BindForeignFunction(Lib_Sleep, "sleep");
 
-	BindForeignFunction(Lib_Input, "input");
-	BindForeignFunction(Lib_Print, "print");
-	BindForeignFunction(Lib_Printf, "printf");
+	Tiny_BindForeignFunction(Lib_Input, "input");
+	Tiny_BindForeignFunction(Lib_Print, "print");
+	Tiny_BindForeignFunction(Lib_Printf, "printf");
 
-	BindForeignFunction(Exit, "exit");
+	Tiny_BindForeignFunction(Exit, "exit");
 }
 
 void RunFile(const char* name, FILE* mainScriptFile)
 {
-	ResetCompiler();
-	FileName = name;
-
-	BindStandardLibrary();
-	CompileFile(mainScriptFile);
+	Tiny_ResetCompiler();
 	
-	ResetMachine();
-	RunMachine();
+	BindStandardLibrary();
+	Tiny_CompileFile(name, mainScriptFile);
+	
+	Tiny_ResetMachine();
+	Tiny_RunMachine();
 
-	ResetCompiler();
-	ResetMachine();
+	Tiny_ResetCompiler();
+	Tiny_ResetMachine();
 }
 
 int main(int argc, char* argv[])
