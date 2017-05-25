@@ -11,6 +11,12 @@
 
 const Tiny_Value Tiny_Null = { TINY_VAL_NULL };
 
+static int NumNumbers = 0;
+static double Numbers[MAX_NUMBERS];
+
+static int NumStrings = 0;
+static char Strings[MAX_STRINGS][MAX_TOK_LEN] = { 0 };
+
 void* emalloc(size_t size)
 {
 	void* data = malloc(size);
@@ -32,25 +38,6 @@ char* estrdup(const char* string)
 	return dupString;
 }
 
-#define MAX_PROG_LEN	2048
-#define MAX_CONST_AMT	256
-#define MAX_STACK		1024
-#define MAX_INDIR		1024
-#define MAX_VARS		128
-#define MAX_FUNCS		128
-#define MAX_ARGS		32
-
-typedef unsigned char Word;
-
-Word Program[MAX_PROG_LEN];
-int ProgramLength;
-int ProgramCounter;
-int FramePointer;
-
-Tiny_Object* GCHead;
-int NumObjects;
-int MaxNumObjects;
-
 static void DeleteObject(Tiny_Object* obj)
 {
 	if(obj->type == TINY_VAL_STRING) free(obj->string);
@@ -63,13 +50,19 @@ static void DeleteObject(Tiny_Object* obj)
 	free(obj);
 }
 
-void Tiny_Mark(Tiny_Object* obj)
+static inline bool IsObject(Tiny_Value val)
 {
-	if(!obj) 
-	{
-		printf("attempted to mark null object\n");
-		return;
-	}
+	return val.type == TINY_VAL_STRING || val.type == TINY_VAL_NATIVE;
+}
+
+void Tiny_Mark(Tiny_Value value)
+{
+    if(!IsObject(value))
+        return;
+
+    Tiny_Object* obj = value.obj;
+
+    assert(obj);	
 	
 	if(obj->marked) return;
 	
@@ -82,17 +75,17 @@ void Tiny_Mark(Tiny_Object* obj)
 	obj->marked = 1;
 }
 
-static void MarkAll();
+static void MarkAll(Tiny_StateThread* thread);
 
-static void Sweep()
+static void Sweep(Tiny_StateThread* thread)
 {
-	Tiny_Object** object = &GCHead;
+	Tiny_Object** object = &thread->gcHead;
 	while(*object)
 	{
 		if(!(*object)->marked)
 		{
 			Tiny_Object* unreached = *object;
-			--NumObjects;
+			--thread->numObjects;
 			*object = unreached->next;
 			DeleteObject(unreached);
 		}
@@ -104,30 +97,30 @@ static void Sweep()
 	}
 }
 
-static void GarbageCollect()
+static void GarbageCollect(Tiny_StateThread* thread)
 {
-	MarkAll();
-	Sweep();
-	MaxNumObjects = NumObjects * 2;
+	MarkAll(thread);
+	Sweep(thread);
+	thread->maxNumObjects = thread->numObjects * 2;
 }
 
-static Tiny_Object* NewObject(Tiny_ValueType type)
+static Tiny_Object* NewObject(Tiny_StateThread* thread, Tiny_ValueType type)
 {
 	Tiny_Object* obj = emalloc(sizeof(Tiny_Object));
 	
 	obj->type = type;
-	obj->next = GCHead;
-	GCHead = obj;
+	obj->next = thread->gcHead;
+	thread->gcHead = obj;
 	obj->marked = 0;
 	
-	NumObjects++;
+	thread->numObjects++;
 	
 	return obj;
 }
 
-Tiny_Value Tiny_NewNative(void* ptr, const Tiny_NativeProp* prop)
+Tiny_Value Tiny_NewNative(Tiny_StateThread* thread, void* ptr, const Tiny_NativeProp* prop)
 {
-	Tiny_Object* obj = NewObject(TINY_VAL_NATIVE);
+	Tiny_Object* obj = NewObject(thread, TINY_VAL_NATIVE);
 	
 	obj->nat.addr = ptr;
 	obj->nat.prop = prop;
@@ -235,9 +228,9 @@ Tiny_Value Tiny_NewNumber(double value)
 	return val;
 }
 
-Tiny_Value Tiny_NewString(char* string)
+Tiny_Value Tiny_NewString(Tiny_StateThread* thread, char* string)
 {
-	Tiny_Object* obj = NewObject(TINY_VAL_STRING);
+	Tiny_Object* obj = NewObject(thread, TINY_VAL_STRING);
 	obj->string = string;
 
 	Tiny_Value val;
@@ -248,257 +241,107 @@ Tiny_Value Tiny_NewString(char* string)
 	return val;
 }
 
-typedef enum
-{
-	SYM_GLOBAL,
-	SYM_LOCAL,
-	SYM_CONST,
-	SYM_FUNCTION,
-	SYM_FOREIGN_FUNCTION
-} SymbolType;
-
-typedef struct sSymbol
-{
-	struct sSymbol* next;
-	SymbolType type;
-	char* name;
-
-	union
-	{
-		struct
-		{
-			bool initialized;	// Has the variable been assigned to?
-			bool scopeEnded;	// If true, then this variable cannot be accessed anymore
-			int scope, index;
-		} var; // Used for both local and global
-
-		struct
-		{
-			int index;			// Numbers and strings map to unique indices into the Constants array so
-								// there's no need to distinguish between them at the symbol level
-		} constant;
-
-		struct
-		{
-			int index;
-			int nargs, nlocals;
-
-			struct sSymbol* argsHead;
-			struct sSymbol* localsHead;
-		} func;
-
-		struct
-		{
-			Tiny_ForeignFunction callee;
-			int index;
-		} foreignFunc;
-	};
-} Symbol;
-
-Tiny_Value RetVal;
-
-Tiny_Value Stack[MAX_STACK];
-int StackSize = 0;
-
-int IndirStack[MAX_INDIR];
-int IndirStackSize;
-
-int NumGlobalVars = 0;
-Tiny_Value* GlobalVars = NULL;
-
-int NumFunctions = 0;
-int* FunctionPcs = NULL;
-
-int NumForeignFunctions = 0;
-Tiny_ForeignFunction* ForeignFunctions = NULL;
-
-int CurrScope = 0;
-Symbol* CurrFunc = NULL;
-Symbol* GlobalSymbols = NULL;
-
-const char* FileName = NULL;
-int LineNumber = 1;
-
-typedef enum
-{
-	CST_NUM,
-	CST_STR
-} ConstType;
-
-typedef struct
-{
-	ConstType type;
-	int index;
-	union
-	{
-		char* string;
-		double number;
-	};
-} ConstInfo;
-
-ConstInfo* Constants;
-int ConstantCapacity = 1;
-int ConstantAmount = 0;
-
-ConstInfo* NewConst(ConstType type)
-{
-	if(ConstantAmount + 1 >= ConstantCapacity)
-	{
-		ConstantCapacity *= 2;
-		Constants = erealloc(Constants, ConstantCapacity * sizeof(ConstInfo));
-	}
-
-	ConstInfo* c = &Constants[ConstantAmount++];
-	
-	c->type = type;
-	c->index = ConstantAmount - 1;
-
-	return c;
-}
-
 static void Symbol_destroy(Symbol* sym);
 
-void Tiny_ResetCompiler(void)
+Tiny_State* Tiny_CreateState(void)
 {
-	// Reset position
-	FileName = "unknown";
-	LineNumber = 0;
+    Tiny_State* state = emalloc(sizeof(Tiny_State));
 
+    state->programLength = 0;
+
+    state->numGlobalVars = 0;
+    
+    state->numFunctions = 0;
+    state->functionPcs = NULL;
+
+    state->numForeignFunctions = 0;
+    state->foreignFunctions = NULL;
+
+    state->currScope = 0;
+    state->currFunc = NULL;
+    state->globalSymbols = NULL;
+
+    state->fileName = NULL;
+    state->lineNumber = 0;
+
+    return state;
+}
+
+void Tiny_DeleteState(Tiny_State* state)
+{
 	// Delete all symbols
-	while (GlobalSymbols)
+	while (state->globalSymbols)
 	{
-		Symbol* next = GlobalSymbols->next;
+		Symbol* next = state->globalSymbols->next;
 
-		Symbol_destroy(GlobalSymbols);
-		GlobalSymbols = next;
+		Symbol_destroy(state->globalSymbols);
+		state->globalSymbols = next;
 	}
 
-	// Destroy and reset constants
-	for (int i = 0; i < ConstantAmount; ++i)
-	{
-		if (Constants[i].type == CST_STR)
-			free(Constants[i].string);
-	}
-
-	free(Constants);
-	Constants = NULL;
-
-	ConstantAmount = 0;
-	ConstantCapacity = 1;
-
-	// Reset scope
-	CurrFunc = NULL;
-	CurrScope = 0;
-
-	// Reset function and variable data
-	NumGlobalVars = 0;
-	free(GlobalVars);
-
-	NumFunctions = 0;
-	free(FunctionPcs);
-
-	NumForeignFunctions = 0;
-	free(ForeignFunctions);
+    // Reset function and variable data
+	free(state->functionPcs);
+	free(state->foreignFunctions);
 }
 
-static inline bool IsObject(Tiny_Value val)
+void MarkAll(Tiny_StateThread* thread)
 {
-	return val.type == TINY_VAL_STRING || val.type == TINY_VAL_NATIVE;
+    assert(thread->state);
+
+    Tiny_Mark(thread->retVal);
+
+	for (int i = 0; i < thread->sp; ++i)
+        Tiny_Mark(thread->stack[i]);
+
+    for (int i = 0; i < thread->state->numGlobalVars; ++i)
+        Tiny_Mark(thread->globalVars[i]);
 }
 
-void MarkAll()
-{
-	if (IsObject(RetVal))
-		Tiny_Mark(RetVal.obj);
-
-	for (int i = 0; i < StackSize; ++i)
-	{
-		if (IsObject(Stack[i]))
-			Tiny_Mark(Stack[i].obj);
-	}
-
-	for (int i = 0; i < NumGlobalVars; ++i)
-	{
-		if (IsObject(Stack[i]))
-			Tiny_Mark(GlobalVars[i].obj);
-	}
-}
-
-void Tiny_ResetMachine()
-{
-	RetVal.type = TINY_VAL_NUM;
-	RetVal.number = -1;
-
-	StackSize = 0;
-	FramePointer = 0;
-	IndirStackSize = 0;
-	
-	while (GCHead)
-	{
-		Tiny_Object* next = GCHead->next;
-		DeleteObject(GCHead);
-		GCHead = next;
-	}
-
-	NumObjects = 0;
-	MaxNumObjects = 8;
-	ProgramCounter = -1;
-}
-
-static void GenerateCode(Word inst)
+static void GenerateCode(Tiny_State* state, Word inst)
 {	
-	assert(ProgramLength < MAX_PROG_LEN && "Program Overflow!");
-	Program[ProgramLength++] = inst;
+	assert(state->programLength < MAX_PROG_LEN && "Program Overflow!");
+    state->program[state->programLength++] = inst;
 }
 
-static void GenerateInt(int value)
+static void GenerateInt(Tiny_State* state, int value)
 {
 	Word* wp = (Word*)(&value);
 	for(int i = 0; i < 4; ++i)
-		GenerateCode(*wp++);
+		GenerateCode(state, *wp++);
 }
 
-static void GenerateIntAt(int value, int pc)
+static void GenerateIntAt(Tiny_State* state, int value, int pc)
 {
 	Word* wp = (Word*)(&value);
 	for(int i = 0; i < 4; ++i)
-		Program[pc + i] = *wp++;
+		state->program[pc + i] = *wp++;
 }
 
 static int RegisterNumber(double value)
 {
-	for(int i = 0; i < ConstantAmount; ++i)
-	{
-		if(Constants[i].type == CST_NUM)
-		{
-			if(Constants[i].number == value)
-				return i;
-		}
-	}
-	
-	ConstInfo* num = NewConst(CST_NUM);
-	
-	num->number = value;
+    for(int i = 0; i < NumNumbers; ++i)
+    {
+        if(Numbers[i] == value)
+            return i;
+    }
 
-	return num->index;
+    assert(NumNumbers < MAX_NUMBERS);
+    Numbers[NumNumbers++] = value;
+
+    return NumNumbers - 1;
 }
 
 static int RegisterString(const char* string)
 {
-	for(int i = 0; i < ConstantAmount; ++i)
-	{
-		if(Constants[i].type == CST_STR)
-		{
-			if(strcmp(Constants[i].string, string) == 0)
-				return i;
-		}
-	}
-	
-	ConstInfo* str = NewConst(CST_STR);
-	
-	str->string = estrdup(string);
-	
-	return str->index;
+    for(int i = 0; i < NumStrings; ++i)
+    {
+        if(strcmp(Strings[i], string) == 0)
+            return i;
+    }
+
+    assert(NumStrings < MAX_STRINGS);
+    strcpy(Strings[NumStrings++], string);
+
+    return NumStrings - 1; 
 }
 
 static Symbol* Symbol_create(SymbolType type, const char* name)
@@ -547,37 +390,37 @@ static void Symbol_destroy(Symbol* sym)
 	free(sym);
 }
 
-static void OpenScope()
+static void OpenScope(Tiny_State* state)
 {
-	++CurrScope;
+	++state->currScope;
 }
 
-static void CloseScope()
+static void CloseScope(Tiny_State* state)
 {
-	if (CurrFunc)
+	if (state->currFunc)
 	{
-		Symbol* node = CurrFunc->func.localsHead;
+		Symbol* node = state->currFunc->func.localsHead;
 
 		while (node)
 		{
 			assert(node->type == SYM_LOCAL);
 
-			if (node->var.scope == CurrScope)
+			if (node->var.scope == state->currScope)
 				node->var.scopeEnded = true;
 
 			node = node->next;
 		}
 	}
 
-	--CurrScope;
+	--state->currScope;
 }
 
-static Symbol* ReferenceVariable(const char* name)
+static Symbol* ReferenceVariable(Tiny_State* state, const char* name)
 {
-	if (CurrFunc)
+	if (state->currFunc)
 	{
 		// Check local variables
-		Symbol* node = CurrFunc->func.localsHead;
+		Symbol* node = state->currFunc->func.localsHead;
 
 		while (node)
 		{
@@ -591,7 +434,7 @@ static Symbol* ReferenceVariable(const char* name)
 		}
 
 		// Check arguments
-		node = CurrFunc->func.argsHead;
+		node = state->currFunc->func.argsHead;
 
 		while (node)
 		{
@@ -605,7 +448,7 @@ static Symbol* ReferenceVariable(const char* name)
 	}
 
 	// Check global variables/constants
-	Symbol* node = GlobalSymbols;
+	Symbol* node = state->globalSymbols;
 
 	while (node)
 	{
@@ -622,9 +465,9 @@ static Symbol* ReferenceVariable(const char* name)
 	return NULL;
 }
 
-static Symbol* DeclareGlobalVar(const char* name)
+static Symbol* DeclareGlobalVar(Tiny_State* state, const char* name)
 {
-	Symbol* node = ReferenceVariable(name);
+	Symbol* node = ReferenceVariable(state, name);
 
 	while (node)
 	{
@@ -640,23 +483,23 @@ static Symbol* DeclareGlobalVar(const char* name)
 	Symbol* newNode = Symbol_create(SYM_GLOBAL, name);
 
 	newNode->var.initialized = false;
-	newNode->var.index = NumGlobalVars;
+	newNode->var.index = state->numGlobalVars;
 	newNode->var.scope = 0;					// Global variable scope don't matter
 	newNode->var.scopeEnded = true;
 
-	newNode->next = GlobalSymbols;
-	GlobalSymbols = newNode;
+	newNode->next = state->globalSymbols;
+	state->globalSymbols = newNode;
 
-	NumGlobalVars += 1;
+	state->numGlobalVars += 1;
 
 	return newNode;
 }
 
-static Symbol* DeclareArgument(const char* name)
+static Symbol* DeclareArgument(Tiny_State* state, const char* name)
 {
-	assert(CurrFunc);
+	assert(state->currFunc);
 
-	Symbol* node = CurrFunc->func.argsHead;
+	Symbol* node = state->currFunc->func.argsHead;
 
 	while (node)
 	{
@@ -664,7 +507,7 @@ static Symbol* DeclareArgument(const char* name)
 
 		if (strcmp(node->name, name) == 0)
 		{
-			fprintf(stderr, "Function '%s' takes multiple arguments with the same name '%s'.\n", CurrFunc->name, name);
+			fprintf(stderr, "Function '%s' takes multiple arguments with the same name '%s'.\n", state->currFunc->name, name);
 			exit(1);
 		}
 
@@ -675,22 +518,22 @@ static Symbol* DeclareArgument(const char* name)
 
 	newNode->var.initialized = false;
 	newNode->var.scopeEnded = false;
-	newNode->var.index = -(CurrFunc->func.nargs + 1);
+	newNode->var.index = -(state->currFunc->func.nargs + 1);
 	newNode->var.scope = 0;								// These should be accessible anywhere in the function
 
-	newNode->next = CurrFunc->func.argsHead;
-	CurrFunc->func.argsHead = newNode;
+	newNode->next = state->currFunc->func.argsHead;
+	state->currFunc->func.argsHead = newNode;
 
-	CurrFunc->func.nargs += 1;
+	state->currFunc->func.nargs += 1;
 	
 	return newNode;
 }
 
-static Symbol* DeclareLocal(const char* name)
+static Symbol* DeclareLocal(Tiny_State* state, const char* name)
 {
-	assert(CurrFunc);
+	assert(state->currFunc);
 
-	Symbol* node = CurrFunc->func.localsHead;
+	Symbol* node = state->currFunc->func.localsHead;
 
 	while (node)
 	{
@@ -698,7 +541,7 @@ static Symbol* DeclareLocal(const char* name)
 
 		if (!node->var.scopeEnded && strcmp(node->name, name) == 0)
 		{
-			fprintf(stderr, "Attempted to declare multiple local variables in the same scope '%s' with the same name '%s'.\n", CurrFunc->name, name);
+			fprintf(stderr, "Attempted to declare multiple local variables in the same scope '%s' with the same name '%s'.\n", state->currFunc->name, name);
 			exit(1);
 		}
 
@@ -709,20 +552,20 @@ static Symbol* DeclareLocal(const char* name)
 
 	newNode->var.initialized = false;
 	newNode->var.scopeEnded = false;
-	newNode->var.index = CurrFunc->func.nlocals;
-	newNode->var.scope = CurrScope;
+	newNode->var.index = state->currFunc->func.nlocals;
+	newNode->var.scope = state->currScope;
 
-	newNode->next = CurrFunc->func.localsHead;
-	CurrFunc->func.localsHead = newNode;
+	newNode->next = state->currFunc->func.localsHead;
+	state->currFunc->func.localsHead = newNode;
 
-	CurrFunc->func.nlocals += 1;
+	state->currFunc->func.nlocals += 1;
 
 	return newNode;
 }
 
-static Symbol* DeclareConst(const char* name, int index)
+static Symbol* DeclareConst(Tiny_State* state, const char* name, bool isString, int index)
 {
-	Symbol* node = ReferenceVariable(name);
+	Symbol* node = ReferenceVariable(state, name);
 
 	if (node && (node->type != SYM_LOCAL && node->type != SYM_FUNCTION && node->type != SYM_FOREIGN_FUNCTION))
 	{
@@ -730,39 +573,40 @@ static Symbol* DeclareConst(const char* name, int index)
 		exit(1);
 	}
 
-	if (CurrFunc)
+	if (state->currFunc)
 		fprintf(stderr, "Warning: Constant '%s' declared inside function bodies will still have global scope.\n", name);
 	
 	Symbol* newNode = Symbol_create(SYM_CONST, name);
 
 	newNode->constant.index = index;
+    newNode->constant.isString = isString;
 
-	newNode->next = GlobalSymbols;
-	GlobalSymbols = newNode;
+	newNode->next = state->globalSymbols;
+	state->globalSymbols = newNode;
 
 	return node;
 }
 
-static Symbol* DeclareFunction(const char* name)
+static Symbol* DeclareFunction(Tiny_State* state, const char* name)
 {
 	Symbol* newNode = Symbol_create(SYM_FUNCTION, name);
 
-	newNode->func.index = NumFunctions;
+	newNode->func.index = state->numFunctions;
 	newNode->func.nargs = newNode->func.nlocals = 0;
 	newNode->func.argsHead = NULL;
 	newNode->func.localsHead = NULL;
 
-	newNode->next = GlobalSymbols;
-	GlobalSymbols = newNode;
+	newNode->next = state->globalSymbols;
+	state->globalSymbols = newNode;
 
-	NumFunctions += 1;
+	state->numFunctions += 1;
 
 	return newNode;
 }
 
-static Symbol* ReferenceFunction(const char* name)
+static Symbol* ReferenceFunction(Tiny_State* state, const char* name)
 {
-	Symbol* node = GlobalSymbols;
+	Symbol* node = state->globalSymbols;
 
 	while (node)
 	{
@@ -776,36 +620,23 @@ static Symbol* ReferenceFunction(const char* name)
 	return NULL;
 }
 
-int GetProcId(const char* name)
-{
-	Symbol* node = GlobalSymbols;
+static void ExecuteCycle(Tiny_StateThread* thread);
+static void DoPushIndir(Tiny_StateThread* thread, int nargs);
 
-	while (node)
-	{
-		if (node->type == SYM_FUNCTION && strcmp(node->name, name) == 0)
-			return node->func.index;
-	}
-
-	return -1;
-}
-
-static void ExecuteCycle(void);
-static void DoPushIndir(int nargs);
-
-static void CallProc(int id, int nargs)
+/*static void CallProc(int id, int nargs)
 {
 	if(id < 0) return;
 	
 	DoPushIndir(nargs);
 	ProgramCounter = FunctionPcs[id];
 	
-	while(ProgramCounter < ProgramLength && ProgramCounter >= 0)
+	while(ProgramCounter < state->programLength && ProgramCounter >= 0)
 		ExecuteCycle();
-}
+}*/
 
-void Tiny_BindForeignFunction(Tiny_ForeignFunction func, const char* name)
+void Tiny_BindForeignFunction(Tiny_State* state, Tiny_ForeignFunction func, const char* name)
 {
-	Symbol* node = GlobalSymbols;
+	Symbol* node = state->globalSymbols;
 
 	while (node)
 	{
@@ -820,23 +651,23 @@ void Tiny_BindForeignFunction(Tiny_ForeignFunction func, const char* name)
 
 	Symbol* newNode = Symbol_create(SYM_FOREIGN_FUNCTION, name);
 
-	newNode->foreignFunc.index = NumForeignFunctions;
+	newNode->foreignFunc.index = state->numForeignFunctions;
 	newNode->foreignFunc.callee = func;
 
-	newNode->next = GlobalSymbols;
-	GlobalSymbols = newNode;
+	newNode->next = state->globalSymbols;
+	state->globalSymbols = newNode;
 
-	NumForeignFunctions += 1;
+	state->numForeignFunctions += 1;
 }
 
-void Tiny_DefineConstNumber(const char* name, double number)
+void Tiny_BindConstNumber(Tiny_State* state, const char* name, double number)
 {
-	DeclareConst(name, RegisterNumber(number));
+	DeclareConst(state, name, false, RegisterNumber(number));
 }
 
-void Tiny_DefineConstString(const char* name, const char* string)
+void Tiny_BindConstString(Tiny_State* state, const char* name, const char* string)
 {
-	DeclareConst(name, RegisterString(string));
+	DeclareConst(state, name, true, RegisterString(string));
 }
 
 enum
@@ -845,7 +676,9 @@ enum
 	OP_PUSH_TRUE,
 	OP_PUSH_FALSE,
 
-	OP_PUSH,
+	OP_PUSH_NUMBER,
+    OP_PUSH_STRING,
+
 	OP_POP,
 	
 	OP_ADD,
@@ -889,41 +722,46 @@ enum
 	OP_HALT
 };
 
-int ReadInteger()
+static int ReadInteger(Tiny_StateThread* thread)
 {
+    assert(thread->state);
+
 	int val = 0;
 	Word* wp = (Word*)(&val);
 	for(int i = 0; i < 4; ++i)
 	{
-		*wp = Program[ProgramCounter++];
+		*wp = thread->state->program[thread->pc++];
 		++wp;
 	}
+
 	return val;
 }
 
-inline void DoPush(Tiny_Value value)
+inline void DoPush(Tiny_StateThread* thread, Tiny_Value value)
 {
-	if(StackSize >= MAX_STACK) 
+	if(thread->sp >= MAX_STACK) 
 	{
-		fprintf(stderr, "Stack Overflow at PC: %i! (Stack size: %i)", ProgramCounter, StackSize);
+		fprintf(stderr, "Stack Overflow at PC: %i! (Stack size: %i)", thread->pc, thread->sp);
 		exit(1);
 	}
 
-	Stack[StackSize++] = value;
+	thread->stack[thread->sp++] = value;
 }
 
-inline Tiny_Value DoPop()
+inline Tiny_Value DoPop(Tiny_StateThread* thread)
 {
-	if(StackSize <= 0) 
+    assert(thread->state);
+
+	if(thread->sp <= 0) 
 	{
-		fprintf(stderr, "Stack Underflow at PC: %i (Inst %i)!", ProgramCounter, Program[ProgramCounter]);
+		fprintf(stderr, "Stack Underflow at PC: %i (Inst %i)!", thread->pc, thread->state->program[thread->pc]);
 		exit(1);
 	}
 
-	return Stack[--StackSize];
+	return thread->stack[--thread->sp];
 }
 
-void DoRead()
+static void DoRead(Tiny_StateThread* thread)
 {
 	char* buffer = emalloc(1);
 	size_t bufferLength = 0;
@@ -946,7 +784,7 @@ void DoRead()
 	
 	buffer[i] = '\0';
 	
-	Tiny_Object* obj = NewObject(TINY_VAL_STRING);
+	Tiny_Object* obj = NewObject(thread, TINY_VAL_STRING);
 	obj->string = buffer;
 
 	Tiny_Value val;
@@ -954,84 +792,85 @@ void DoRead()
 	val.type = TINY_VAL_STRING;
 	val.obj = obj;
 
-	DoPush(val);
+	DoPush(thread, val);
 }
 
-void DoPushIndir(int nargs)
+void DoPushIndir(Tiny_StateThread* thread, int nargs)
 {
-	IndirStack[IndirStackSize++] = nargs;
-	IndirStack[IndirStackSize++] = FramePointer;
-	IndirStack[IndirStackSize++] = ProgramCounter;
+	thread->indirStack[thread->indirStackSize++] = nargs;
+	thread->indirStack[thread->indirStackSize++] = thread->fp;
+	thread->indirStack[thread->indirStackSize++] = thread->pc;
 
-	FramePointer = StackSize;
+	thread->fp = thread->sp;
 }
 
-void DoPopIndir()
+void DoPopIndir(Tiny_StateThread* thread)
 {
-	StackSize = FramePointer;
+    thread->sp = thread->fp;
 
-	int prevPc = IndirStack[--IndirStackSize];
-	int prevFp = IndirStack[--IndirStackSize];
-	int nargs = IndirStack[--IndirStackSize];
+	int prevPc = thread->indirStack[--thread->indirStackSize];
+	int prevFp = thread->indirStack[--thread->indirStackSize];
+	int nargs = thread->indirStack[--thread->indirStackSize];
 	
-	StackSize -= nargs;
-	FramePointer = prevFp;
-	ProgramCounter = prevPc;
+	thread->sp -= nargs;
+	thread->fp = prevFp;
+	thread->pc = prevPc;
 }
 
-void ExecuteCycle()
+void ExecuteCycle(Tiny_StateThread* thread)
 {
-	switch(Program[ProgramCounter])
+    assert(thread->state);
+    
+    const Tiny_State* state = thread->state;
+        
+	switch(state->program[thread->pc])
 	{
 		case OP_PUSH_NULL:
 		{
-			++ProgramCounter;
-			DoPush(Tiny_Null);
+			++thread->pc;
+			DoPush(thread, Tiny_Null);
 		} break;
 		
 		case OP_PUSH_TRUE:
 		{
-			++ProgramCounter;
-			DoPush(Tiny_NewBool(true));
+			++thread->pc;
+			DoPush(thread, Tiny_NewBool(true));
 		} break;
 
 		case OP_PUSH_FALSE:
 		{
-			++ProgramCounter;
-			DoPush(Tiny_NewBool(false));
+			++thread->pc;
+			DoPush(thread, Tiny_NewBool(false));
 		} break;
 
-		case OP_PUSH:
+        case OP_PUSH_NUMBER:
 		{
-			++ProgramCounter;
-			int cidx = ReadInteger();
-			ConstInfo cip = Constants[cidx];
+			++thread->pc;
+            
+            int numberIndex = ReadInteger(thread);
 
-			if (cip.type == CST_NUM)
-				DoPush(Tiny_NewNumber(cip.number));
-			else if (cip.type == CST_STR)
-				DoPush(Tiny_NewString(estrdup(cip.string)));
+            DoPush(thread, Tiny_NewNumber(Numbers[numberIndex]));
 		} break;
 		
 		case OP_POP:
 		{
-			DoPop();
-			++ProgramCounter;
+			DoPop(thread);
+			++thread->pc;
 		} break;
 		
-		#define BIN_OP(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(); Tiny_Value val1 = DoPop(); DoPush(Tiny_NewNumber(val1.number operator val2.number)); ++ProgramCounter; } break;
-		#define BIN_OP_INT(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(); Tiny_Value val1 = DoPop(); DoPush(Tiny_NewNumber((int)val1.number operator (int)val2.number)); ++ProgramCounter; } break;
+		#define BIN_OP(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(thread); Tiny_Value val1 = DoPop(thread); DoPush(thread, Tiny_NewNumber(val1.number operator val2.number)); ++thread->pc; } break;
+		#define BIN_OP_INT(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(thread); Tiny_Value val1 = DoPop(thread); DoPush(thread, Tiny_NewNumber((int)val1.number operator (int)val2.number)); ++thread->pc; } break;
 
-		#define REL_OP(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(); Tiny_Value val1 = DoPop(); DoPush(Tiny_NewBool(val1.number operator val2.number)); ++ProgramCounter; } break;
+		#define REL_OP(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(thread); Tiny_Value val1 = DoPop(thread); DoPush(thread, Tiny_NewBool(val1.number operator val2.number)); ++thread->pc; } break;
 
 		case OP_MUL:
 		{
-			Tiny_Value val2 = DoPop();
-			Tiny_Value val1 = DoPop();
+			Tiny_Value val2 = DoPop(thread);
+			Tiny_Value val1 = DoPop(thread);
 
-			DoPush(Tiny_NewNumber(val1.number * val2.number));
+			DoPush(thread, Tiny_NewNumber(val1.number * val2.number));
 
-			++ProgramCounter;
+			++thread->pc;
 		} break;
 
 		BIN_OP(ADD, +)
@@ -1052,177 +891,169 @@ void ExecuteCycle()
 
 		case OP_EQU:
 		{
-			++ProgramCounter;
-			Tiny_Value b = DoPop();
-			Tiny_Value a = DoPop();
+			++thread->pc;
+			Tiny_Value b = DoPop(thread);
+			Tiny_Value a = DoPop(thread);
 
 			if (a.type != b.type)
-				DoPush(Tiny_NewBool(false));
+				DoPush(thread, Tiny_NewBool(false));
 			else
 			{
 				if (a.type == TINY_VAL_NULL)
-					DoPush(Tiny_NewBool(true));
+					DoPush(thread, Tiny_NewBool(true));
 				else if (a.type == TINY_VAL_BOOL)
-					DoPush(Tiny_NewBool(a.boolean == b.boolean));
+					DoPush(thread, Tiny_NewBool(a.boolean == b.boolean));
 				else if (a.type == TINY_VAL_NUM)
-					DoPush(Tiny_NewBool(a.number == b.number));
+					DoPush(thread, Tiny_NewBool(a.number == b.number));
 				else if (a.type == TINY_VAL_STRING)
-					DoPush(Tiny_NewBool(strcmp(a.obj->string, b.obj->string) == 0));
+					DoPush(thread, Tiny_NewBool(strcmp(a.obj->string, b.obj->string) == 0));
 				else if (a.type == TINY_VAL_NATIVE)
-					DoPush(Tiny_NewBool(a.obj->nat.addr == b.obj->nat.addr));
+					DoPush(thread, Tiny_NewBool(a.obj->nat.addr == b.obj->nat.addr));
 			}
 		} break;
 
 		case OP_LOG_NOT:
 		{
-			++ProgramCounter;
-			Tiny_Value a = DoPop();
+			++thread->pc;
+			Tiny_Value a = DoPop(thread);
 
-			DoPush(Tiny_NewBool(!Tiny_ExpectBool(a)));
+			DoPush(thread, Tiny_NewBool(!Tiny_ExpectBool(a)));
 		} break;
 
 		case OP_LOG_AND:
 		{
-			++ProgramCounter;
-			Tiny_Value b = DoPop();
-			Tiny_Value a = DoPop();
+			++thread->pc;
+			Tiny_Value b = DoPop(thread);
+			Tiny_Value a = DoPop(thread);
 
-			DoPush(Tiny_NewBool(Tiny_ExpectBool(a) && Tiny_ExpectBool(b)));
+			DoPush(thread, Tiny_NewBool(Tiny_ExpectBool(a) && Tiny_ExpectBool(b)));
 		} break;
 
 		case OP_LOG_OR:
 		{
-			++ProgramCounter;
-			Tiny_Value b = DoPop();
-			Tiny_Value a = DoPop();
+			++thread->pc;
+			Tiny_Value b = DoPop(thread);
+			Tiny_Value a = DoPop(thread);
 
-			DoPush(Tiny_NewBool(Tiny_ExpectBool(a) || Tiny_ExpectBool(b)));
+			DoPush(thread, Tiny_NewBool(Tiny_ExpectBool(a) || Tiny_ExpectBool(b)));
 		} break;
 
 		case OP_PRINT:
 		{
-			Tiny_Value val = DoPop();
+			Tiny_Value val = DoPop(thread);
 			if(val.type == TINY_VAL_NUM) printf("%g\n", val.number);
 			else if (val.obj->type == TINY_VAL_STRING) printf("%s\n", val.obj->string);
 			else if (val.obj->type == TINY_VAL_NATIVE) printf("<native at %p>\n", val.obj->nat.addr);
-			++ProgramCounter;
+			++thread->pc;
 		} break;
 
 		case OP_SET:
 		{
-			++ProgramCounter;
-			int varIdx = ReadInteger();
-			GlobalVars[varIdx] = DoPop();
+			++thread->pc;
+			int varIdx = ReadInteger(thread);
+			thread->globalVars[varIdx] = DoPop(thread);
 		} break;
 		
 		case OP_GET:
 		{
-			++ProgramCounter;
-			int varIdx = ReadInteger();
-			DoPush(GlobalVars[varIdx]); 
+			++thread->pc;
+			int varIdx = ReadInteger(thread);
+			DoPush(thread, thread->globalVars[varIdx]); 
 		} break;
 		
 		case OP_READ:
 		{
-			DoRead();
-			++ProgramCounter;
+			DoRead(thread);
+			++thread->pc;
 		} break;
 		
 		case OP_GOTO:
 		{
-			++ProgramCounter;
-			int newPc = ReadInteger();
-			ProgramCounter = newPc;
+			++thread->pc;
+			int newPc = ReadInteger(thread);
+			thread->pc = newPc;
 		} break;
 		
 		case OP_GOTOZ:
 		{
-			++ProgramCounter;
-			int newPc = ReadInteger();
+			++thread->pc;
+			int newPc = ReadInteger(thread);
 			
-			Tiny_Value val = DoPop();
+			Tiny_Value val = DoPop(thread);
 
 			if(!Tiny_ExpectBool(val))
-				ProgramCounter = newPc;
+				thread->pc = newPc;
 		} break;
 		
 		case OP_CALL:
 		{
-			++ProgramCounter;
-			int nargs = ReadInteger();
-			int pcIdx = ReadInteger();
+			++thread->pc;
+			int nargs = ReadInteger(thread);
+			int pcIdx = ReadInteger(thread);
 			
-			DoPushIndir(nargs);
-			ProgramCounter = FunctionPcs[pcIdx];
+			DoPushIndir(thread, nargs);
+			thread->pc = state->functionPcs[pcIdx];
 		} break;
 		
 		case OP_RETURN:
 		{
-			RetVal.type = TINY_VAL_NUM;
-			RetVal.number = -1;
+            thread->retVal = Tiny_Null;
 
-			DoPopIndir();
+			DoPopIndir(thread);
 		} break;
 		
 		case OP_RETURN_VALUE:
 		{
-			RetVal = DoPop();
-			DoPopIndir();
+			thread->retVal = DoPop(thread);
+			DoPopIndir(thread);
 		} break;
 		
 		case OP_CALLF:
 		{
-			++ProgramCounter;
+			++thread->pc;
 			
-			int nargs = ReadInteger();
-			int fIdx = ReadInteger();
+			int nargs = ReadInteger(thread);
+			int fIdx = ReadInteger(thread);
 
 			// the state of the stack prior to the function arguments being pushed
-			int prevSize = StackSize - nargs;
+			int prevSize = thread->sp - nargs;
 
-			RetVal = ForeignFunctions[fIdx](&Stack[prevSize], nargs);
+            thread->retVal = state->foreignFunctions[fIdx](&thread->stack[prevSize], nargs);
 			
 			// Resize the stack so that it has the arguments removed
-			StackSize = prevSize;
+			thread->sp = prevSize;
 		} break;
 
 		case OP_GETLOCAL:
 		{
-			++ProgramCounter;
-			int localIdx = ReadInteger();
-			DoPush(Stack[FramePointer + localIdx]);
+			++thread->pc;
+			int localIdx = ReadInteger(thread);
+			DoPush(thread, thread->stack[thread->fp + localIdx]);
 		} break;
 		
 		case OP_SETLOCAL:
 		{
-			++ProgramCounter;
-			int localIdx = ReadInteger();
-			Tiny_Value val = DoPop();
-			Stack[FramePointer + localIdx] = val;
+			++thread->pc;
+			int localIdx = ReadInteger(thread);
+			Tiny_Value val = DoPop(thread);
+			thread->stack[thread->fp + localIdx] = val;
 		} break;
 
 		case OP_GET_RETVAL:
 		{
-			++ProgramCounter;
-			DoPush(RetVal);
+			++thread->pc;
+			DoPush(thread, thread->retVal);
 		} break;
 
 		case OP_HALT:
 		{
-			ProgramCounter = -1;
+			thread->pc = -1;
 		} break;
 	}
 
 	// Only collect garbage in between iterations
-	if (NumObjects >= MaxNumObjects)
-		GarbageCollect();
-}
-
-void Tiny_RunMachine()
-{
-	ProgramCounter = 0;
-	while(ProgramCounter < ProgramLength && ProgramCounter >= 0)
-		ExecuteCycle();
+	if (thread->numObjects >= thread->maxNumObjects)
+		GarbageCollect(thread);
 }
 
 enum
@@ -1262,7 +1093,6 @@ enum
 	TOK_FALSE = -33
 };
 
-#define MAX_TOK_LEN		256
 char TokenBuffer[MAX_TOK_LEN];
 double TokenNumber;
 
@@ -1273,13 +1103,13 @@ int Peek(FILE* in)
 	return c;
 }
 
-int GetToken(FILE* in)
+int GetToken(Tiny_State* state, FILE* in)
 {
 	static int last = ' ';
 	while (isspace(last))
 	{
 		if (last == '\n')
-			++LineNumber;
+			++state->lineNumber;
 
 		last = getc(in);
 	}
@@ -1333,7 +1163,7 @@ int GetToken(FILE* in)
 	if(last == '#')
 	{
 		while(last != '\n' && last != EOF) last = getc(in);
-		return GetToken(in);
+		return GetToken(state, in);
 	}
 
 	if(last == '"')
@@ -1552,8 +1382,6 @@ typedef enum
 	EXP_FOR,
 } ExprType;
 
-#define MAX_READ_WRITE	16
-
 typedef struct sExpr
 {
 	ExprType type;
@@ -1640,39 +1468,39 @@ Expr* Expr_create(ExprType type)
 
 int CurTok;
 
-int GetNextToken(FILE* in)
+int GetNextToken(Tiny_State* state, FILE* in)
 {
-	CurTok = GetToken(in);
+	CurTok = GetToken(state, in);
 	return CurTok;
 }
 
-Expr* ParseExpr(FILE* in);
+Expr* ParseExpr(Tiny_State* state, FILE* in);
 
-static void ExpectToken(int tok, const char* msg)
+static void ExpectToken(const Tiny_State* state, int tok, const char* msg)
 {
 	if (CurTok != tok)
 	{
-		fprintf(stderr, "%s(%i):", FileName, LineNumber);
-		fprintf(stderr, msg);
+		fprintf(stderr, "%s(%i):", state->fileName, state->lineNumber);
+		fprintf(stderr, "%s", msg);
 		putc('\n', stderr);
 
 		exit(1);
 	}
 }
 
-static Expr* ParseIf(FILE* in)
+static Expr* ParseIf(Tiny_State* state, FILE* in)
 {
 	Expr* exp = Expr_create(EXP_IF);
 
-	GetNextToken(in);
+	GetNextToken(state, in);
 
-	exp->ifx.cond = ParseExpr(in);
-	exp->ifx.body = ParseExpr(in);
+	exp->ifx.cond = ParseExpr(state, in);
+	exp->ifx.body = ParseExpr(state, in);
 
 	if (CurTok == TOK_ELSE)
 	{
-		GetNextToken(in);
-		exp->ifx.alt = ParseExpr(in);
+		GetNextToken(state, in);
+		exp->ifx.alt = ParseExpr(state, in);
 	}
 	else
 		exp->ifx.alt = NULL;
@@ -1680,7 +1508,7 @@ static Expr* ParseIf(FILE* in)
 	return exp;
 }
 
-Expr* ParseFactor(FILE* in)
+Expr* ParseFactor(Tiny_State* state, FILE* in)
 {
 	switch(CurTok)
 	{
@@ -1688,7 +1516,7 @@ Expr* ParseFactor(FILE* in)
 		{
 			Expr* exp = Expr_create(EXP_NULL);
 
-			GetNextToken(in);
+			GetNextToken(state, in);
 
 			return exp;
 		} break;
@@ -1700,28 +1528,28 @@ Expr* ParseFactor(FILE* in)
 
 			exp->boolean = CurTok == TOK_TRUE;
 
-			GetNextToken(in);
+			GetNextToken(state, in);
 
 			return exp;
 		} break;
 
 		case '{':
 		{
-			GetNextToken(in);
+			GetNextToken(state, in);
 
-			OpenScope();
+			OpenScope(state);
 
-			Expr* curExp = ParseExpr(in);
+			Expr* curExp = ParseExpr(state, in);
 			Expr* head = curExp;
 
 			while (CurTok != '}')
 			{
-				curExp->next = ParseExpr(in);
+				curExp->next = ParseExpr(state, in);
 				curExp = curExp->next;
 			}
-			GetNextToken(in);
+			GetNextToken(state, in);
 
-			CloseScope();
+			CloseScope(state);
 
 			Expr* exp = Expr_create(EXP_BLOCK);
 
@@ -1733,14 +1561,14 @@ Expr* ParseFactor(FILE* in)
 		case TOK_IDENT:
 		{
 			char* ident = estrdup(TokenBuffer);
-			GetNextToken(in);
+			GetNextToken(state, in);
 			if(CurTok != '(')
 			{
 				Expr* exp;
 				
 				exp = Expr_create(EXP_ID);
 				
-				exp->id.sym = ReferenceVariable(ident);
+				exp->id.sym = ReferenceVariable(state, ident);
 				exp->id.name = ident;
 
 				return exp;
@@ -1748,7 +1576,7 @@ Expr* ParseFactor(FILE* in)
 			
 			Expr* exp = Expr_create(EXP_CALL);
 			
-			GetNextToken(in);
+			GetNextToken(state, in);
 			exp->call.numArgs = 0;
 			
 			while(CurTok != ')')
@@ -1759,9 +1587,9 @@ Expr* ParseFactor(FILE* in)
 					exit(1);
 				}
 
-				exp->call.args[exp->call.numArgs++] = ParseExpr(in);
+				exp->call.args[exp->call.numArgs++] = ParseExpr(state, in);
 
-				if(CurTok == ',') GetNextToken(in);
+				if(CurTok == ',') GetNextToken(state, in);
 				else if(CurTok != ')')
 				{
 					fprintf(stderr, "Expected ')' after attempted call to proc %s\n", ident);
@@ -1771,17 +1599,18 @@ Expr* ParseFactor(FILE* in)
 
 			exp->call.calleeName = ident;
 
-			GetNextToken(in);
+			GetNextToken(state, in);
 			return exp;
 		} break;
 		
 		case '-': case '+': case TOK_NOT:
 		{
 			int op = CurTok;
-			GetNextToken(in);
+			GetNextToken(state, in);
 			Expr* exp = Expr_create(EXP_UNARY);
 			exp->unary.op = op;
-			exp->unary.exp = ParseFactor(in);
+			exp->unary.exp = ParseFactor(state, in);
+
 			return exp;
 		} break;
 		
@@ -1789,7 +1618,7 @@ Expr* ParseFactor(FILE* in)
 		{
 			Expr* exp = Expr_create(EXP_NUM);
 			exp->number = RegisterNumber(TokenNumber);
-			GetNextToken(in);
+			GetNextToken(state, in);
 			return exp;
 		} break;
 
@@ -1797,38 +1626,38 @@ Expr* ParseFactor(FILE* in)
 		{
 			Expr* exp = Expr_create(EXP_STRING);
 			exp->string = RegisterString(TokenBuffer);
-			GetNextToken(in);
+			GetNextToken(state, in);
 			return exp;
 		} break;
 		
 		case TOK_PROC:
 		{
-			if(CurrFunc)
+			if(state->currFunc)
 			{
-				fprintf(stderr, "Attempted to define function inside function '%s'. This is not allowed.\n", CurrFunc->name);
+				fprintf(stderr, "Attempted to define function inside function '%s'. This is not allowed.\n", state->currFunc->name);
 				exit(1);
 			}
 			
 			Expr* exp = Expr_create(EXP_PROC);
 			
-			GetNextToken(in);
+			GetNextToken(state, in);
 
-			ExpectToken(TOK_IDENT, "Function name must be identifier!");
+			ExpectToken(state, TOK_IDENT, "Function name must be identifier!");
 			
-			exp->proc.decl = DeclareFunction(TokenBuffer);
-			CurrFunc = exp->proc.decl;
+			exp->proc.decl = DeclareFunction(state, TokenBuffer);
+			state->currFunc = exp->proc.decl;
 
-			GetNextToken(in);
+			GetNextToken(state, in);
 			
-			ExpectToken('(', "Expected '(' after function name");
-			GetNextToken(in);
+			ExpectToken(state, '(', "Expected '(' after function name");
+			GetNextToken(state, in);
 			
 			while(CurTok != ')')
 			{
-				ExpectToken(TOK_IDENT, "Expected identifier in function parameter list");
+				ExpectToken(state, TOK_IDENT, "Expected identifier in function parameter list");
 
-				DeclareArgument(TokenBuffer);
-				GetNextToken(in);
+				DeclareArgument(state, TokenBuffer);
+				GetNextToken(state, in);
 				
 				if (CurTok != ')' && CurTok != ',')
 				{
@@ -1836,39 +1665,39 @@ Expr* ParseFactor(FILE* in)
 					exit(1);
 				}
 
-				if(CurTok == ',') GetNextToken(in);
+				if(CurTok == ',') GetNextToken(state, in);
 			}
 			
-			GetNextToken(in);
+			GetNextToken(state, in);
 
-			OpenScope();
+			OpenScope(state);
 			
-			exp->proc.body = ParseExpr(in);
+			exp->proc.body = ParseExpr(state, in);
 
-			CloseScope();
+			CloseScope(state);
 
-			CurrFunc = NULL;
+			state->currFunc = NULL;
 
 			return exp;
 		} break;
 		
 		case TOK_IF:
 		{
-			return ParseIf(in);
+			return ParseIf(state, in);
 		} break;
 		
 		case TOK_WHILE:
 		{
-			GetNextToken(in);
+			GetNextToken(state, in);
 			Expr* exp = Expr_create(EXP_WHILE);
 
-			exp->whilex.cond = ParseExpr(in);
+			exp->whilex.cond = ParseExpr(state, in);
 
-			OpenScope();
+			OpenScope(state);
 			
-			exp->whilex.body = ParseExpr(in);
+			exp->whilex.body = ParseExpr(state, in);
 			
-			CloseScope();
+			CloseScope(state);
 
 
 			return exp;
@@ -1876,54 +1705,54 @@ Expr* ParseFactor(FILE* in)
 
 		case TOK_FOR:
 		{
-			GetNextToken(in);
+			GetNextToken(state, in);
 			Expr* exp = Expr_create(EXP_FOR);
 			
 			// Every local declared after this is scoped to the for
-			OpenScope();
+			OpenScope(state);
 
-			exp->forx.init = ParseExpr(in);
+			exp->forx.init = ParseExpr(state, in);
 
-			ExpectToken(';', "Expected ';' after for initializer.");
+			ExpectToken(state, ';', "Expected ';' after for initializer.");
 
-			GetNextToken(in);
+			GetNextToken(state, in);
 
-			exp->forx.cond = ParseExpr(in);
+			exp->forx.cond = ParseExpr(state, in);
 
-			ExpectToken(';', "Expected ';' after for condition.");
+			ExpectToken(state, ';', "Expected ';' after for condition.");
 
-			GetNextToken(in);
+			GetNextToken(state, in);
 
-			exp->forx.step = ParseExpr(in);
+			exp->forx.step = ParseExpr(state, in);
 
-			exp->forx.body = ParseExpr(in);
+			exp->forx.body = ParseExpr(state, in);
 
-			CloseScope();
+			CloseScope(state);
 
 			return exp;
 		} break;
 		
 		case TOK_RETURN:
 		{
-			GetNextToken(in);
+			GetNextToken(state, in);
 			Expr* exp = Expr_create(EXP_RETURN);
 			if(CurTok == ';')
 			{
-				GetNextToken(in);	
+				GetNextToken(state, in);	
 				exp->retExpr = NULL;
 				return exp;
 			}
 
-			exp->retExpr = ParseExpr(in);
+			exp->retExpr = ParseExpr(state, in);
 			return exp;
 		} break;
 
 		case '(':
 		{
-			GetNextToken(in);
-			Expr* inner = ParseExpr(in);
+			GetNextToken(state, in);
+			Expr* inner = ParseExpr(state, in);
 			assert(CurTok == ')' && "Expected matching ')' after previous '('");
-			GetNextToken(in);
+			GetNextToken(state, in);
 			
 			Expr* exp = Expr_create(EXP_PAREN);
 			exp->paren = inner;
@@ -1933,7 +1762,7 @@ Expr* ParseFactor(FILE* in)
 		default: break;
 	}
 
-	fprintf(stderr, "%s(%i): Unexpected token %i (%c)\n", FileName, LineNumber, CurTok, CurTok);
+	fprintf(stderr, "%s(%i): Unexpected token %i (%c)\n", state->fileName, state->lineNumber, CurTok, CurTok);
 	exit(1);
 }
 
@@ -1961,7 +1790,7 @@ int GetTokenPrec()
 	return prec;
 }
 
-Expr* ParseBinRhs(FILE* in, int exprPrec, Expr* lhs)
+Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
 {
 	while(1)
 	{
@@ -1983,19 +1812,19 @@ Expr* ParseBinRhs(FILE* in, int exprPrec, Expr* lhs)
 			}
 
 			// If we're inside a function declare a local, otherwise a global
-			if (CurrFunc)
-				lhs->id.sym = DeclareLocal(lhs->id.name);
+			if (state->currFunc)
+				lhs->id.sym = DeclareLocal(state, lhs->id.name);
 			else
-				lhs->id.sym = DeclareGlobalVar(lhs->id.name);
+				lhs->id.sym = DeclareGlobalVar(state, lhs->id.name);
 		}
 
-		GetNextToken(in);
+		GetNextToken(state, in);
 
-		Expr* rhs = ParseFactor(in);
+		Expr* rhs = ParseFactor(state, in);
 		int nextPrec = GetTokenPrec();
 		
 		if(prec < nextPrec)
-			rhs = ParseBinRhs(in, prec + 1, rhs);
+			rhs = ParseBinRhs(state, in, prec + 1, rhs);
 
 		if (binOp == TOK_DECLARECONST)
 		{
@@ -2006,9 +1835,9 @@ Expr* ParseBinRhs(FILE* in, int exprPrec, Expr* lhs)
 			}
 
 			if (rhs->type == EXP_NUM)
-				DeclareConst(lhs->id.name, rhs->number);
+				DeclareConst(state, lhs->id.name, false, rhs->number);
 			else if (rhs->type == EXP_STRING)
-				DeclareConst(lhs->id.name, rhs->string);
+				DeclareConst(state, lhs->id.name, true, rhs->string);
 			else
 			{
 				fprintf(stderr, "Expected number or string to be bound to constant '%s'.\n", lhs->id.name);
@@ -2026,24 +1855,24 @@ Expr* ParseBinRhs(FILE* in, int exprPrec, Expr* lhs)
 	}
 }
 
-Expr* ParseExpr(FILE* in)
+Expr* ParseExpr(Tiny_State* state, FILE* in)
 {
-	Expr* factor = ParseFactor(in);
-	return ParseBinRhs(in, 0, factor);
+	Expr* factor = ParseFactor(state, in);
+	return ParseBinRhs(state, in, 0, factor);
 }
 
-Expr* ParseProgram(FILE* in)
+Expr* ParseProgram(Tiny_State* state, FILE* in)
 {
-	GetNextToken(in);
+	GetNextToken(state, in);
 		
 	if(CurTok != TOK_EOF)
 	{
-		Expr* head = ParseExpr(in);
+		Expr* head = ParseExpr(state, in);
 		Expr* exp = head;
 		
 		while(CurTok != TOK_EOF)
 		{
-			Expr* stmt = ParseExpr(in);
+			Expr* stmt = ParseExpr(state, in);
 			head->next = stmt;
 			head = stmt;
 		}
@@ -2052,9 +1881,9 @@ Expr* ParseProgram(FILE* in)
 	return NULL;
 }
 
-void PrintProgram(Expr* program);
+void PrintProgram(Tiny_State* state, Expr* program);
 
-void PrintExpr(Expr* exp)
+void PrintExpr(Tiny_State* state, Expr* exp)
 {
 	switch(exp->type)
 	{
@@ -2065,7 +1894,7 @@ void PrintExpr(Expr* exp)
 
 			while (node)
 			{
-				PrintExpr(exp);
+				PrintExpr(state, exp);
 				node = node->next;
 			}
 
@@ -2082,7 +1911,7 @@ void PrintExpr(Expr* exp)
 			printf("%s(", exp->call.calleeName);
 			for(int i = 0; i < exp->call.numArgs; ++i)
 			{
-				PrintExpr(exp->call.args[i]);
+				PrintExpr(state, exp->call.args[i]);
 				if(i + 1 < exp->call.numArgs) printf(",");
 			}
 			printf(")");
@@ -2090,41 +1919,41 @@ void PrintExpr(Expr* exp)
 		
 		case EXP_NUM:
 		{
-			printf("%g", Constants[exp->number].number);
+			printf("%g", Numbers[exp->number]);
 		} break;
 
 		case EXP_STRING:
 		{
-			printf("%s", Constants[exp->string].string);
+			printf("%s", Strings[exp->string]);
 		} break;	
 		
 		case EXP_BINARY:
 		{
 			printf("(");
-			PrintExpr(exp->binary.lhs);
+			PrintExpr(state, exp->binary.lhs);
 			printf(" %c ", exp->binary.op);
-			PrintExpr(exp->binary.rhs);
+			PrintExpr(state, exp->binary.rhs);
 			printf(")");
 		} break;
 		
 		case EXP_PAREN:
 		{
 			printf("(");
-			PrintExpr(exp->paren);
+			PrintExpr(state, exp->paren);
 			printf(")");
 		} break;
 		
 		case EXP_UNARY:
 		{
 			printf("%c", exp->unary.op);
-			PrintExpr(exp->unary.exp);
+			PrintExpr(state, exp->unary.exp);
 		} break;
 		
 		case EXP_PROC:
 		{
 			printf("func %s\n", exp->proc.decl->name);
 			if (exp->proc.body)
-				PrintExpr(exp->proc.body);
+				PrintExpr(state, exp->proc.body);
 
 			printf("end\n");
 		} break;
@@ -2132,14 +1961,14 @@ void PrintExpr(Expr* exp)
 		case EXP_IF:
 		{
 			printf("if ");
-			PrintExpr(exp->ifx.cond);
+			PrintExpr(state, exp->ifx.cond);
 			if (exp->ifx.body)
-				PrintExpr(exp->ifx.body);
+				PrintExpr(state, exp->ifx.body);
 
 			if (exp->ifx.alt)
 			{
 				printf("else\n");
-				PrintProgram(exp->ifx.alt);
+				PrintProgram(state, exp->ifx.alt);
 			}
 
 			printf("end\n");
@@ -2148,9 +1977,9 @@ void PrintExpr(Expr* exp)
 		case EXP_WHILE:
 		{
 			printf("while ");
-			PrintExpr(exp->whilex.cond);
+			PrintExpr(state, exp->whilex.cond);
 			if (exp->whilex.body)
-				PrintExpr(exp->ifx.body);
+				PrintExpr(state, exp->ifx.body);
 			printf("end\n");
 		} break;
 		
@@ -2158,7 +1987,7 @@ void PrintExpr(Expr* exp)
 		{
 			printf("return ");
 			if(exp->retExpr)
-				PrintExpr(exp->retExpr);
+				PrintExpr(state, exp->retExpr);
 		} break;
 		
 		default:
@@ -2168,21 +1997,21 @@ void PrintExpr(Expr* exp)
 	}
 }
 
-void PrintProgram(Expr* program)
+void PrintProgram(Tiny_State* state, Expr* program)
 {
 	Expr* exp = program;
 	printf("begin\n");
 	while(exp)
 	{
-		PrintExpr(exp);
+		PrintExpr(state, exp);
 		exp = exp->next;
 	}
 	printf("\nend\n");
 }
 
-void CompileProgram(Expr* program);
+void CompileProgram(Tiny_State* state, Expr* program);
 
-static void CompileGetId(Expr* exp)
+static void CompileGetId(Tiny_State* state, Expr* exp)
 {
 	assert(exp->type == EXP_ID);
 
@@ -2199,29 +2028,32 @@ static void CompileGetId(Expr* exp)
 	if (exp->id.sym->type != SYM_CONST)
 	{
 		if (exp->id.sym->type == SYM_GLOBAL)
-			GenerateCode(OP_GET);
+			GenerateCode(state, OP_GET);
 		else if (exp->id.sym->type == SYM_LOCAL)
-			GenerateCode(OP_GETLOCAL);
+			GenerateCode(state, OP_GETLOCAL);
 
-		GenerateInt(exp->id.sym->var.index);
+		GenerateInt(state, exp->id.sym->var.index);
 	}
 	else
 	{
-		GenerateCode(OP_PUSH);
-		GenerateInt(exp->id.sym->constant.index);
+        if(exp->id.sym->constant.isString)
+            GenerateCode(state, OP_PUSH_STRING);
+        else
+            GenerateCode(state, OP_PUSH_NUMBER);
+		GenerateInt(state, exp->id.sym->constant.index);
 	}
 }
 
-static void CompileExpr(Expr* exp);
+static void CompileExpr(Tiny_State* state, Expr* exp);
 
-static void CompileCall(Expr* exp)
+static void CompileCall(Tiny_State* state, Expr* exp)
 {
 	assert(exp->type == EXP_CALL);
 
 	for (int i = 0; i < exp->call.numArgs; ++i)
-		CompileExpr(exp->call.args[i]);
+		CompileExpr(state, exp->call.args[i]);
 
-	Symbol* sym = ReferenceFunction(exp->call.calleeName);
+	Symbol* sym = ReferenceFunction(state, exp->call.calleeName);
 	if (!sym)
 	{
 		fprintf(stderr, "Attempted to call undefined function '%s'.\n", exp->call.calleeName);
@@ -2230,53 +2062,53 @@ static void CompileCall(Expr* exp)
 
 	if (sym->type == SYM_FOREIGN_FUNCTION)
 	{
-		GenerateCode(OP_CALLF);
-		GenerateInt(exp->call.numArgs);
-		GenerateInt(sym->foreignFunc.index);
+		GenerateCode(state, OP_CALLF);
+		GenerateInt(state, exp->call.numArgs);
+		GenerateInt(state, sym->foreignFunc.index);
 	}
 	else
 	{
-		GenerateCode(OP_CALL);
-		GenerateInt(exp->call.numArgs);
-		GenerateInt(sym->func.index);
+		GenerateCode(state, OP_CALL);
+		GenerateInt(state, exp->call.numArgs);
+		GenerateInt(state, sym->func.index);
 	}
 }
 
-static void CompileExpr(Expr* exp)
+static void CompileExpr(Tiny_State* state, Expr* exp)
 {
 	switch (exp->type)
 	{
 		case EXP_NULL:
 		{
-			GenerateCode(OP_PUSH_NULL);
+			GenerateCode(state, OP_PUSH_NULL);
 		} break;
 
 		case EXP_ID:
 		{
-			CompileGetId(exp);
+			CompileGetId(state, exp);
 		} break;
 
 		case EXP_BOOL:
 		{
-			GenerateCode(exp->boolean ? OP_PUSH_TRUE : OP_PUSH_FALSE);
+			GenerateCode(state, exp->boolean ? OP_PUSH_TRUE : OP_PUSH_FALSE);
 		} break;
 
 		case EXP_NUM:
 		{
-			GenerateCode(OP_PUSH);
-			GenerateInt(exp->number);
+			GenerateCode(state, OP_PUSH_NUMBER);
+			GenerateInt(state, exp->number);
 		} break;
 
 		case EXP_STRING:
 		{
-			GenerateCode(OP_PUSH);
-			GenerateInt(exp->string);
+			GenerateCode(state, OP_PUSH_STRING);
+			GenerateInt(state, exp->string);
 		} break;
 
 		case EXP_CALL:
 		{
-			CompileCall(exp);
-			GenerateCode(OP_GET_RETVAL);
+			CompileCall(state, exp);
+			GenerateCode(state, OP_GET_RETVAL);
 		} break;
 
 		case EXP_BINARY:
@@ -2285,109 +2117,109 @@ static void CompileExpr(Expr* exp)
 			{
 				case '+':
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_ADD);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_ADD);
 				} break;
 
 				case '*':
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_MUL);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_MUL);
 				} break;
 
 				case '/':
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_DIV);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_DIV);
 				} break;
 
 				case '%':
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_MOD);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_MOD);
 				} break;
 
 				case '|':
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_OR);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_OR);
 				} break;
 
 				case '&':
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_AND);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_AND);
 				} break;
 
 				case '-':
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_SUB);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_SUB);
 				} break;
 
 				case '<':
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_LT);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_LT);
 				} break;
 
 				case '>':
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_GT);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_GT);
 				} break;
 
 
 				case TOK_EQUALS:
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_EQU);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_EQU);
 				} break;
 
 				case TOK_NOTEQUALS:
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_EQU);
-					GenerateCode(OP_LOG_NOT);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_EQU);
+					GenerateCode(state, OP_LOG_NOT);
 				} break;
 
 				case TOK_LTE:
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_LTE);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_LTE);
 				} break;
 
 				case TOK_GTE:
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_GTE);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_GTE);
 				} break;
 
 				case TOK_AND:
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_LOG_AND);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_LOG_AND);
 				} break;
 
 				case TOK_OR:
 				{
-					CompileExpr(exp->binary.lhs);
-					CompileExpr(exp->binary.rhs);
-					GenerateCode(OP_LOG_OR);
+					CompileExpr(state, exp->binary.lhs);
+					CompileExpr(state, exp->binary.rhs);
+					GenerateCode(state, OP_LOG_OR);
 				} break;
 
 				default:
@@ -2399,24 +2231,24 @@ static void CompileExpr(Expr* exp)
 
 		case EXP_PAREN:
 		{
-			CompileExpr(exp->paren);
+			CompileExpr(state, exp->paren);
 		} break;
 
 		case EXP_UNARY:
 		{
-			CompileExpr(exp->unary.exp);
+			CompileExpr(state, exp->unary.exp);
 			switch (exp->unary.op)
 			{
 				case '-':
 				{
-					GenerateCode(OP_PUSH);
-					GenerateInt(RegisterNumber(-1));
-					GenerateCode(OP_MUL);
+					GenerateCode(state, OP_PUSH_NUMBER);
+					GenerateInt(state, RegisterNumber(-1));
+					GenerateCode(state, OP_MUL);
 				} break;
 
 				case TOK_NOT:
 				{
-					GenerateCode(OP_LOG_NOT);
+					GenerateCode(state, OP_LOG_NOT);
 				} break;
 
 				default:
@@ -2428,13 +2260,13 @@ static void CompileExpr(Expr* exp)
 	}
 }
 
-static void CompileStatement(Expr* exp)
+static void CompileStatement(Tiny_State* state, Expr* exp)
 {
 	switch(exp->type)
 	{
 		case EXP_CALL:
 		{
-			CompileCall(exp);
+			CompileCall(state, exp);
 		} break;
 
 		case EXP_BLOCK:
@@ -2443,7 +2275,7 @@ static void CompileStatement(Expr* exp)
 
 			while (node)
 			{
-				CompileStatement(node);
+				CompileStatement(state, node);
 				node = node->next;
 			}
 		} break;
@@ -2467,55 +2299,55 @@ static void CompileStatement(Expr* exp)
 						{
 							case TOK_PLUSEQUAL:
 							{
-								CompileGetId(exp->binary.lhs);
-								CompileExpr(exp->binary.rhs);
-								GenerateCode(OP_ADD);
+								CompileGetId(state, exp->binary.lhs);
+								CompileExpr(state, exp->binary.rhs);
+								GenerateCode(state, OP_ADD);
 							} break;
 
 							case TOK_MINUSEQUAL:
 							{
-								CompileGetId(exp->binary.lhs);
-								CompileExpr(exp->binary.rhs);
-								GenerateCode(OP_SUB);
+								CompileGetId(state, exp->binary.lhs);
+								CompileExpr(state, exp->binary.rhs);
+								GenerateCode(state, OP_SUB);
 							} break;
 
 							case TOK_MULEQUAL:
 							{
-								CompileGetId(exp->binary.lhs);
-								CompileExpr(exp->binary.rhs);
-								GenerateCode(OP_MUL);
+								CompileGetId(state, exp->binary.lhs);
+								CompileExpr(state, exp->binary.rhs);
+								GenerateCode(state, OP_MUL);
 							} break;
 
 							case TOK_DIVEQUAL:
 							{
-								CompileGetId(exp->binary.lhs);
-								CompileExpr(exp->binary.rhs);
-								GenerateCode(OP_DIV);
+								CompileGetId(state, exp->binary.lhs);
+								CompileExpr(state, exp->binary.rhs);
+								GenerateCode(state, OP_DIV);
 							} break;
 
 							case TOK_MODEQUAL:
 							{
-								CompileGetId(exp->binary.lhs);
-								CompileExpr(exp->binary.rhs);
-								GenerateCode(OP_MOD);
+								CompileGetId(state, exp->binary.lhs);
+								CompileExpr(state, exp->binary.rhs);
+								GenerateCode(state, OP_MOD);
 							} break;
 
 							case TOK_ANDEQUAL:
 							{
-								CompileGetId(exp->binary.lhs);
-								CompileExpr(exp->binary.rhs);
-								GenerateCode(OP_AND);
+								CompileGetId(state, exp->binary.lhs);
+								CompileExpr(state, exp->binary.rhs);
+								GenerateCode(state, OP_AND);
 							} break;
 
 							case TOK_OREQUAL:
 							{
-								CompileGetId(exp->binary.lhs);
-								CompileExpr(exp->binary.rhs);
-								GenerateCode(OP_OR);
+								CompileGetId(state, exp->binary.lhs);
+								CompileExpr(state, exp->binary.rhs);
+								GenerateCode(state, OP_OR);
 							} break;
 
 							default:
-								CompileExpr(exp->binary.rhs);
+								CompileExpr(state, exp->binary.rhs);
 								break;
 						}
 
@@ -2527,16 +2359,16 @@ static void CompileStatement(Expr* exp)
 						}
 
 						if (exp->binary.lhs->id.sym->type == SYM_GLOBAL)
-							GenerateCode(OP_SET);
+							GenerateCode(state, OP_SET);
 						else if (exp->binary.lhs->id.sym->type == SYM_LOCAL)
-							GenerateCode(OP_SETLOCAL);
+							GenerateCode(state, OP_SETLOCAL);
 						else		// Probably a constant, can't change it
 						{
 							fprintf(stderr, "Cannot assign to id '%s'.\n", exp->binary.lhs->id.name);
 							exit(1);
 						}
 
-						GenerateInt(exp->binary.lhs->id.sym->var.index);
+						GenerateInt(state, exp->binary.lhs->id.sym->var.index);
 						exp->binary.lhs->id.sym->var.initialized = true;
 					}
 					else
@@ -2555,108 +2387,108 @@ static void CompileStatement(Expr* exp)
 		
 		case EXP_PROC:
 		{
-			GenerateCode(OP_GOTO);
-			int skipGotoPc = ProgramLength;
-			GenerateInt(0);
+			GenerateCode(state, OP_GOTO);
+			int skipGotoPc = state->programLength;
+			GenerateInt(state, 0);
 			
-			FunctionPcs[exp->proc.decl->func.index] = ProgramLength;
+			state->functionPcs[exp->proc.decl->func.index] = state->programLength;
 			
 			for(int i = 0; i < exp->proc.decl->func.nlocals; ++i)
 			{
-				GenerateCode(OP_PUSH);
-				GenerateInt(RegisterNumber(0));
+				GenerateCode(state, OP_PUSH_NUMBER);
+				GenerateInt(state, RegisterNumber(0));
 			}
 			
 			if (exp->proc.body)
-				CompileStatement(exp->proc.body);
+				CompileStatement(state, exp->proc.body);
 
-			GenerateCode(OP_RETURN);
-			GenerateIntAt(ProgramLength, skipGotoPc);
+			GenerateCode(state, OP_RETURN);
+			GenerateIntAt(state, state->programLength, skipGotoPc);
 		} break;
 		
 		case EXP_IF:
 		{
-			CompileExpr(exp->ifx.cond);
-			GenerateCode(OP_GOTOZ);
+			CompileExpr(state, exp->ifx.cond);
+			GenerateCode(state, OP_GOTOZ);
 			
-			int skipGotoPc = ProgramLength;
-			GenerateInt(0);
+			int skipGotoPc = state->programLength;
+			GenerateInt(state, 0);
 			
 			if(exp->ifx.body)
-				CompileStatement(exp->ifx.body);
+				CompileStatement(state, exp->ifx.body);
 			
-			GenerateCode(OP_GOTO);
-			int exitGotoPc = ProgramLength;
-			GenerateInt(0);
+			GenerateCode(state, OP_GOTO);
+			int exitGotoPc = state->programLength;
+			GenerateInt(state, 0);
 
-			GenerateIntAt(ProgramLength, skipGotoPc);
+			GenerateIntAt(state, state->programLength, skipGotoPc);
 
 			if (exp->ifx.alt)
-				CompileStatement(exp->ifx.alt);
+				CompileStatement(state, exp->ifx.alt);
 
-			GenerateIntAt(ProgramLength, exitGotoPc);
+			GenerateIntAt(state, state->programLength, exitGotoPc);
 		} break;
 		
 		case EXP_WHILE:
 		{
-			int condPc = ProgramLength;
+			int condPc = state->programLength;
 			
-			CompileExpr(exp->whilex.cond);
+			CompileExpr(state, exp->whilex.cond);
 			
-			GenerateCode(OP_GOTOZ);
-			int skipGotoPc = ProgramLength;
-			GenerateInt(0);
+			GenerateCode(state, OP_GOTOZ);
+			int skipGotoPc = state->programLength;
+			GenerateInt(state, 0);
 			
 			if(exp->whilex.body)
-				CompileStatement(exp->whilex.body);
+				CompileStatement(state, exp->whilex.body);
 			
-			GenerateCode(OP_GOTO);
-			GenerateInt(condPc);
+			GenerateCode(state, OP_GOTO);
+			GenerateInt(state, condPc);
 
-			GenerateIntAt(ProgramLength, skipGotoPc);
+			GenerateIntAt(state, state->programLength, skipGotoPc);
 		} break;
 		
 		case EXP_FOR:
 		{
-			CompileStatement(exp->forx.init);
+			CompileStatement(state, exp->forx.init);
 
-			int condPc = ProgramLength;
-			CompileExpr(exp->forx.cond);
+			int condPc = state->programLength;
+			CompileExpr(state, exp->forx.cond);
 
-			GenerateCode(OP_GOTOZ);
-			int skipGotoPc = ProgramLength;
-			GenerateInt(0);
+			GenerateCode(state, OP_GOTOZ);
+			int skipGotoPc = state->programLength;
+			GenerateInt(state, 0);
 
 			if (exp->forx.body)
-				CompileStatement(exp->forx.body);
+				CompileStatement(state, exp->forx.body);
 
-			CompileStatement(exp->forx.step);
+			CompileStatement(state, exp->forx.step);
 			
-			GenerateCode(OP_GOTO);
-			GenerateInt(condPc);
+			GenerateCode(state, OP_GOTO);
+			GenerateInt(state, condPc);
 
-			GenerateIntAt(ProgramLength, skipGotoPc);
+			GenerateIntAt(state, state->programLength, skipGotoPc);
 		} break;
 
 		case EXP_RETURN:
 		{
 			if(exp->retExpr)
 			{
-				CompileExpr(exp->retExpr);
-				GenerateCode(OP_RETURN_VALUE);
+				CompileExpr(state, exp->retExpr);
+				GenerateCode(state, OP_RETURN_VALUE);
 			}
 			else
-				GenerateCode(OP_RETURN);
+				GenerateCode(state, OP_RETURN);
 		} break;
 	}
 }
 
-void CompileProgram(Expr* program)
+void CompileProgram(Tiny_State* state, Expr* program)
 {
 	Expr* exp = program;
 	while(exp)
 	{
-		CompileStatement(exp);
+		CompileStatement(state, exp);
 		exp = exp->next;
 	}
 }
@@ -2732,13 +2564,14 @@ void DeleteProgram(Expr* program)
 	}
 }
 
-void DebugMachineProgram()
+static void DebugMachineProgram(Tiny_State* state)
 {
-	for(int i = 0; i < ProgramLength; ++i)
+	for(int i = 0; i < state->programLength; ++i)
 	{
-		switch(Program[i])
+		switch(state->program[i])
 		{
-			case OP_PUSH:			printf("push\n"); break;
+            case OP_PUSH_NUMBER:	printf("push_number\n"); break;
+            case OP_PUSH_STRING:    printf("push_string\n"); break;
 			case OP_POP:			printf("pop\n"); break;
 			case OP_ADD:			printf("add\n"); break;
 			case OP_SUB:			printf("sub\n"); break;
@@ -2766,9 +2599,9 @@ void DebugMachineProgram()
 	}
 }
 
-static void CheckInitialized()
+static void CheckInitialized(Tiny_State* state)
 {
-	Symbol* node = GlobalSymbols;
+	Symbol* node = state->globalSymbols;
 
 	bool error = false;
 	const char* fmt = "Attempted to use uninitialized variable '%s'.\n";
@@ -2813,42 +2646,49 @@ static void CheckInitialized()
 
 // Goes through the registered symbols (GlobalSymbols) and assigns all foreign
 // functions to their respective index in ForeignFunctions
-static void BuildForeignFunctions(void)
+static void BuildForeignFunctions(Tiny_State* state)
 {
-	Symbol* node = GlobalSymbols;
+	Symbol* node = state->globalSymbols;
 
 	while (node)
 	{
 		if (node->type == SYM_FOREIGN_FUNCTION)
-			ForeignFunctions[node->foreignFunc.index] = node->foreignFunc.callee;
+		    state->foreignFunctions[node->foreignFunc.index] = node->foreignFunc.callee;
 
 		node = node->next;
 	}
 }
 
-void Tiny_CompileFile(const char* filename, FILE* in)
+void Tiny_CompileFile(Tiny_State* state, const char* filename)
 {
-	LineNumber = 1;
-	FileName = filename;
+    FILE* file = fopen(filename, "r");
+
+    if(!file)
+    {
+        fprintf(stderr, "Error: Unable to open file '%s' for reading\n", filename);
+        exit(1);
+    }
+
+	state->lineNumber = 1;
+	state->fileName = filename;
 
 	CurTok = 0;
-	Expr* prog = ParseProgram(in);
+	Expr* prog = ParseProgram(state, file);
 
 	// Allocate room for vm execution info
-	GlobalVars = calloc(NumGlobalVars, sizeof(Tiny_Value));
-	FunctionPcs = calloc(NumFunctions, sizeof(int));
-	ForeignFunctions = calloc(NumForeignFunctions, sizeof(Tiny_ForeignFunction));
+    state->functionPcs = calloc(state->numFunctions, sizeof(int));
+	state->foreignFunctions = calloc(state->numForeignFunctions, sizeof(Tiny_ForeignFunction));
 
-	assert(GlobalVars &&
-		FunctionPcs &&
-		ForeignFunctions);
+    assert(state->functionPcs && state->foreignFunctions);
 
-	BuildForeignFunctions();
+	BuildForeignFunctions(state);
 
-	CompileProgram(prog);
-	GenerateCode(OP_HALT);
+	CompileProgram(state, prog);
+	GenerateCode(state, OP_HALT);
 
-	CheckInitialized();		// Done after compilation because it might have registered undefined functions during the compilation stage
+	CheckInitialized(state);		// Done after compilation because it might have registered undefined functions during the compilation stage
 	
 	DeleteProgram(prog);
 }
+
+

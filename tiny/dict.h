@@ -1,29 +1,18 @@
 #pragma once
 
 #include "tiny.h"
-#include "tiny_detail.h"
-
-#define DICT_BUCKET_COUNT 1024
-
-typedef struct sDictNode
-{
-	struct sDictNode* next;
-	char* key;
-	Tiny_Value val;
-} DictNode;
+#include "array.h"
 
 typedef struct
 {
-	int nodeCount;
-	DictNode* buckets[DICT_BUCKET_COUNT];
+    int bucketCount, filledCount;
+    Array keys, values;
 } Dict;
 
-extern const Tiny_NativeProp DictProp;
+void InitDict(Dict* dict, size_t valueSize);
 
-void InitDict(Dict* dict);
-
-void DictPut(Dict* dict, const char* key, const Tiny_Value* value);
-const Tiny_Value* DictGet(Dict* dict, const char* key);
+void DictSet(Dict* dict, const char* key, const void* value);
+const void* DictGet(Dict* dict, const char* key);
 void DictRemove(Dict* dict, const char* key);
 void DictClear(Dict* dict);
 

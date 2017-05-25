@@ -115,12 +115,14 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="array.c" />
     <ClCompile Include="dict.c" />
     <ClCompile Include="iniparser.c" />
+    <ClCompile Include="test.c" />
     <ClCompile Include="tiny.c" />
-    <ClCompile Include="tinystd.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="array.h" />
     <ClInclude Include="dict.h" />
     <ClInclude Include="iniparser.h" />
     <ClInclude Include="tiny.h" />

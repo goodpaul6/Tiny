@@ -18,13 +18,16 @@
     <ClCompile Include="tiny.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="tinystd.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="dict.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="iniparser.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="array.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="test.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
@@ -39,6 +42,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="tiny_detail.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="array.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

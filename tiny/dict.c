@@ -3,30 +3,7 @@
 
 #include "dict.h"
 
-static void DictFree(void* pd)
-{
-	Dict* dict = pd;
-
-	DestroyDict(dict);
-	free(dict);
-}
-
-static void DictMark(void* pd)
-{
-	Dict* dict = pd;
-
-	for (int i = 0; i < DICT_BUCKET_COUNT; ++i)
-	{
-		if (Tiny_IsObject(dict->buckets[i]->val))
-			Tiny_Mark(dict->buckets[i]->val.obj);
-	}
-}
-
-const Tiny_NativeProp DictProp = {
-	"dict",
-	DictMark,
-	DictFree
-};
+#define INIT_BUCKET_COUNT 32
 
 // djb2 - http://www.cse.yorku.ca/~oz/hash.html
 static unsigned long HashString(const char* key)
@@ -40,116 +17,181 @@ static unsigned long HashString(const char* key)
 	return hash;
 }
 
-static void FreeDictNode(DictNode* node)
+static void Init(Dict* dict, size_t valueSize, int bucketCount)
 {
-	free(node->key);
-	free(node);
+    dict->bucketCount = bucketCount;
+    dict->filledCount = 0;
+
+    InitArray(&dict->keys, sizeof(char*));
+    InitArray(&dict->values, valueSize);
+    
+    // Initialize the array to be full of null char pointers to
+    // indicate that there's nothing there
+    char* nullValue = NULL;
+
+    ArrayResize(&dict->keys, bucketCount, &nullValue);
+    ArrayResize(&dict->values, bucketCount, NULL);
 }
 
-void InitDict(Dict* dict)
+static void Grow(Dict* dict)
 {
-	dict->nodeCount = 0;
-	memset(dict->buckets, 0, sizeof(dict->buckets));
+    Dict newDict;
+
+    Init(&newDict, dict->values.itemSize, dict->bucketCount * 2);
+
+    for(int i = 0; i < dict->bucketCount; ++i)
+    {
+        const char* prevKey = ArrayGetValue(&dict->keys, i, char*);
+    
+        // If there was a value in that bucket
+        if(prevKey)
+        {
+            const void* prevValue = ArrayGet(&dict->values, i);
+            DictSet(&newDict, prevKey, prevValue);
+        }
+    }
+    
+    // Free the previous data (keys etc)
+    DestroyDict(dict);
+    *dict = newDict;
+}
+
+void InitDict(Dict* dict, size_t valueSize)
+{
+    Init(dict, valueSize, INIT_BUCKET_COUNT);
 }
 
 void DestroyDict(Dict* dict)
 {
-	for (int i = 0; i < DICT_BUCKET_COUNT; ++i)
-	{
-		DictNode* node = dict->buckets[i];
+    for(int i = 0; i < dict->keys.length; ++i)
+        free(ArrayGetValue(&dict->keys, i, char*));
 
-		while (node)
-		{
-			DictNode* next = node->next;
-
-			FreeDictNode(node);
-
-			node = next;
-		}
-	}
+    DestroyArray(&dict->keys);
+    DestroyArray(&dict->values);
 }
 
-static DictNode* CreateDictNode(const char* key, const Tiny_Value* val)
+void DictSet(Dict* dict, const char* key, const void* value)
 {
-	DictNode* node = emalloc(sizeof(DictNode));
+    if(dict->filledCount >= (dict->bucketCount * 2) / 3)
+        Grow(dict);
 
-	node->key = estrdup(key);
-	node->val = *val;
-	node->next = NULL;
+	unsigned long index = HashString(key) % dict->bucketCount;
 
-	return node;
+    const char* prevKey = ArrayGetValue(&dict->keys, index, char*);
+    
+    // There was already a value there before
+    if(prevKey)
+    {
+        // If there is a collision
+        if(strcmp(prevKey, key) != 0)
+        {
+            unsigned long origin = index;
+
+            // Probe for a sport to put this key/value
+            index += 1;
+            
+            while(true)
+            {
+                // It wrapped around so there's no space
+                // Just grow and keep on trying
+                if(index == origin)
+                    Grow(dict);
+
+                prevKey = ArrayGetValue(&dict->keys, index, char*);
+
+                if(prevKey)
+                {
+                    ++index;
+                    index %= dict->bucketCount;
+                }
+                else break; // This spot is empty
+            }
+        }
+    }
+
+    // There was no key here before (i.e bucket was empty)
+    if(!prevKey)
+    {
+        char* str = malloc(strlen(key) + 1);
+        assert(str);
+
+        strcpy(str, key);
+
+        ArraySet(&dict->keys, index, &str);
+        dict->filledCount += 1;
+    }
+
+    ArraySet(&dict->values, index, value);
 }
 
-void DictPut(Dict* dict, const char* key, const Tiny_Value* val)
+const void* DictGet(Dict* dict, const char* key)
 {
-	unsigned long index = HashString(key) % DICT_BUCKET_COUNT;
+	unsigned long index = HashString(key) % dict->bucketCount;
+    unsigned long origin = index; 
 
-	DictNode* node = CreateDictNode(key, val);
+    while(true)
+    { 
+        const char* keyHere = ArrayGetValue(&dict->keys, index, char*);
 
-	node->next = dict->buckets[index];
-	dict->buckets[index] = node;
+        if(keyHere)
+        {
+            if(strcmp(keyHere, key) == 0)
+                return ArrayGet(&dict->values, index);
+        }
+        else return NULL;
 
-	dict->nodeCount += 1;
-}
+        index += 1;
+        index %= dict->bucketCount;
 
-const Tiny_Value* DictGet(Dict* dict, const char* key)
-{
-	unsigned long index = HashString(key) % DICT_BUCKET_COUNT;
-
-	DictNode* node = dict->buckets[index];
-
-	while (node)
-	{
-		if (strcmp(node->key, key) == 0)
-			return &node->val;
-	}
-
-	return NULL;
+        if(index == origin)
+        {
+            // Wrapped around, so it definitely doesn't exist
+            return NULL;
+        }
+    }
 }
 
 void DictRemove(Dict* dict, const char* key)
 {
-	unsigned long index = HashString(key) % DICT_BUCKET_COUNT;
+	unsigned long index = HashString(key) % dict->bucketCount;
+    unsigned long origin = index;
 
-	DictNode* node = dict->buckets[index];
-	DictNode* prev = NULL;
+    while(true)
+    {
+        const char* keyHere = ArrayGetValue(&dict->keys, index, char*);
 
-	while (node)
-	{
-		if (strcmp(node->key, key) == 0)
-		{
-			DictNode* next = node->next;
+        if(keyHere)
+        {
+            if(strcmp(keyHere, key) == 0)
+            {
+                free(keyHere);
+                
+                char* nullValue = NULL;
+                ArraySet(&dict->keys, index, &nullValue);
 
-			FreeDictNode(node);
+                dict->filledCount -= 1;
+            }
+            else return; // Never existed to begin with
 
-			if (prev) prev->next = next;
-			else dict->buckets[index] = NULL;
-
-			dict->nodeCount -= 1;
-
-			return;
-		}
-
-		prev = node;
-		node = node->next;
-	}
+            index += 1;
+            index %= dict->bucketCount;
+        
+            if(index == origin)
+            {
+                // Wrapped around, so it never existed to begin with
+                return;
+            }
+        }
+    }
 }
 
 void DictClear(Dict* dict)
 {
-	for (int i = 0; i < DICT_BUCKET_COUNT; ++i)
-	{
-		DictNode* node = dict->buckets[i];
-
-		while (node)
-		{
-			DictNode* next = node->next;
-			FreeDictNode(node);
-			node = next;
-		}
-	}
-
-	memset(dict->buckets, 0, sizeof(dict->buckets));
-	dict->nodeCount = 0;
+    for(int i = 0; i < dict->bucketCount; ++i)
+        free(ArrayGetValue(&dict->keys, i, char*));
+    
+    // TODO: Refactor this into an ArrayClearToZero inline function
+    memset(array->data, 0, array->length * array->itemSize);
+    
+    dict->filledCount = 0;
 }
-
