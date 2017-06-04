@@ -4,6 +4,17 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#ifndef TINY_THREAD_STACK_SIZE
+#define TINY_THREAD_STACK_SIZE  128
+#endif
+
+#ifndef TINY_THREAD_INDIR_SIZE
+#define TINY_THREAD_INDIR_SIZE  256
+#endif
+
+typedef struct Tiny_Object Tiny_Object;
+typedef struct Tiny_State Tiny_State;
+
 // Stores properties about a native
 // object. This should be statically allocated
 // and only one should exist for each type of
@@ -25,10 +36,40 @@ typedef enum
 	TINY_VAL_NATIVE
 } Tiny_ValueType;
 
-typedef struct Tiny_Object Tiny_Object;
-typedef struct Tiny_Value Tiny_Value;
-typedef struct Tiny_State Tiny_State;
-typedef struct Tiny_StateThread Tiny_StateThread;
+typedef struct Tiny_Value
+{
+	Tiny_ValueType type;
+
+	union
+	{
+		bool boolean;
+		double number;
+		Tiny_Object* obj;
+	};
+} Tiny_Value;
+
+typedef struct Tiny_StateThread
+{
+    // Each thread stores a reference
+    // to its state
+    const Tiny_State* state;
+
+    // The garbage collection and heap is thread-local 
+    Tiny_Object* gcHead;
+    int numObjects;
+    int maxNumObjects;
+    
+    // Global vars are owned by each thread
+    Tiny_Value* globalVars;
+
+    int pc, fp, sp;
+    Tiny_Value retVal;
+
+    Tiny_Value stack[TINY_THREAD_STACK_SIZE];
+
+    int indirStack[TINY_THREAD_INDIR_SIZE];
+    int indirStackSize;
+} Tiny_StateThread;
 
 typedef Tiny_Value (*Tiny_ForeignFunction)(const Tiny_Value* args, int count);
 
@@ -45,38 +86,56 @@ Tiny_Value Tiny_NewNumber(double value);
 Tiny_Value Tiny_NewString(Tiny_StateThread* thread, char* string);
 Tiny_Value Tiny_NewNative(Tiny_StateThread* thread, void* ptr, const Tiny_NativeProp* prop);
 
-Tiny_ValueType Tiny_GetType(const Tiny_Value val);
+#define Tiny_IsNull(value) (value.type == TINY_VAL_NULL)
 
-#define Tiny_IsNull(v) (Tiny_GetType(v) == TINY_VAL_NULL)
-#define Tiny_IsObject(v) (Tiny_GetType(v) == TINY_VAL_STRING || Tiny_GetType(v) == TINY_VAL_NATIVE)
+inline bool Tiny_ToBool(const Tiny_Value value)
+{
+    if(value.type != TINY_VAL_BOOL) return false;
+    return value.boolean;
+}
 
-bool Tiny_GetBool(const Tiny_Value val, bool* pbool);
-bool Tiny_GetNum(const Tiny_Value val, double* pnum);
-bool Tiny_GetString(const Tiny_Value val, const char** pstr);
-bool Tiny_GetAddr(const Tiny_Value val, void** paddr);
-bool Tiny_GetProp(const Tiny_Value val, const Tiny_NativeProp** pprop);
+inline double Tiny_ToNumber(const Tiny_Value value)
+{
+    if(value.type != TINY_VAL_NUM) return 0;
+    return value.number;
+}
 
-bool Tiny_ExpectBool(const Tiny_Value val);
-double Tiny_ExpectNum(const Tiny_Value val);
-const char* Tiny_ExpectString(const Tiny_Value val);
-void* Tiny_ExpectAddr(const Tiny_Value val);
-const Tiny_NativeProp* Tiny_ExpectProp(const Tiny_Value val);
+const char* Tiny_ToString(const Tiny_Value value);
+void* Tiny_ToAddr(const Tiny_Value value);
+
+const Tiny_NativeProp* Tiny_GetProp(const Tiny_Value value);
 
 Tiny_State* Tiny_CreateState(void);
-Tiny_StateThread* Tiny_CreateThreads(const Tiny_State* state, int count);
 
 void Tiny_BindFunction(Tiny_State* state, const char* name, Tiny_ForeignFunction func);
 void Tiny_BindConstNumber(Tiny_State* state, const char* name, double value);
 void Tiny_BindConstString(Tiny_State* state, const char* name, const char* value);
 
+void Tiny_CompileString(Tiny_State* state, const char* name, const char* string);
 void Tiny_CompileFile(Tiny_State* state, const char* filename);
 
-// Execute a cycle on 'count' threads from 'start'
-// for(int i = start; i < count; ++i) ExecuteCycle(threads[i]);
-void Tiny_ExecuteCycle(const Tiny_StateThread* threads, int start, int count);
-
-void Tiny_DeleteThreads(const Tiny_StateThread* threads, int count);
 void Tiny_DeleteState(Tiny_State* state);
+
+void Tiny_InitThread(Tiny_StateThread* thread, const Tiny_State* state);
+
+// Sets the PC of the thread to the entry point of the program
+// and allocates space for global variables if they're not already
+// allocated
+// Requires that state is compiled
+void Tiny_StartThread(Tiny_StateThread* thread);
+
+inline bool Tiny_IsThreadDone(const Tiny_StateThread* thread)
+{
+    return thread->pc < 0;
+}
+
+// Run a single cycle of the thread.
+// Could potentially trigger garbage collection
+// at the end of the cycle.
+// Returns whether the cycle was executed or not.
+bool Tiny_ExecuteCycle(Tiny_StateThread* thread);
+
+void Tiny_DestroyThread(Tiny_StateThread* thread);
 
 #endif
  

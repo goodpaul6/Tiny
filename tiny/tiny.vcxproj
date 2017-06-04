@@ -125,6 +125,7 @@
     <ClInclude Include="array.h" />
     <ClInclude Include="dict.h" />
     <ClInclude Include="iniparser.h" />
+    <ClInclude Include="minctest.h" />
     <ClInclude Include="tiny.h" />
     <ClInclude Include="tiny_detail.h" />
   </ItemGroup>

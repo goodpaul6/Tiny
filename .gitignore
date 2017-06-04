@@ -1,1 +1,9 @@
 *.VC.opendb 
+*.swp 
+*.vim 
+tags 
+*.exe 
+Debug/* 
+Release/* 
+*.db 
+*vs 

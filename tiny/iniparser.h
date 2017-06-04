@@ -29,9 +29,6 @@ typedef struct
 	IniSection* sections;
 } IniFile;
 
-extern const Tiny_NativeProp IniFileProp;
-extern const Tiny_NativeProp IniSectionProp;
-
 bool ParseIni(IniFile* ini, const char* string);
 
 // Adds a key-value pair if it doesn't exist, and adds section if it doesn't exist

@@ -29,18 +29,6 @@ typedef struct Tiny_Object
 	};
 } Tiny_Object;
 
-typedef struct Tiny_Value
-{
-	Tiny_ValueType type;
-
-	union
-	{
-		bool boolean;
-		double number;
-		Tiny_Object* obj;
-	};
-} Tiny_Value;
-
 typedef unsigned char Word;
 
 typedef enum
@@ -89,29 +77,6 @@ typedef struct sSymbol
 		} foreignFunc;
 	};
 } Symbol;
-
-typedef struct Tiny_StateThread
-{
-    // Each thread retains a reference to a state
-    // Multiple threads can reference the same state 
-    const struct Tiny_State* state;
-
-    // The garbage collection and heap is thread-local 
-    Tiny_Object* gcHead;
-    int numObjects;
-    int maxNumObjects;
-    
-    // Global vars are owned by each thread
-    Tiny_Value* globalVars;
-
-    int pc, fp, sp;
-    Tiny_Value retVal;
-
-    Tiny_Value stack[MAX_STACK];
-
-    int indirStack[MAX_INDIR];
-    int indirStackSize;
-} Tiny_StateThread;
 
 typedef struct Tiny_State
 {

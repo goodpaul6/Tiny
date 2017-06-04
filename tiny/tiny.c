@@ -104,6 +104,24 @@ static void GarbageCollect(Tiny_StateThread* thread)
 	thread->maxNumObjects = thread->numObjects * 2;
 }
 
+const char* Tiny_ToString(const Tiny_Value value)
+{
+    if(value.type != TINY_VAL_STRING) return false;
+    return value.obj->string;
+}
+
+void* Tiny_ToAddr(const Tiny_Value value)
+{
+    if(value.type != TINY_VAL_NATIVE) return false;
+    return value.obj->nat.addr;
+}
+
+const Tiny_NativeProp* Tiny_GetProp(const Tiny_Value value)
+{
+    if(value.type != TINY_VAL_NATIVE) return false;
+    return value.obj->nat.prop;
+}
+
 static Tiny_Object* NewObject(Tiny_StateThread* thread, Tiny_ValueType type)
 {
 	Tiny_Object* obj = emalloc(sizeof(Tiny_Object));
@@ -120,6 +138,11 @@ static Tiny_Object* NewObject(Tiny_StateThread* thread, Tiny_ValueType type)
 
 Tiny_Value Tiny_NewNative(Tiny_StateThread* thread, void* ptr, const Tiny_NativeProp* prop)
 {
+    assert(thread && thread->state);
+    
+    // Make sure thread is alive
+    assert(thread->pc >= 0);
+
 	Tiny_Object* obj = NewObject(thread, TINY_VAL_NATIVE);
 	
 	obj->nat.addr = ptr;
@@ -131,81 +154,6 @@ Tiny_Value Tiny_NewNative(Tiny_StateThread* thread, void* ptr, const Tiny_Native
 	val.obj = obj;
 
 	return val;
-}
-
-Tiny_ValueType Tiny_GetType(const Tiny_Value val)
-{
-	return val.type;
-}
-
-bool Tiny_GetBool(const Tiny_Value val, bool* pbool)
-{
-	if (val.type != TINY_VAL_BOOL) return false;
-
-	*pbool = val.boolean;
-	return true;
-}
-
-bool Tiny_GetNum(const Tiny_Value val, double* pnum)
-{
-	if (val.type != TINY_VAL_NUM) return false;
-
-	*pnum = val.number;
-	return true;
-}
-
-bool Tiny_GetString(const Tiny_Value val, const char** pstr)
-{
-	if (val.type != TINY_VAL_STRING) return false;
-
-	*pstr = val.obj->string;
-	return true;
-}
-
-bool Tiny_GetAddr(const Tiny_Value val, void** paddr)
-{
-	if (val.type != TINY_VAL_NATIVE) return false;
-
-	*paddr = val.obj->nat.addr;
-	return true;
-}
-
-bool Tiny_GetProp(const Tiny_Value val, const Tiny_NativeProp** pprop)
-{
-	if (val.type != TINY_VAL_NATIVE) return false;
-
-	*pprop = val.obj->nat.prop;
-	return true;
-}
-
-bool Tiny_ExpectBool(const Tiny_Value val)
-{
-	assert(val.type == TINY_VAL_BOOL);
-	return val.boolean;
-}
-
-double Tiny_ExpectNum(const Tiny_Value val)
-{
-	assert(val.type == TINY_VAL_NUM);
-	return val.number;
-}
-
-const char* Tiny_ExpectString(const Tiny_Value val)
-{
-	assert(val.type == TINY_VAL_STRING);
-	return val.obj->string;
-}
-
-void* Tiny_ExpectAddr(const Tiny_Value val)
-{
-	assert(val.type == TINY_VAL_NATIVE);
-	return val.obj->nat.addr;
-}
-
-const Tiny_NativeProp* Tiny_ExpectProp(const Tiny_Value val)
-{
-	assert(val.type == TINY_VAL_NATIVE);
-	return val.obj->nat.prop;
 }
 
 Tiny_Value Tiny_NewBool(bool value)
@@ -230,7 +178,12 @@ Tiny_Value Tiny_NewNumber(double value)
 
 Tiny_Value Tiny_NewString(Tiny_StateThread* thread, char* string)
 {
-	Tiny_Object* obj = NewObject(thread, TINY_VAL_STRING);
+    assert(thread && thread->state);
+    
+    // Make sure thread is alive
+    assert(thread->pc >= 0);
+	
+    Tiny_Object* obj = NewObject(thread, TINY_VAL_STRING);
 	obj->string = string;
 
 	Tiny_Value val;
@@ -283,7 +236,63 @@ void Tiny_DeleteState(Tiny_State* state)
 	free(state->foreignFunctions);
 }
 
-void MarkAll(Tiny_StateThread* thread)
+void Tiny_InitThread(Tiny_StateThread* thread, const Tiny_State* state)
+{
+    thread->state = state;
+
+    thread->gcHead = NULL;
+    thread->numObjects = 0;
+    // TODO: Use INIT_GC_THRESH definition
+    thread->maxNumObjects = 8;
+
+    thread->globalVars = NULL;
+    
+    thread->pc = -1;
+    thread->fp = thread->sp = 0;
+    
+    thread->retVal = Tiny_Null;
+
+    thread->indirStackSize = 0;
+}
+
+void Tiny_StartThread(Tiny_StateThread* thread)
+{
+    // If the global variables haven't been allocated yet,
+    // do that
+    if(!thread->globalVars)
+    {
+        thread->globalVars = emalloc(sizeof(Tiny_Value) * thread->state->numGlobalVars);
+        memset(thread->globalVars, 0, sizeof(Tiny_Value) * thread->state->numGlobalVars);
+    }
+
+    // TODO: Eventually move to an actual entry point
+    thread->pc = 0;
+}
+
+static bool ExecuteCycle(Tiny_StateThread* thread);
+
+bool Tiny_ExecuteCycle(Tiny_StateThread* thread)
+{
+    return ExecuteCycle(thread);
+}
+
+void Tiny_DestroyThread(Tiny_StateThread* thread)
+{
+    thread->pc = -1;
+
+    // Free all objects in the gc list
+    while(thread->gcHead)
+    {
+        Tiny_Object* next = thread->gcHead->next;
+        DeleteObject(thread->gcHead);
+        thread->gcHead = next;
+    }
+
+    // Free all global variables
+    free(thread->globalVars);
+}
+
+static void MarkAll(Tiny_StateThread* thread)
 {
     assert(thread->state);
 
@@ -620,7 +629,6 @@ static Symbol* ReferenceFunction(Tiny_State* state, const char* name)
 	return NULL;
 }
 
-static void ExecuteCycle(Tiny_StateThread* thread);
 static void DoPushIndir(Tiny_StateThread* thread, int nargs);
 
 /*static void CallProc(int id, int nargs)
@@ -634,7 +642,7 @@ static void DoPushIndir(Tiny_StateThread* thread, int nargs);
 		ExecuteCycle();
 }*/
 
-void Tiny_BindForeignFunction(Tiny_State* state, Tiny_ForeignFunction func, const char* name)
+void Tiny_BindFunction(Tiny_State* state, const char* name, Tiny_ForeignFunction func)
 {
 	Symbol* node = state->globalSymbols;
 
@@ -757,8 +765,8 @@ inline Tiny_Value DoPop(Tiny_StateThread* thread)
 		fprintf(stderr, "Stack Underflow at PC: %i (Inst %i)!", thread->pc, thread->state->program[thread->pc]);
 		exit(1);
 	}
-
-	return thread->stack[--thread->sp];
+    
+    return thread->stack[--thread->sp];
 }
 
 static void DoRead(Tiny_StateThread* thread)
@@ -795,8 +803,10 @@ static void DoRead(Tiny_StateThread* thread)
 	DoPush(thread, val);
 }
 
-void DoPushIndir(Tiny_StateThread* thread, int nargs)
+static void DoPushIndir(Tiny_StateThread* thread, int nargs)
 {
+	assert(thread->indirStackSize + 3 <= TINY_THREAD_INDIR_SIZE);
+
 	thread->indirStack[thread->indirStackSize++] = nargs;
 	thread->indirStack[thread->indirStackSize++] = thread->fp;
 	thread->indirStack[thread->indirStackSize++] = thread->pc;
@@ -804,8 +814,10 @@ void DoPushIndir(Tiny_StateThread* thread, int nargs)
 	thread->fp = thread->sp;
 }
 
-void DoPopIndir(Tiny_StateThread* thread)
+static void DoPopIndir(Tiny_StateThread* thread)
 {
+	assert(thread->indirStackSize >= 3);
+
     thread->sp = thread->fp;
 
 	int prevPc = thread->indirStack[--thread->indirStackSize];
@@ -817,12 +829,20 @@ void DoPopIndir(Tiny_StateThread* thread)
 	thread->pc = prevPc;
 }
 
-void ExecuteCycle(Tiny_StateThread* thread)
+inline static bool ExpectBool(const Tiny_Value value)
 {
-    assert(thread->state);
-    
+    assert(value.type == TINY_VAL_BOOL);
+    return value.boolean;
+}
+
+static bool ExecuteCycle(Tiny_StateThread* thread)
+{
+    assert(thread && thread->state);
+
+	if (thread->pc < 0) return false;
+
     const Tiny_State* state = thread->state;
-        
+
 	switch(state->program[thread->pc])
 	{
 		case OP_PUSH_NULL:
@@ -917,7 +937,7 @@ void ExecuteCycle(Tiny_StateThread* thread)
 			++thread->pc;
 			Tiny_Value a = DoPop(thread);
 
-			DoPush(thread, Tiny_NewBool(!Tiny_ExpectBool(a)));
+			DoPush(thread, Tiny_NewBool(!ExpectBool(a)));
 		} break;
 
 		case OP_LOG_AND:
@@ -926,7 +946,7 @@ void ExecuteCycle(Tiny_StateThread* thread)
 			Tiny_Value b = DoPop(thread);
 			Tiny_Value a = DoPop(thread);
 
-			DoPush(thread, Tiny_NewBool(Tiny_ExpectBool(a) && Tiny_ExpectBool(b)));
+			DoPush(thread, Tiny_NewBool(ExpectBool(a) && ExpectBool(b)));
 		} break;
 
 		case OP_LOG_OR:
@@ -935,7 +955,7 @@ void ExecuteCycle(Tiny_StateThread* thread)
 			Tiny_Value b = DoPop(thread);
 			Tiny_Value a = DoPop(thread);
 
-			DoPush(thread, Tiny_NewBool(Tiny_ExpectBool(a) || Tiny_ExpectBool(b)));
+			DoPush(thread, Tiny_NewBool(ExpectBool(a) || ExpectBool(b)));
 		} break;
 
 		case OP_PRINT:
@@ -981,7 +1001,7 @@ void ExecuteCycle(Tiny_StateThread* thread)
 			
 			Tiny_Value val = DoPop(thread);
 
-			if(!Tiny_ExpectBool(val))
+			if(!ExpectBool(val))
 				thread->pc = newPc;
 		} break;
 		
@@ -1054,6 +1074,8 @@ void ExecuteCycle(Tiny_StateThread* thread)
 	// Only collect garbage in between iterations
 	if (thread->numObjects >= thread->maxNumObjects)
 		GarbageCollect(thread);
+
+	return true;
 }
 
 enum
@@ -1125,15 +1147,11 @@ int GetToken(Tiny_State* state, FILE* in)
 		}
 		TokenBuffer[i] = '\0';
 		
-		if (strcmp(TokenBuffer, "begin") == 0) return TOK_BEGIN;
-		if (strcmp(TokenBuffer, "end") == 0) return TOK_END;
 		if (strcmp(TokenBuffer, "func") == 0) return TOK_PROC;
 		if (strcmp(TokenBuffer, "if") == 0) return TOK_IF;
 		if (strcmp(TokenBuffer, "return") == 0) return TOK_RETURN;
 		if (strcmp(TokenBuffer, "while") == 0) return TOK_WHILE;
-		if (strcmp(TokenBuffer, "then") == 0) return TOK_THEN;
 		if (strcmp(TokenBuffer, "for") == 0) return TOK_FOR;
-		if (strcmp(TokenBuffer, "do") == 0) return TOK_DO;
 		if (strcmp(TokenBuffer, "else") == 0) return TOK_ELSE;
 		if (strcmp(TokenBuffer, "not") == 0) return TOK_NOT;
 		if (strcmp(TokenBuffer, "and") == 0) return TOK_AND;
@@ -1160,12 +1178,6 @@ int GetToken(Tiny_State* state, FILE* in)
 		return TOK_NUMBER;
 	}
 	
-	if(last == '#')
-	{
-		while(last != '\n' && last != EOF) last = getc(in);
-		return GetToken(state, in);
-	}
-
 	if(last == '"')
 	{
 		last = getc(in);
@@ -1317,7 +1329,7 @@ int GetToken(Tiny_State* state, FILE* in)
 			return TOK_MULEQUAL;
 		}
 	}
-
+    
 	if (last == '/')
 	{
 		if (Peek(in) == '=')
@@ -1326,6 +1338,14 @@ int GetToken(Tiny_State* state, FILE* in)
 			last = getc(in);
 			return TOK_DIVEQUAL;
 		}
+        else if(Peek(in) == '/')
+        {
+            getc(in);
+            last = getc(in);
+
+            while(last != '\n' && last != EOF) last = getc(in);
+            return GetToken(state, in);
+        }
 	}
 
 	if (last == '%')
@@ -2257,6 +2277,11 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
 					break;
 			}
 		} break;
+
+        default:
+            fprintf(stderr, "Got statement when expecting expression.\n");
+            exit(1);
+            break;
 	}
 }
 
@@ -2480,6 +2505,11 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 			else
 				GenerateCode(state, OP_RETURN);
 		} break;
+
+        default:
+            fprintf(stderr, "Got expression when expecting statement.\n");
+            exit(1);
+            break;
 	}
 }
 
@@ -2659,6 +2689,46 @@ static void BuildForeignFunctions(Tiny_State* state)
 	}
 }
 
+static void CompileState(Tiny_State* state, Expr* prog)
+{
+	// Allocate room for vm execution info
+    state->functionPcs = calloc(state->numFunctions, sizeof(int));
+	state->foreignFunctions = calloc(state->numForeignFunctions, sizeof(Tiny_ForeignFunction));
+
+    assert(state->functionPcs && state->foreignFunctions);
+
+	BuildForeignFunctions(state);
+
+	CompileProgram(state, prog);
+	GenerateCode(state, OP_HALT);
+
+	CheckInitialized(state);		// Done after compilation because it might have registered undefined functions during the compilation stage
+	
+}
+
+void Tiny_CompileString(Tiny_State* state, const char* name, const char* string)
+{
+    // TODO: Instead of turning this into a string, create
+    // a file-like interface for strings or better yet
+    // just parse and compile strings
+    FILE* file = tmpfile();
+    
+    fwrite(string, 1, strlen(string), file);
+    rewind(file);
+
+    state->lineNumber = 1;
+    state->fileName = name;
+
+    CurTok = 0;
+    Expr* prog = ParseProgram(state, file); 
+
+    fclose(file);
+        
+    CompileState(state, prog);
+
+	DeleteProgram(prog);
+}
+
 void Tiny_CompileFile(Tiny_State* state, const char* filename)
 {
     FILE* file = fopen(filename, "r");
@@ -2674,20 +2744,9 @@ void Tiny_CompileFile(Tiny_State* state, const char* filename)
 
 	CurTok = 0;
 	Expr* prog = ParseProgram(state, file);
+    
+    CompileState(state, prog);
 
-	// Allocate room for vm execution info
-    state->functionPcs = calloc(state->numFunctions, sizeof(int));
-	state->foreignFunctions = calloc(state->numForeignFunctions, sizeof(Tiny_ForeignFunction));
-
-    assert(state->functionPcs && state->foreignFunctions);
-
-	BuildForeignFunctions(state);
-
-	CompileProgram(state, prog);
-	GenerateCode(state, OP_HALT);
-
-	CheckInitialized(state);		// Done after compilation because it might have registered undefined functions during the compilation stage
-	
 	DeleteProgram(prog);
 }
 

@@ -6,29 +6,6 @@
 
 #include "iniparser.h"
 
-static void IniFree(void* pi)
-{
-	IniFile* ini = pi;
-
-	DestroyIni(ini);
-
-	free(ini);
-}
-
-const Tiny_NativeProp IniFileProp = {
-	"ini_file",
-	NULL,
-	IniFree,
-	NULL
-};
-
-const Tiny_NativeProp IniSectionProp = {
-	"ini_section",
-	NULL,
-	NULL,
-	NULL,
-};
-
 static int CountSections(const char* string)
 {
 	int count = 0;
