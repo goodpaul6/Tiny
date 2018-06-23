@@ -1,0 +1,5 @@
+func update() {
+    draw_text(160, 20, 255, 255, 255, "Kills: %g", get_player_kills())
+
+    draw_text(160, 200, 60, 60, 60, "tiny_game")
+}

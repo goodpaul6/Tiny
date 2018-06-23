@@ -932,6 +932,15 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 
             DoPush(thread, Tiny_NewNumber(Numbers[numberIndex]));
 		} break;
+
+		case OP_PUSH_STRING:
+		{
+			++thread->pc;
+
+			int stringIndex = ReadInteger(thread);
+
+			DoPush(thread, Tiny_NewString(thread, estrdup(Strings[stringIndex])));
+		} break;
 		
 		case OP_POP:
 		{

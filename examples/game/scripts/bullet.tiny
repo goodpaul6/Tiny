@@ -1,0 +1,10 @@
+frames := 0
+
+func update() {
+    if frames >= 30 {
+        kill()
+    }
+
+    draw_rect(get_x() - 2, get_y() - 2, 4, 4, 255, 255, 0)
+    frames += 1
+}

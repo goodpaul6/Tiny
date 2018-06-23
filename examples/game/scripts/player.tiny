@@ -1,18 +1,38 @@
+frames_since_last_bullet := 10
+
 func update() {
     if is_key_down('W') {
-        move(0, -2)
+        accel(0, -2)
     }
     
     if is_key_down('A') {
-        move(-2, 0)
+        accel(-2, 0)
     }
 
     if is_key_down('S') {
-        move(0, 2)
+        accel(0, 2)
     }
 
     if is_key_down('D') {
-        move(2, 0)
+        accel(2, 0)
+    }
+
+    frames_since_last_bullet += 1
+
+    if frames_since_last_bullet >= 10 {
+        if is_key_down(KEY_LEFT) {
+            add_bullet(get_x(), get_y(), 180)
+                frames_since_last_bullet = 0
+        } else if is_key_down(KEY_RIGHT) {
+            add_bullet(get_x(), get_y(), 0)
+                frames_since_last_bullet = 0
+        } else if is_key_down(KEY_UP) {
+            add_bullet(get_x(), get_y(), 270)
+                frames_since_last_bullet = 0
+        } else if is_key_down(KEY_DOWN) {
+            add_bullet(get_x(), get_y(), 90)
+                frames_since_last_bullet = 0
+        }
     }
 
     draw_rect(get_x() - 8, get_y() - 8, 16, 16, 255, 0, 0)

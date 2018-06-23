@@ -1,0 +1,12 @@
+frames_since_last_spawn := (rand() % 10) * 40
+
+func update() {
+    frames_since_last_spawn += 1
+
+    if frames_since_last_spawn >= 400 {
+        add_ent(3, get_x(), get_y(), ENT_CHASER)
+        frames_since_last_spawn = 0
+    }
+
+    draw_rect(get_x() - 3, get_y() - 3, 6, 6, 20, 200, 20)
+}
