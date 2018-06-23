@@ -1,0 +1,17 @@
+func clamp(v, min, max) {
+    if v < min return min
+    if v > max return max
+    
+    return v
+}
+
+func update() {
+    player := get_player()
+
+    dx := clamp(get_x(player) - get_x(), -0.5, 0.5)
+    dy := clamp(get_y(player) - get_y(), -0.5, 0.5)
+
+    move(dx, dy)
+
+    draw_rect(get_x() - 5, get_y() - 5, 10, 10, 50, 50, 255)
+}

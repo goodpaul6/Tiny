@@ -308,8 +308,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
 
 	AllocGlobals(thread);
 
-	// Pass backwards because that's how they're accessed
-	for (int i = count - 1; i >= 0; --i) {
+	for (int i = 0; i < count; ++i) {
 		DoPush(thread, args[i]);
 	}
 
@@ -564,7 +563,11 @@ static Symbol* DeclareGlobalVar(Tiny_State* state, const char* name)
 	return newNode;
 }
 
-static Symbol* DeclareArgument(Tiny_State* state, const char* name)
+// This expects nargs to be known beforehand because arguments are evaluated/pushed left-to-right
+// so the first argument is actually at -nargs position relative to frame pointer
+// We could reverse it, but this works out nicely for Foreign calls since we can just supply
+// a pointer to the initial arg instead of reversing them.
+static Symbol* DeclareArgument(Tiny_State* state, const char* name, int nargs)
 {
 	assert(state->currFunc);
 
@@ -587,7 +590,7 @@ static Symbol* DeclareArgument(Tiny_State* state, const char* name)
 
 	newNode->var.initialized = false;
 	newNode->var.scopeEnded = false;
-	newNode->var.index = -(state->currFunc->func.nargs + 1);
+	newNode->var.index = -nargs + state->currFunc->func.nargs;
 	newNode->var.scope = 0;								// These should be accessible anywhere in the function
 
 	newNode->next = state->currFunc->func.argsHead;
@@ -958,7 +961,14 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 		BIN_OP_INT(OR, |)
 		BIN_OP_INT(AND, &)
 		
-		REL_OP(LT, <)
+		case OP_LT: 
+		{ 
+			Tiny_Value val2 = DoPop(thread); 
+			Tiny_Value val1 = DoPop(thread); 
+			DoPush(thread, Tiny_NewBool(val1.number < val2.number)); 
+			++thread->pc; 
+		} break;
+		
 		REL_OP(LTE, <=)
 		REL_OP(GT, >)
 		REL_OP(GTE, >=)
@@ -1758,12 +1768,19 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 			
 			ExpectToken(state, '(', "Expected '(' after function name");
 			GetNextToken(state, in);
+
+			int nargs = 0;
+			char* argNames[MAX_ARGS] = { 0 };
 			
 			while(CurTok != ')')
 			{
 				ExpectToken(state, TOK_IDENT, "Expected identifier in function parameter list");
+				if (nargs >= MAX_ARGS) {
+					fprintf(stderr, "Too many args.");
+					exit(1);
+				}
 
-				DeclareArgument(state, TokenBuffer);
+				argNames[nargs++] = estrdup(TokenBuffer);
 				GetNextToken(state, in);
 				
 				if (CurTok != ')' && CurTok != ',')
@@ -1773,6 +1790,11 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 				}
 
 				if(CurTok == ',') GetNextToken(state, in);
+			}
+
+			for (int i = 0; i < nargs; ++i) {
+				DeclareArgument(state, argNames[i], nargs);
+				free(argNames[i]);
 			}
 			
 			GetNextToken(state, in);
