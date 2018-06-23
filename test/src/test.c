@@ -403,6 +403,27 @@ static void test_TinyStateCallMidRun(void)
 	Tiny_DeleteState(state);
 }
 
+static void test_TinyDict(void)
+{
+    Tiny_State* state = Tiny_CreateState();
+
+	Tiny_BindFunction(state, "call_func", CallFunc);
+
+    Tiny_CompileString(state, "test_compile", "func fact(n) { if n <= 1 return 1 return n * fact(n - 1) } call_func(\"fact\", 5)");
+
+	Tiny_StateThread thread;
+
+	Tiny_InitThread(&thread, state);
+
+	Tiny_StartThread(&thread);
+
+	while (Tiny_ExecuteCycle(&thread));
+
+	Tiny_DestroyThread(&thread);
+
+	Tiny_DeleteState(state);
+}
+
 int main(int argc, char* argv[])
 {
     lrun("All Array tests", test_Array);

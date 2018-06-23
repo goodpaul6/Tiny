@@ -36,7 +36,8 @@ typedef enum
 	TINY_VAL_BOOL,
 	TINY_VAL_NUM,
 	TINY_VAL_STRING,
-	TINY_VAL_NATIVE
+	TINY_VAL_NATIVE,
+    TINY_VAL_LIGHT_NATIVE
 } Tiny_ValueType;
 
 typedef struct Tiny_Value
@@ -47,6 +48,7 @@ typedef struct Tiny_Value
 	{
 		bool boolean;
 		double number;
+        void* addr;           // for TINY_VAL_LIGHT_NATIVE
 		Tiny_Object* obj;
 	};
 } Tiny_Value;
@@ -89,6 +91,7 @@ void Tiny_ProtectFromGC(Tiny_Value value);
 
 Tiny_Value Tiny_NewBool(bool value);
 Tiny_Value Tiny_NewNumber(double value);
+Tiny_Value Tiny_NewLightNative(void* ptr);
 Tiny_Value Tiny_NewString(Tiny_StateThread* thread, char* string);
 Tiny_Value Tiny_NewNative(Tiny_StateThread* thread, void* ptr, const Tiny_NativeProp* prop);
 
@@ -106,9 +109,16 @@ inline double Tiny_ToNumber(const Tiny_Value value)
     return value.number;
 }
 
+// Returns NULL if the value isn't a string
 const char* Tiny_ToString(const Tiny_Value value);
+
+// Returns value.addr if its a LIGHT_NATIVE
+// Returns the normal native address otherwise
 void* Tiny_ToAddr(const Tiny_Value value);
 
+// This returns NULL if the value is a LIGHT_NATIVE instead of a NATIVE
+// It would also return NULL if the NativeProp supplied was NULL,
+// either way, you have no information, so deal with it.
 const Tiny_NativeProp* Tiny_GetProp(const Tiny_Value value);
 
 Tiny_State* Tiny_CreateState(void);

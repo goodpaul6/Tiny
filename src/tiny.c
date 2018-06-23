@@ -106,19 +106,21 @@ static void GarbageCollect(Tiny_StateThread* thread)
 
 const char* Tiny_ToString(const Tiny_Value value)
 {
-    if(value.type != TINY_VAL_STRING) return false;
+    if(value.type != TINY_VAL_STRING) return NULL;
     return value.obj->string;
 }
 
 void* Tiny_ToAddr(const Tiny_Value value)
 {
-    if(value.type != TINY_VAL_NATIVE) return false;
+    if(value.type == TINY_VAL_LIGHT_NATIVE) return value.addr;
+    if(value.type != TINY_VAL_NATIVE) return NULL;
+
     return value.obj->nat.addr;
 }
 
 const Tiny_NativeProp* Tiny_GetProp(const Tiny_Value value)
 {
-    if(value.type != TINY_VAL_NATIVE) return false;
+    if(value.type != TINY_VAL_NATIVE) return NULL;
     return value.obj->nat.prop;
 }
 
@@ -134,6 +136,16 @@ static Tiny_Object* NewObject(Tiny_StateThread* thread, Tiny_ValueType type)
 	thread->numObjects++;
 	
 	return obj;
+}
+
+Tiny_Value Tiny_NewLightNative(void* ptr)
+{
+    Tiny_Value val;
+
+    val.type = TINY_VAL_LIGHT_NATIVE;
+    val.addr = ptr;
+
+    return val;
 }
 
 Tiny_Value Tiny_NewNative(Tiny_StateThread* thread, void* ptr, const Tiny_NativeProp* prop)
@@ -1006,6 +1018,8 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 					DoPush(thread, Tiny_NewBool(strcmp(a.obj->string, b.obj->string) == 0));
 				else if (a.type == TINY_VAL_NATIVE)
 					DoPush(thread, Tiny_NewBool(a.obj->nat.addr == b.obj->nat.addr));
+                else if (a.type == TINY_VAL_LIGHT_NATIVE)
+                    DoPush(thread, Tiny_NewBool(a.addr == b.addr));
 			}
 		} break;
 
@@ -1041,6 +1055,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 			if(val.type == TINY_VAL_NUM) printf("%g\n", val.number);
 			else if (val.obj->type == TINY_VAL_STRING) printf("%s\n", val.obj->string);
 			else if (val.obj->type == TINY_VAL_NATIVE) printf("<native at %p>\n", val.obj->nat.addr);
+			else if (val.obj->type == TINY_VAL_LIGHT_NATIVE) printf("<light native at %p>\n", val.obj->nat.addr);
 			++thread->pc;
 		} break;
 

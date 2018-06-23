@@ -62,20 +62,13 @@ static Entity* AddEnt(int hp, double x, double y, EntityType type)
     return NULL;
 }
 
-static Tiny_NativeProp EntityProp = {
-    "entity",
-    NULL,
-    NULL,
-    NULL
-};
-
 static Tiny_Value GetPlayer(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 0);
 
     for(int i = 0; i < MAX_ENTITIES; ++i) {
         if(Ents[i].thread.state == EntityStates[ENT_PLAYER]) {
-            return Tiny_NewNative(thread, &Ents[i], &EntityProp);
+            return Tiny_NewLightNative(&Ents[i]);
         }
     }
 
@@ -133,7 +126,6 @@ static Tiny_Value Accel(Tiny_StateThread* thread, const Tiny_Value* args, int co
 static Tiny_Value AccelTowards(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 2);
-    assert(Tiny_GetProp(args[0]) == &EntityProp);
 
     double speed = Tiny_ToNumber(args[1]);
 
@@ -152,8 +144,6 @@ static Tiny_Value GetX(Tiny_StateThread* thread, const Tiny_Value* args, int cou
 {
     if(count == 1) {
         // Another entity's x pos
-        assert(Tiny_GetProp(args[0]) == &EntityProp);
-
         return Tiny_NewNumber(((Entity*)Tiny_ToAddr(args[0]))->x);
     } else {
         // My x
@@ -165,8 +155,6 @@ static Tiny_Value GetY(Tiny_StateThread* thread, const Tiny_Value* args, int cou
 {
     if(count == 1) {
         // Another entity's y pos
-        assert(Tiny_GetProp(args[0]) == &EntityProp);
-
         return Tiny_NewNumber(((Entity*)Tiny_ToAddr(args[0]))->y);
     } else {
         // My x
@@ -177,7 +165,6 @@ static Tiny_Value GetY(Tiny_StateThread* thread, const Tiny_Value* args, int cou
 static Tiny_Value Kill(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     if(count == 1) {
-        assert(Tiny_GetProp(args[0]) == &EntityProp);
         ((Entity*)Tiny_ToAddr(args[0]))->hp = 0;
     } else {
         ((Entity*)thread->userdata)->hp = 0;
