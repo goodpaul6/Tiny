@@ -103,9 +103,11 @@ static Tiny_Value AddBullet(Tiny_StateThread* thread, const Tiny_Value* args, in
 
     Entity* b = AddEnt(1, x, y, ENT_BULLET);
 
-    b->playerBullet = thread->state == EntityStates[ENT_PLAYER];
-    b->velX = 5 * cos(angle);
-    b->velY = 5 * sin(angle);
+    if(b) {
+        b->playerBullet = thread->state == EntityStates[ENT_PLAYER];
+        b->velX = 5 * cos(angle);
+        b->velY = 5 * sin(angle);
+    }
 
     return Tiny_Null;
 }
