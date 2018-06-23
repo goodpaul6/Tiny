@@ -106,7 +106,9 @@ static void GarbageCollect(Tiny_StateThread* thread)
 
 const char* Tiny_ToString(const Tiny_Value value)
 {
+	if (value.type == TINY_VAL_CONST_STRING) return value.cstr;
     if(value.type != TINY_VAL_STRING) return NULL;
+
     return value.obj->string;
 }
 
@@ -188,9 +190,21 @@ Tiny_Value Tiny_NewNumber(double value)
 	return val;
 }
 
+Tiny_Value Tiny_NewConstString(const char* str)
+{
+	assert(str);
+
+	Tiny_Value val;
+
+	val.type = TINY_VAL_CONST_STRING;
+	val.cstr = str;
+	
+	return val;
+}
+
 Tiny_Value Tiny_NewString(Tiny_StateThread* thread, char* string)
 {
-    assert(thread && thread->state);
+	assert(thread && thread->state && string);
     
     // Make sure thread is alive
     assert(thread->pc >= 0);
@@ -951,7 +965,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 
 			int stringIndex = ReadInteger(thread);
 
-			DoPush(thread, Tiny_NewString(thread, estrdup(Strings[stringIndex])));
+			DoPush(thread, Tiny_NewConstString(Strings[stringIndex]));
 		} break;
 		
 		case OP_POP:
@@ -1004,7 +1018,10 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 			Tiny_Value b = DoPop(thread);
 			Tiny_Value a = DoPop(thread);
 
-			if (a.type != b.type)
+			bool bothStrings = ((a.type == TINY_VAL_CONST_STRING && b.type == TINY_VAL_STRING) ||
+				(a.type == TINY_VAL_STRING && b.type == TINY_VAL_CONST_STRING));
+
+			if (a.type != b.type && !bothStrings)
 				DoPush(thread, Tiny_NewBool(false));
 			else
 			{
@@ -1014,8 +1031,13 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 					DoPush(thread, Tiny_NewBool(a.boolean == b.boolean));
 				else if (a.type == TINY_VAL_NUM)
 					DoPush(thread, Tiny_NewBool(a.number == b.number));
-				else if (a.type == TINY_VAL_STRING)
+				else if (a.type == TINY_VAL_STRING) 
 					DoPush(thread, Tiny_NewBool(strcmp(a.obj->string, b.obj->string) == 0));
+				else if (a.type == TINY_VAL_CONST_STRING) 
+				{
+					if (b.type == TINY_VAL_CONST_STRING && a.cstr == b.cstr) DoPush(thread, Tiny_NewBool(true));
+					else DoPush(thread, Tiny_NewBool(strcmp(a.cstr, b.obj->string) == 0));
+				}
 				else if (a.type == TINY_VAL_NATIVE)
 					DoPush(thread, Tiny_NewBool(a.obj->nat.addr == b.obj->nat.addr));
                 else if (a.type == TINY_VAL_LIGHT_NATIVE)
@@ -1054,6 +1076,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 			Tiny_Value val = DoPop(thread);
 			if(val.type == TINY_VAL_NUM) printf("%g\n", val.number);
 			else if (val.obj->type == TINY_VAL_STRING) printf("%s\n", val.obj->string);
+			else if (val.obj->type == TINY_VAL_CONST_STRING) printf("%s\n", val.cstr);
 			else if (val.obj->type == TINY_VAL_NATIVE) printf("<native at %p>\n", val.obj->nat.addr);
 			else if (val.obj->type == TINY_VAL_LIGHT_NATIVE) printf("<light native at %p>\n", val.obj->nat.addr);
 			++thread->pc;
