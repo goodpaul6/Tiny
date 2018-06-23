@@ -143,8 +143,24 @@ void Tiny_InitThread(Tiny_StateThread* thread, const Tiny_State* state);
 // Requires that state is compiled
 void Tiny_StartThread(Tiny_StateThread* thread);
 
+// Returns -1 if the global doesn't exist
+// Do note that this will return -1 for global constants as well (those are inlined wherever they are used, so they don't really exist)
+int Tiny_GetGlobalIndex(const Tiny_State* state, const char* name);
+
 // Returns -1 if the function doesn't exist
 int Tiny_GetFunctionIndex(const Tiny_State* state, const char* name);
+
+// Returns the thread->globalVars[globalIndex] (asserts if index < 0)
+// You must have started the thread or called Tiny_CallFunction for this to work
+// because otherwise, the thread's global variables might not be allocated.
+// Don't worry, this will assert that they have.
+Tiny_Value Tiny_GetGlobal(const Tiny_StateThread* thread, int globalIndex);
+
+// Sets a global variable at the given index to the given value (asserts if index < 0)
+// You must have started the thread or called Tiny_CallFunction for this to work
+// because otherwise, the thread's global variables might not be allocated.
+// Don't worry, this will assert that they have.
+void Tiny_SetGlobal(Tiny_StateThread* thread, int globalIndex, Tiny_Value value);
 
 // Runs the thread until the function exits and returns the retVal.
 // functionIndex can be retrieved using Tiny_GetFunctionIndex.

@@ -303,6 +303,19 @@ void Tiny_StartThread(Tiny_StateThread* thread)
 
 static bool ExecuteCycle(Tiny_StateThread* thread);
 
+int Tiny_GetGlobalIndex(const Tiny_State* state, const char* name)
+{
+	Symbol* sym = state->globalSymbols;
+
+	while (sym) {
+		if (sym->type == SYM_GLOBAL && strcmp(sym->name, name) == 0) {
+			return sym->var.index;
+		}
+	}
+
+	return -1;
+}
+
 int Tiny_GetFunctionIndex(const Tiny_State* state, const char* name)
 {
 	Symbol* sym = state->globalSymbols;
@@ -320,6 +333,22 @@ int Tiny_GetFunctionIndex(const Tiny_State* state, const char* name)
 
 static void DoPushIndir(Tiny_StateThread* thread, int nargs);
 static void DoPush(Tiny_StateThread* thread, Tiny_Value value);
+
+Tiny_Value Tiny_GetGlobal(const Tiny_StateThread* thread, int globalIndex)
+{
+	assert(globalIndex >= 0 && globalIndex < thread->state->numGlobalVars);
+	assert(thread->globalVars);
+	
+	return thread->globalVars[globalIndex];
+}
+
+void Tiny_SetGlobal(Tiny_StateThread* thread, int globalIndex, Tiny_Value value)
+{
+	assert(globalIndex >= 0 && globalIndex < thread->state->numGlobalVars);
+	assert(thread->globalVars);
+
+	thread->globalVars[globalIndex] = value;
+}
 
 Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const Tiny_Value* args, int count)
 {

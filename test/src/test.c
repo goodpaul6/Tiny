@@ -407,9 +407,11 @@ static void test_TinyDict(void)
 {
     Tiny_State* state = Tiny_CreateState();
 
-	Tiny_BindFunction(state, "call_func", CallFunc);
+	Tiny_BindStandardLibrary(state);
 
-    Tiny_CompileString(state, "test_compile", "func fact(n) { if n <= 1 return 1 return n * fact(n - 1) } call_func(\"fact\", 5)");
+	Tiny_BindFunction(state, "lequal", Lib_Lequal);
+
+    Tiny_CompileString(state, "test_dict", "d := dict(\"a\", 10, \"b\", 20)");
 
 	Tiny_StateThread thread;
 
@@ -418,6 +420,24 @@ static void test_TinyDict(void)
 	Tiny_StartThread(&thread);
 
 	while (Tiny_ExecuteCycle(&thread));
+
+	int dg = Tiny_GetGlobalIndex(state, "d");
+
+	Tiny_Value dict = Tiny_GetGlobal(&thread, dg);
+
+	Dict* d = Tiny_ToAddr(dict);
+	
+	extern const Tiny_NativeProp DictProp;
+
+	lok(Tiny_GetProp(dict) == &DictProp);
+
+	Tiny_Value num = DictGetValue(d, "a", Tiny_Value);
+
+	lequal((int)Tiny_ToNumber(num), 10);
+
+	num = DictGetValue(d, "b", Tiny_Value);
+
+	lequal((int)Tiny_ToNumber(num), 20);
 
 	Tiny_DestroyThread(&thread);
 
@@ -432,6 +452,7 @@ int main(int argc, char* argv[])
     lrun("Multiple Tiny_CompileString same state", test_MultiCompileString);
     lrun("Tiny_CallFunction", test_TinyStateCallFunction);
     lrun("Tiny_CallFunction While Running", test_TinyStateCallFunction);
+    lrun("Tiny Stdlib Dict", test_TinyDict);
     lresults();
 
     return lfails != 0;

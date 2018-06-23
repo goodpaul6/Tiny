@@ -249,7 +249,7 @@ static void DictFree(void* d)
 	free(d);
 }
 
-static Tiny_NativeProp DictProp = {
+const Tiny_NativeProp DictProp = {
 	"dict",
 	DictProtectFromGC,
 	DictFree,
@@ -269,7 +269,7 @@ static Tiny_Value CreateDict(Tiny_StateThread* thread, const Tiny_Value* args, i
 	}
 	
 	for (int i = 0; i < count; i += 2)
-		DictSet(dict, args[i].obj->string, &args[i + 1]);
+		DictSet(dict, Tiny_ToString(args[i]), &args[i + 1]);
 
 	return Tiny_NewNative(thread, dict, &DictProp);
 }
@@ -277,7 +277,7 @@ static Tiny_Value CreateDict(Tiny_StateThread* thread, const Tiny_Value* args, i
 static Tiny_Value Lib_DictPut(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
-	const char* key = args[1].obj->string;
+	const char* key = Tiny_ToString(args[1]);
 	Tiny_Value value = args[2];
 
 	DictSet(dict, key, &value);
@@ -287,7 +287,7 @@ static Tiny_Value Lib_DictPut(Tiny_StateThread* thread, const Tiny_Value* args, 
 static Tiny_Value Lib_DictExists(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
-	const char* key = args[1].obj->string;
+	const char* key = Tiny_ToString(args[1]);
 
 	const Tiny_Value* value = DictGet(dict, key);
 
@@ -297,7 +297,7 @@ static Tiny_Value Lib_DictExists(Tiny_StateThread* thread, const Tiny_Value* arg
 static Tiny_Value Lib_DictGet(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
-	const char* key = args[1].obj->string;
+	const char* key = Tiny_ToString(args[1]);
 
 	const Tiny_Value* value = DictGet(dict, key);
 
@@ -310,7 +310,7 @@ static Tiny_Value Lib_DictGet(Tiny_StateThread* thread, const Tiny_Value* args, 
 static Tiny_Value Lib_DictRemove(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	Dict* dict = args[0].obj->nat.addr;
-	const char* key = args[1].obj->string;
+	const char* key = Tiny_ToString(args[1]);
 	
 	DictRemove(dict, key);
 	return Tiny_Null;
@@ -346,8 +346,8 @@ static Tiny_Value Lib_DictKeys(Tiny_StateThread* thread, const Tiny_Value* args,
 
 static Tiny_Value Strcat(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	char* str1 = args[0].obj->string;
-	char* str2 = args[1].obj->string;
+	const char* str1 = Tiny_ToString(args[0]);
+	const char* str2 = Tiny_ToString(args[1]);
 	
 	size_t len1 = strlen(str1);
 	size_t len2 = strlen(str2);
@@ -362,7 +362,7 @@ static Tiny_Value Strcat(Tiny_StateThread* thread, const Tiny_Value* args, int c
 
 static Tiny_Value Lib_Ston(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	char* str = args[0].obj->string;
+	const char* str = Tiny_ToString(args[0]);
 	double value = strtod(str, NULL);
 	
 	return Tiny_NewNumber(value);
@@ -401,7 +401,7 @@ static Tiny_Value Rand(Tiny_StateThread* thread, const Tiny_Value* args, int cou
 static Tiny_Value Lib_Input(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	if (count >= 1)
-		printf("%s", args[0].obj->string);
+		printf("%s", Tiny_ToString(args[0]));
 
 	char* buffer = emalloc(1);
 	size_t bufferLength = 1;
@@ -436,8 +436,8 @@ static Tiny_Value Lib_Print(Tiny_StateThread* thread, const Tiny_Value* args, in
 
 		if (val.type == TINY_VAL_NUM)
 			printf("%g", val.number);
-		else if (val.type == TINY_VAL_STRING)
-			printf("%s", val.obj->string);
+		else if (val.type == TINY_VAL_STRING || val.type == TINY_VAL_CONST_STRING)
+			printf("%s", Tiny_ToString(val));
 		else if (val.type == TINY_VAL_NATIVE)
 		{
 			if (val.obj->nat.prop && val.obj->nat.prop->name)
@@ -456,7 +456,7 @@ static Tiny_Value Lib_Print(Tiny_StateThread* thread, const Tiny_Value* args, in
 
 static Tiny_Value Lib_Printf(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	const char* fmt = args[0].obj->string;
+	const char* fmt = Tiny_ToString(args[0]);
 
 	int arg = 1;
 
@@ -475,7 +475,7 @@ static Tiny_Value Lib_Printf(Tiny_StateThread* thread, const Tiny_Value* args, i
 			{
 				case 'd': printf("%d", (int)args[arg].number); break;
 				case 'g': printf("%g", args[arg].number); break;
-				case 's': printf("%s", args[arg].obj->string); break;
+				case 's': printf("%s", Tiny_ToString(args[arg])); break;
 
 				default:
 					printf("\nInvalid format specifier '%c'\n", *fmt);
