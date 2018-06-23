@@ -120,7 +120,7 @@ const char* Tiny_ToString(const Tiny_Value value);
 void* Tiny_ToAddr(const Tiny_Value value);
 
 // This returns NULL if the value is a LIGHT_NATIVE instead of a NATIVE
-// It would also return NULL if the NativeProp supplied was NULL,
+// It would also return NULL if the NativeProp supplied when the object was created was NULL,
 // either way, you have no information, so deal with it.
 const Tiny_NativeProp* Tiny_GetProp(const Tiny_Value value);
 

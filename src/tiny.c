@@ -311,6 +311,8 @@ int Tiny_GetGlobalIndex(const Tiny_State* state, const char* name)
 		if (sym->type == SYM_GLOBAL && strcmp(sym->name, name) == 0) {
 			return sym->var.index;
 		}
+
+		sym = sym->next;
 	}
 
 	return -1;
@@ -1061,7 +1063,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 				else if (a.type == TINY_VAL_NUM)
 					DoPush(thread, Tiny_NewBool(a.number == b.number));
 				else if (a.type == TINY_VAL_STRING) 
-					DoPush(thread, Tiny_NewBool(strcmp(a.obj->string, b.obj->string) == 0));
+					DoPush(thread, Tiny_NewBool(strcmp(a.obj->string, Tiny_ToString(b)) == 0));
 				else if (a.type == TINY_VAL_CONST_STRING) 
 				{
 					if (b.type == TINY_VAL_CONST_STRING && a.cstr == b.cstr) DoPush(thread, Tiny_NewBool(true));
@@ -2877,6 +2879,13 @@ static void BuildForeignFunctions(Tiny_State* state)
 
 static void CompileState(Tiny_State* state, Expr* prog)
 {
+    // If this state was already compiled and it ends with an OP_HALT, We'll just overwrite it
+    if(state->programLength > 0) {
+        if(state->program[state->programLength - 1] == OP_HALT) {
+            state->programLength -= 1;
+        }
+    }
+    
 	// Allocate room for vm execution info
 
 	// We realloc because this state might be compiled multiple times (if, e.g., Tiny_CompileString is called twice with same state)

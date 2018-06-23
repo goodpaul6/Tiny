@@ -384,11 +384,11 @@ static Tiny_Value CallFunc(Tiny_StateThread* thread, const Tiny_Value* args, int
 
 static void test_TinyStateCallMidRun(void)
 {
-    Tiny_State* state = Tiny_CreateState();
+	Tiny_State* state = Tiny_CreateState();
 
 	Tiny_BindFunction(state, "call_func", CallFunc);
 
-    Tiny_CompileString(state, "test_compile", "func fact(n) { if n <= 1 return 1 return n * fact(n - 1) } call_func(\"fact\", 5)");
+	Tiny_CompileString(state, "test_compile", "func fact(n) { if n <= 1 return 1 return n * fact(n - 1) } call_func(\"fact\", 5)");
 
 	Tiny_StateThread thread;
 
@@ -397,6 +397,53 @@ static void test_TinyStateCallMidRun(void)
 	Tiny_StartThread(&thread);
 
 	while (Tiny_ExecuteCycle(&thread));
+
+	Tiny_DestroyThread(&thread);
+
+	Tiny_DeleteState(state);
+}
+
+static Tiny_Value Lib_GetStaticNative(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+	static int a = 0;
+	return Tiny_NewLightNative(&a);
+}
+
+static void test_TinyEquality(void)
+{
+	Tiny_State* state = Tiny_CreateState();
+
+	Tiny_BindStandardLibrary(state);
+
+	Tiny_BindFunction(state, "get_static", Lib_GetStaticNative);
+
+	Tiny_CompileString(state, "test_equ", "a := 10 == 10");
+	Tiny_CompileString(state, "test_equ", "b := \"hello\" == \"hello\"");
+	Tiny_CompileString(state, "test_equ", "c := get_static() == get_static()");
+	Tiny_CompileString(state, "test_equ", "d := strcat(\"aba\", \"aba\") == \"abaaba\"");
+
+	Tiny_StateThread thread;
+
+	Tiny_InitThread(&thread, state);
+
+	Tiny_StartThread(&thread);
+
+	while (Tiny_ExecuteCycle(&thread));
+
+	int ag = Tiny_GetGlobalIndex(state, "a");
+	int bg = Tiny_GetGlobalIndex(state, "b");
+	int cg = Tiny_GetGlobalIndex(state, "c");
+	int dg = Tiny_GetGlobalIndex(state, "d");
+
+	Tiny_Value a = Tiny_GetGlobal(&thread, ag);
+	Tiny_Value b = Tiny_GetGlobal(&thread, bg);
+	Tiny_Value c = Tiny_GetGlobal(&thread, cg);
+	Tiny_Value d = Tiny_GetGlobal(&thread, dg);
+
+	lok(Tiny_ToBool(a));
+	lok(Tiny_ToBool(b));
+	lok(Tiny_ToBool(c));
+	lok(Tiny_ToBool(d));
 
 	Tiny_DestroyThread(&thread);
 
@@ -452,6 +499,7 @@ int main(int argc, char* argv[])
     lrun("Multiple Tiny_CompileString same state", test_MultiCompileString);
     lrun("Tiny_CallFunction", test_TinyStateCallFunction);
     lrun("Tiny_CallFunction While Running", test_TinyStateCallFunction);
+    lrun("Tiny Equality", test_TinyEquality);
     lrun("Tiny Stdlib Dict", test_TinyDict);
     lresults();
 
