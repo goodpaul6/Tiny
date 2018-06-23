@@ -253,6 +253,7 @@ void Tiny_InitThread(Tiny_StateThread* thread, const Tiny_State* state)
     thread->retVal = Tiny_Null;
 
     thread->indirStackSize = 0;
+	thread->userdata = NULL;
 }
 
 static void AllocGlobals(Tiny_StateThread* thread)
@@ -1245,6 +1246,22 @@ static int GetToken(Tiny_State* state, FILE* in)
 		TokenBuffer[i] = '\0';
 		
 		TokenNumber = strtod(TokenBuffer, NULL);
+		return TOK_NUMBER;
+	}
+
+	if (last == '\'')
+	{
+		last = getc(in);	
+		TokenNumber = (double)last;	
+		last = getc(in);
+
+		if (last != '\'')
+		{
+			fprintf(stderr, "Expected ' to follow previous '.");
+			exit(1);
+		}
+		last = getc(in);
+
 		return TOK_NUMBER;
 	}
 	

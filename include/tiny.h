@@ -72,6 +72,9 @@ typedef struct Tiny_StateThread
 
     int indirStack[TINY_THREAD_INDIR_SIZE];
     int indirStackSize;
+
+	// Userdata pointer. Set to NULL when InitThread is called. Use it for whatever you want
+	void* userdata;
 } Tiny_StateThread;
 
 typedef Tiny_Value (*Tiny_ForeignFunction)(Tiny_StateThread* thread, const Tiny_Value* args, int count);

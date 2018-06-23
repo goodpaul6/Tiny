@@ -1,0 +1,19 @@
+func update() {
+    if is_key_down('W') {
+        move(0, -2)
+    }
+    
+    if is_key_down('A') {
+        move(-2, 0)
+    }
+
+    if is_key_down('S') {
+        move(0, 2)
+    }
+
+    if is_key_down('D') {
+        move(2, 0)
+    }
+
+    draw_rect(get_x() - 8, get_y() - 8, 16, 16, 255, 0, 0)
+}
