@@ -216,9 +216,35 @@ bool ParseIni(IniFile* ini, const char* string)
 	return true;
 }
 
+IniResult IniGet(const IniFile* ini, const char* section, const char* key, char* const* value)
+{
+    assert(ini && key);
+
+    for(int i = 0; i < ini->count; ++i)
+    {
+        if(strcmp(ini->sections[i].name, section) == 0)
+        {
+            const IniSection* sec = &ini->sections[i];
+
+            for(int vi = 0; vi < sec->count; ++vi)
+            {
+                if(strcmp(sec->keys[i], key) == 0)
+                {
+                    value = sec->values[i];
+					return INI_SUCCESS;
+                }
+            }
+
+			return INI_NO_KEY;
+        }
+    }
+
+	return INI_NO_SECTION;
+}
+
 IniResult IniSet(IniFile* ini, const char* section, const char* key, const char* value)
 {
-	assert(key && value);
+	assert(ini && key && value);
 
 	if (!section)
 		section = "";	// Global section has empty name

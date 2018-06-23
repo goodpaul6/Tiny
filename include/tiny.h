@@ -15,6 +15,8 @@
 typedef struct Tiny_Object Tiny_Object;
 typedef struct Tiny_State Tiny_State;
 
+struct Tiny_Value;
+
 // Stores properties about a native
 // object. This should be statically allocated
 // and only one should exist for each type of
@@ -22,9 +24,10 @@ typedef struct Tiny_State Tiny_State;
 typedef struct
 {
 	const char* name;
-	void(*mark)(void*);
+
+	void(*protectFromGC)(void*);
 	void(*free)(void*);
-	void(*toString)(void*);
+	struct Tiny_Value (*toString)(void*);
 } Tiny_NativeProp;
 
 typedef enum
@@ -71,7 +74,7 @@ typedef struct Tiny_StateThread
     int indirStackSize;
 } Tiny_StateThread;
 
-typedef Tiny_Value (*Tiny_ForeignFunction)(const Tiny_Value* args, int count);
+typedef Tiny_Value (*Tiny_ForeignFunction)(Tiny_StateThread* thread, const Tiny_Value* args, int count);
 
 extern const Tiny_Value Tiny_Null;
 
@@ -79,7 +82,7 @@ void* emalloc(size_t size);
 void* erealloc(void* mem, size_t newSize);
 char* estrdup(const char* string);
 
-void Tiny_Mark(Tiny_Value value);
+void Tiny_ProtectFromGC(Tiny_Value value);
 
 Tiny_Value Tiny_NewBool(bool value);
 Tiny_Value Tiny_NewNumber(double value);
@@ -124,6 +127,18 @@ void Tiny_InitThread(Tiny_StateThread* thread, const Tiny_State* state);
 // Requires that state is compiled
 void Tiny_StartThread(Tiny_StateThread* thread);
 
+// Returns -1 if the function doesn't exist
+int Tiny_GetFunctionIndex(const Tiny_State* state, const char* name);
+
+// Runs the thread until the function exits and returns the retVal.
+// functionIndex can be retrieved using Tiny_GetFunctionIndex.
+// The only requirement is that the thread has been initialized.
+// You can even call this from a foreign function. It keeps track of the
+// state of the thread prior to the function call and restores it afterwards.
+// This also allocates globals if the thread hasn't been started already, and in that case, once
+// the function call is over, the thread will be "done".
+Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const Tiny_Value* args, int count);
+
 inline bool Tiny_IsThreadDone(const Tiny_StateThread* thread)
 {
     return thread->pc < 0;
@@ -134,6 +149,8 @@ inline bool Tiny_IsThreadDone(const Tiny_StateThread* thread)
 // at the end of the cycle.
 // Returns whether the cycle was executed or not.
 bool Tiny_ExecuteCycle(Tiny_StateThread* thread);
+
+void Tiny_BindStandardLibrary(Tiny_State* state);
 
 void Tiny_DestroyThread(Tiny_StateThread* thread);
 

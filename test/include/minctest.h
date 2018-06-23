@@ -92,7 +92,7 @@ static int lfails = 0;
     const int ts = ltests;\
     const int fs = lfails;\
     const clock_t start = clock();\
-    printf("\t%-14s", name);\
+    printf("\t%-45s", name);\
     test();\
     printf("pass:%2d   fail:%2d   %4dms\n",\
             (ltests-ts)-(lfails-fs), lfails-fs,\

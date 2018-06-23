@@ -55,7 +55,7 @@ static inline bool IsObject(Tiny_Value val)
 	return val.type == TINY_VAL_STRING || val.type == TINY_VAL_NATIVE;
 }
 
-void Tiny_Mark(Tiny_Value value)
+void Tiny_ProtectFromGC(Tiny_Value value)
 {
     if(!IsObject(value))
         return;
@@ -68,8 +68,8 @@ void Tiny_Mark(Tiny_Value value)
 	
 	if(obj->type == TINY_VAL_NATIVE)
 	{
-		if(obj->nat.prop && obj->nat.prop->mark)
-			obj->nat.prop->mark(obj->nat.addr);
+		if(obj->nat.prop && obj->nat.prop->protectFromGC)
+			obj->nat.prop->protectFromGC(obj->nat.addr);
 	}
 
 	obj->marked = 1;
@@ -255,7 +255,7 @@ void Tiny_InitThread(Tiny_StateThread* thread, const Tiny_State* state)
     thread->indirStackSize = 0;
 }
 
-void Tiny_StartThread(Tiny_StateThread* thread)
+static void AllocGlobals(Tiny_StateThread* thread)
 {
     // If the global variables haven't been allocated yet,
     // do that
@@ -264,12 +264,71 @@ void Tiny_StartThread(Tiny_StateThread* thread)
         thread->globalVars = emalloc(sizeof(Tiny_Value) * thread->state->numGlobalVars);
         memset(thread->globalVars, 0, sizeof(Tiny_Value) * thread->state->numGlobalVars);
     }
+}
+
+void Tiny_StartThread(Tiny_StateThread* thread)
+{
+	AllocGlobals(thread);
 
     // TODO: Eventually move to an actual entry point
     thread->pc = 0;
 }
 
 static bool ExecuteCycle(Tiny_StateThread* thread);
+
+int Tiny_GetFunctionIndex(const Tiny_State* state, const char* name)
+{
+	Symbol* sym = state->globalSymbols;
+	
+	while (sym) {
+		if (sym->type == SYM_FUNCTION && strcmp(sym->name, name) == 0) {
+			return sym->func.index;
+		}
+
+		sym = sym->next;
+	}
+
+	return -1;
+}
+
+static void DoPushIndir(Tiny_StateThread* thread, int nargs);
+static void DoPush(Tiny_StateThread* thread, Tiny_Value value);
+
+Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const Tiny_Value* args, int count)
+{
+	assert(thread->state && functionIndex >= 0);
+
+	int pc, fp, sp, indirStackSize;
+
+	pc = thread->pc;
+	fp = thread->fp;
+	sp = thread->sp;
+	indirStackSize = thread->indirStackSize;
+
+	AllocGlobals(thread);
+
+	// Pass backwards because that's how they're accessed
+	for (int i = count - 1; i >= 0; --i) {
+		DoPush(thread, args[i]);
+	}
+
+	thread->pc = thread->state->functionPcs[functionIndex];
+	DoPushIndir(thread, count);
+
+	// Keep executing until the indir stack is restored (i.e. function is done)
+	while (thread->indirStackSize > indirStackSize) {
+		ExecuteCycle(thread);
+	}
+
+	Tiny_Value retVal = thread->retVal;
+
+	thread->pc = pc;
+	thread->fp = fp;
+	thread->sp = sp;
+	thread->indirStackSize = indirStackSize;
+
+	return retVal;
+}
 
 bool Tiny_ExecuteCycle(Tiny_StateThread* thread)
 {
@@ -296,13 +355,13 @@ static void MarkAll(Tiny_StateThread* thread)
 {
     assert(thread->state);
 
-    Tiny_Mark(thread->retVal);
+    Tiny_ProtectFromGC(thread->retVal);
 
 	for (int i = 0; i < thread->sp; ++i)
-        Tiny_Mark(thread->stack[i]);
+        Tiny_ProtectFromGC(thread->stack[i]);
 
     for (int i = 0; i < thread->state->numGlobalVars; ++i)
-        Tiny_Mark(thread->globalVars[i]);
+        Tiny_ProtectFromGC(thread->globalVars[i]);
 }
 
 static void GenerateCode(Tiny_State* state, Word inst)
@@ -629,8 +688,6 @@ static Symbol* ReferenceFunction(Tiny_State* state, const char* name)
 	return NULL;
 }
 
-static void DoPushIndir(Tiny_StateThread* thread, int nargs);
-
 /*static void CallProc(int id, int nargs)
 {
 	if(id < 0) return;
@@ -745,7 +802,7 @@ static int ReadInteger(Tiny_StateThread* thread)
 	return val;
 }
 
-inline void DoPush(Tiny_StateThread* thread, Tiny_Value value)
+static void DoPush(Tiny_StateThread* thread, Tiny_Value value)
 {
 	if(thread->sp >= MAX_STACK) 
 	{
@@ -1038,7 +1095,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 			// the state of the stack prior to the function arguments being pushed
 			int prevSize = thread->sp - nargs;
 
-            thread->retVal = state->foreignFunctions[fIdx](&thread->stack[prevSize], nargs);
+            thread->retVal = state->foreignFunctions[fIdx](thread, &thread->stack[prevSize], nargs);
 			
 			// Resize the stack so that it has the arguments removed
 			thread->sp = prevSize;
@@ -1118,16 +1175,29 @@ enum
 char TokenBuffer[MAX_TOK_LEN];
 double TokenNumber;
 
-int Peek(FILE* in)
+static int Peek(FILE* in)
 {
 	int c = getc(in);
 	ungetc(c, in);
 	return c;
 }
 
-int GetToken(Tiny_State* state, FILE* in)
+// HACK(Apaar): This is used to reset
+// the GetToken's last char after
+// we've hit the EOF of a file. Otherwise
+// it thinks it's EOFd right away.
+static bool ResetGetToken = false;
+
+static int GetToken(Tiny_State* state, FILE* in)
 {
 	static int last = ' ';
+
+	if (ResetGetToken)
+	{
+		last = ' ';
+		ResetGetToken = false;
+	}
+
 	while (isspace(last))
 	{
 		if (last == '\n')
@@ -1478,7 +1548,7 @@ typedef struct sExpr
 	};
 } Expr;
 
-Expr* Expr_create(ExprType type)
+static Expr* Expr_create(ExprType type)
 {
 	Expr* exp = emalloc(sizeof(Expr));
 	exp->type = type;
@@ -1488,13 +1558,13 @@ Expr* Expr_create(ExprType type)
 
 int CurTok;
 
-int GetNextToken(Tiny_State* state, FILE* in)
+static int GetNextToken(Tiny_State* state, FILE* in)
 {
 	CurTok = GetToken(state, in);
 	return CurTok;
 }
 
-Expr* ParseExpr(Tiny_State* state, FILE* in);
+static Expr* ParseExpr(Tiny_State* state, FILE* in);
 
 static void ExpectToken(const Tiny_State* state, int tok, const char* msg)
 {
@@ -1528,7 +1598,7 @@ static Expr* ParseIf(Tiny_State* state, FILE* in)
 	return exp;
 }
 
-Expr* ParseFactor(Tiny_State* state, FILE* in)
+static Expr* ParseFactor(Tiny_State* state, FILE* in)
 {
 	switch(CurTok)
 	{
@@ -1612,7 +1682,7 @@ Expr* ParseFactor(Tiny_State* state, FILE* in)
 				if(CurTok == ',') GetNextToken(state, in);
 				else if(CurTok != ')')
 				{
-					fprintf(stderr, "Expected ')' after attempted call to proc %s\n", ident);
+					fprintf(stderr, "Expected ')' after attempted call to func %s\n", ident);
 					exit(1);
 				}
 			}
@@ -1786,7 +1856,7 @@ Expr* ParseFactor(Tiny_State* state, FILE* in)
 	exit(1);
 }
 
-int GetTokenPrec()
+static int GetTokenPrec()
 {
 	int prec = -1;
 	switch(CurTok)
@@ -1810,7 +1880,7 @@ int GetTokenPrec()
 	return prec;
 }
 
-Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
+static Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
 {
 	while(1)
 	{
@@ -1875,14 +1945,15 @@ Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
 	}
 }
 
-Expr* ParseExpr(Tiny_State* state, FILE* in)
+static Expr* ParseExpr(Tiny_State* state, FILE* in)
 {
 	Expr* factor = ParseFactor(state, in);
 	return ParseBinRhs(state, in, 0, factor);
 }
 
-Expr* ParseProgram(Tiny_State* state, FILE* in)
+static Expr* ParseProgram(Tiny_State* state, FILE* in)
 {
+	ResetGetToken = true;
 	GetNextToken(state, in);
 		
 	if(CurTok != TOK_EOF)
@@ -1901,9 +1972,9 @@ Expr* ParseProgram(Tiny_State* state, FILE* in)
 	return NULL;
 }
 
-void PrintProgram(Tiny_State* state, Expr* program);
+static void PrintProgram(Tiny_State* state, Expr* program);
 
-void PrintExpr(Tiny_State* state, Expr* exp)
+static void PrintExpr(Tiny_State* state, Expr* exp)
 {
 	switch(exp->type)
 	{
@@ -2017,7 +2088,7 @@ void PrintExpr(Tiny_State* state, Expr* exp)
 	}
 }
 
-void PrintProgram(Tiny_State* state, Expr* program)
+static void PrintProgram(Tiny_State* state, Expr* program)
 {
 	Expr* exp = program;
 	printf("begin\n");
@@ -2029,7 +2100,7 @@ void PrintProgram(Tiny_State* state, Expr* program)
 	printf("\nend\n");
 }
 
-void CompileProgram(Tiny_State* state, Expr* program);
+static void CompileProgram(Tiny_State* state, Expr* program);
 
 static void CompileGetId(Tiny_State* state, Expr* exp)
 {
@@ -2513,7 +2584,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 	}
 }
 
-void CompileProgram(Tiny_State* state, Expr* program)
+static void CompileProgram(Tiny_State* state, Expr* program)
 {
 	Expr* exp = program;
 	while(exp)
@@ -2523,9 +2594,9 @@ void CompileProgram(Tiny_State* state, Expr* program)
 	}
 }
 
-void DeleteProgram(Expr* program);
+static void DeleteProgram(Expr* program);
 
-void Expr_destroy(Expr* exp)
+static void Expr_destroy(Expr* exp)
 {
 	switch(exp->type)
 	{
@@ -2692,10 +2763,13 @@ static void BuildForeignFunctions(Tiny_State* state)
 static void CompileState(Tiny_State* state, Expr* prog)
 {
 	// Allocate room for vm execution info
-    state->functionPcs = calloc(state->numFunctions, sizeof(int));
-	state->foreignFunctions = calloc(state->numForeignFunctions, sizeof(Tiny_ForeignFunction));
 
-    assert(state->functionPcs && state->foreignFunctions);
+	// We realloc because this state might be compiled multiple times (if, e.g., Tiny_CompileString is called twice with same state)
+    state->functionPcs = realloc(state->functionPcs, state->numFunctions * sizeof(int));
+	state->foreignFunctions = realloc(state->foreignFunctions, state->numForeignFunctions * sizeof(Tiny_ForeignFunction));
+	
+	assert(state->numForeignFunctions == 0 || state->foreignFunctions);
+	assert(state->numFunctions == 0 || state->functionPcs);
 
 	BuildForeignFunctions(state);
 
@@ -2749,5 +2823,3 @@ void Tiny_CompileFile(Tiny_State* state, const char* filename)
 
 	DeleteProgram(prog);
 }
-
-

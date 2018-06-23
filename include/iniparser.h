@@ -31,6 +31,13 @@ typedef struct
 
 bool ParseIni(IniFile* ini, const char* string);
 
+// Finds a value with the given key in the given section 
+// or in the global section if that's NULL
+//
+// returns INI_SUCCESS if found, INI_NO_KEY if the key doesn't exist,
+// and INI_NO_SECTION if the section doesn't exist. Sets *value to the value if successful.
+IniResult IniGet(const IniFile* ini, const char* section, const char* key, char* const* value);
+
 // Adds a key-value pair if it doesn't exist, and adds section if it doesn't exist
 // Set section to NULL to access/create global section
 IniResult IniSet(IniFile* ini, const char* section, const char* key, const char* value);

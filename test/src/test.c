@@ -248,7 +248,7 @@ static void test_Dict(void)
     test_DictClear();
 }
 
-static Tiny_Value Lib_Print(const Tiny_Value* args, int count)
+static Tiny_Value Lib_Print(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     lequal(count, 1);
 
@@ -266,7 +266,7 @@ static Tiny_Value Lib_Print(const Tiny_Value* args, int count)
     return Tiny_Null;
 }
 
-static Tiny_Value Lib_Lequal(const Tiny_Value* args, int count)
+static Tiny_Value Lib_Lequal(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 2);
 
@@ -282,7 +282,6 @@ static void test_StateCompile(void)
 {
     Tiny_State* state = Tiny_CreateState();
 
-    Tiny_BindFunction(state, "print", Lib_Print);
     Tiny_BindFunction(state, "lequal", Lib_Lequal);
 
     Tiny_CompileString(state, "test_compile", "func fact(n) { if n <= 1 return 1 return n * fact(n - 1) } lequal(fact(5), 120)");
@@ -316,54 +315,102 @@ static void test_StateCompile(void)
     Tiny_DeleteState(state);
 }
 
-static int Fact(int n)
-{
-    if(n <= 1) return 1;
-    return n * Fact(n - 1);
-}
-
-static void test_Fact(void)
-{
-    Tiny_State* state = Tiny_CreateState();
-
-    Tiny_BindFunction(state, "print", Lib_Print);
-    Tiny_BindFunction(state, "lequal", Lib_Lequal);
-
-    Tiny_CompileString(state, "test_compile", "func fact(n) { if n <= 1 return 1 return n * fact(n - 1) } lequal(fact(5), 120)");
-
-	static Tiny_StateThread threads[1000];
-
-	for (int i = 0; i < 1000; ++i) {
-		Tiny_InitThread(&threads[i], state);
-		Tiny_StartThread(&threads[i]);
-	}
-
-    for(int i = 0; i < 1000; ++i)
-    {
-        for(int d = 0; d < 100; ++d) {
-            assert(threads[i].pc >= 0);
-        }
-
-        lequal(Fact(5), 120);
-    } 
-
-    for(int i = 0; i < 1000; ++i)
-        Tiny_DestroyThread(&threads[i]);
-
-    Tiny_DeleteState(state);
-}
-
 static void test_TinyState(void)
 {
     test_StateCompile();
 }
 
+static void test_MultiCompileString(void)
+{
+	Tiny_State* state = Tiny_CreateState();
+
+	Tiny_CompileString(state, "test_compile_1", "func add(x, y) { return x + y }");
+	Tiny_CompileString(state, "test_compile_2", "func sub(x, y) { return x - y }");
+
+	Tiny_StateThread thread;
+
+	Tiny_InitThread(&thread, state);
+	
+	Tiny_Value args[] = { Tiny_NewNumber(10), Tiny_NewNumber(20) };
+
+	Tiny_Value ret = Tiny_CallFunction(&thread, Tiny_GetFunctionIndex(state, "add"), args, 2);
+
+	lok(ret.type == TINY_VAL_NUM);
+	lequal((int)ret.number, 30);
+
+	ret = Tiny_CallFunction(&thread, Tiny_GetFunctionIndex(state, "sub"), args, 2);
+
+	lok(ret.type == TINY_VAL_NUM);
+	lequal((int)ret.number, -10);
+
+	Tiny_DestroyThread(&thread);
+
+	Tiny_DeleteState(state);
+}
+
+static void test_TinyStateCallFunction(void)
+{
+    Tiny_State* state = Tiny_CreateState();
+
+    Tiny_CompileString(state, "test_compile", "func fact(n) { if n <= 1 return 1 return n * fact(n - 1) }");
+
+	Tiny_StateThread thread;
+
+	Tiny_InitThread(&thread, state);
+
+	int fact = Tiny_GetFunctionIndex(state, "fact");
+
+	Tiny_Value arg = Tiny_NewNumber(5);
+
+	Tiny_Value ret = Tiny_CallFunction(&thread, fact, &arg, 1);
+
+	lok(ret.type == TINY_VAL_NUM);
+	lok(Tiny_IsThreadDone(&thread));
+
+	lequal((int)ret.number, 120);
+
+	Tiny_DestroyThread(&thread);
+
+	Tiny_DeleteState(state);
+}
+
+static Tiny_Value CallFunc(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+	Tiny_Value ret = Tiny_CallFunction(thread, Tiny_GetFunctionIndex(thread->state, Tiny_ToString(args[0])), &args[1], count - 1);
+
+	lok(ret.type == TINY_VAL_NUM);
+	lequal((int)ret.number, 120);
+}
+
+static void test_TinyStateCallMidRun(void)
+{
+    Tiny_State* state = Tiny_CreateState();
+
+	Tiny_BindFunction(state, "call_func", CallFunc);
+
+    Tiny_CompileString(state, "test_compile", "func fact(n) { if n <= 1 return 1 return n * fact(n - 1) } call_func(\"fact\", 5)");
+
+	Tiny_StateThread thread;
+
+	Tiny_InitThread(&thread, state);
+
+	Tiny_StartThread(&thread);
+
+	while (Tiny_ExecuteCycle(&thread));
+
+	Tiny_DestroyThread(&thread);
+
+	Tiny_DeleteState(state);
+}
+
 int main(int argc, char* argv[])
 {
-    lrun("Array", test_Array);
-    lrun("Dict", test_Dict);
-    lrun("Tiny State", test_TinyState);
-    lrun("Fact", test_Fact);
+    lrun("All Array tests", test_Array);
+    lrun("All Dict tests", test_Dict);
+    lrun("Tiny State compilation and many threads", test_TinyState);
+    lrun("Multiple Tiny_CompileString same state", test_MultiCompileString);
+    lrun("Tiny_CallFunction", test_TinyStateCallFunction);
+    lrun("Tiny_CallFunction While Running", test_TinyStateCallFunction);
     lresults();
 
     return lfails != 0;
