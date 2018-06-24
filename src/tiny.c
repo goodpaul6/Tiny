@@ -1688,6 +1688,8 @@ static void ReportErrorV(FILE* f, const char* fileName, int line, const char* s,
 
 	int last;
 	
+    fputc('\n', stderr);
+
     for(int i = 0; i < line + 4; ++i) {
         last = getc(f);
 		
