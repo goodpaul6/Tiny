@@ -120,6 +120,8 @@ void RunPlugin(Editor* editor, int pluginIndex)
 
     Tiny_InitThread(&thread, editor->plugins[pluginIndex]);
 
+    thread.userdata = editor;
+
     Tiny_StartThread(&thread);
 
     // Just keep running until the VM halts (i.e. script is done)
@@ -136,6 +138,8 @@ Tiny_StateThread* StartPlugin(Editor* editor, int pluginIndex)
 
     // Just like for RunPlugin
     Tiny_StateThread* thread = malloc(sizeof(Tiny_StateThread));
+
+    thread->userdata = editor;
 
     Tiny_InitThread(thread, editor->plugins[pluginIndex]);
 
