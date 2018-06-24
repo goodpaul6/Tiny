@@ -23,36 +23,36 @@ struct Tiny_Value;
 // Native value.
 typedef struct
 {
-	const char* name;
+    const char* name;
 
-	void(*protectFromGC)(void*);
-	void(*free)(void*);
-	struct Tiny_Value (*toString)(void*);
+    void(*protectFromGC)(void*);
+    void(*free)(void*);
+    struct Tiny_Value (*toString)(void*);
 } Tiny_NativeProp;
 
 typedef enum
 {
-	TINY_VAL_NULL,
-	TINY_VAL_BOOL,
-	TINY_VAL_NUM,
-	TINY_VAL_STRING,
-	TINY_VAL_CONST_STRING,
-	TINY_VAL_NATIVE,
+    TINY_VAL_NULL,
+    TINY_VAL_BOOL,
+    TINY_VAL_NUM,
+    TINY_VAL_STRING,
+    TINY_VAL_CONST_STRING,
+    TINY_VAL_NATIVE,
     TINY_VAL_LIGHT_NATIVE
 } Tiny_ValueType;
 
 typedef struct Tiny_Value
 {
-	Tiny_ValueType type;
+    Tiny_ValueType type;
 
-	union
-	{
-		bool boolean;
-		double number;
-		const char* cstr;   // for TINY_VAL_CONST_STRING
+    union
+    {
+        bool boolean;
+        double number;
+        const char* cstr;   // for TINY_VAL_CONST_STRING
         void* addr;         // for TINY_VAL_LIGHT_NATIVE
-		Tiny_Object* obj;
-	};
+        Tiny_Object* obj;
+    };
 } Tiny_Value;
 
 typedef struct Tiny_StateThread
@@ -65,7 +65,7 @@ typedef struct Tiny_StateThread
     Tiny_Object* gcHead;
     int numObjects;
     int maxNumObjects;
-    
+
     // Global vars are owned by each thread
     Tiny_Value* globalVars;
 
@@ -77,8 +77,8 @@ typedef struct Tiny_StateThread
     int indirStack[TINY_THREAD_INDIR_SIZE];
     int indirStackSize;
 
-	// Userdata pointer. Set to NULL when InitThread is called. Use it for whatever you want
-	void* userdata;
+    // Userdata pointer. Set to NULL when InitThread is called. Use it for whatever you want
+    void* userdata;
 } Tiny_StateThread;
 
 typedef Tiny_Value (*Tiny_ForeignFunction)(Tiny_StateThread* thread, const Tiny_Value* args, int count);
@@ -187,4 +187,4 @@ void Tiny_BindStandardLibrary(Tiny_State* state);
 void Tiny_DestroyThread(Tiny_StateThread* thread);
 
 #endif
- 
+
