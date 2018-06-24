@@ -49,7 +49,8 @@ Let's say I've written a text editor in C and I want users to be able to write p
 for it, but I don't want them to have to write/compile C code in order to do it. This is
 a good use case for something like a scripting language.
 
-```c99
+
+```c
 // The plugin subsystem for an imaginary text editor
 #include "tiny.h"
 
