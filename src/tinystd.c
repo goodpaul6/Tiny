@@ -57,6 +57,18 @@ static Tiny_Value Strlen(Tiny_StateThread* thread, const Tiny_Value* args, int c
 		return Tiny_Null;
 }
 
+static Tiny_Value Strchar(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    const char* s = Tiny_ToString(args[0]);
+    size_t len = strlen(s);
+
+    int i = (int)Tiny_ToNumber(args[1]);
+
+    assert(i >= 0 && i < len);
+
+    return Tiny_NewNumber((double)s[i]);
+}
+
 static const Tiny_NativeProp FileProp = {
 	"file",
 	NULL,
@@ -550,6 +562,7 @@ static Tiny_Value Lib_Sleep(Tiny_StateThread* thread, const Tiny_Value* args, in
 void Tiny_BindStandardLibrary(Tiny_State* state)
 {
 	Tiny_BindFunction(state, "strlen", Strlen);
+	Tiny_BindFunction(state, "strchar", Strchar);
 
 	Tiny_BindFunction(state, "fopen", Lib_Fopen);
 	Tiny_BindFunction(state, "fclose", Lib_Fclose);

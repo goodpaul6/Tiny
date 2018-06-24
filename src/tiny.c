@@ -1067,7 +1067,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 				else if (a.type == TINY_VAL_CONST_STRING) 
 				{
 					if (b.type == TINY_VAL_CONST_STRING && a.cstr == b.cstr) DoPush(thread, Tiny_NewBool(true));
-					else DoPush(thread, Tiny_NewBool(strcmp(a.cstr, b.obj->string) == 0));
+					else DoPush(thread, Tiny_NewBool(strcmp(a.cstr, Tiny_ToString(b)) == 0));
 				}
 				else if (a.type == TINY_VAL_NATIVE)
 					DoPush(thread, Tiny_NewBool(a.obj->nat.addr == b.obj->nat.addr));

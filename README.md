@@ -1,81 +1,149 @@
-Tiny is an implementation of the Tiny programming language as specified by this wikipedia page (but very much extended):
-http://en.wikipedia.org/wiki/Tiny_programming_language
+# Tiny
+Tiny is a small embeddable compiler and bytecode interpreter; it is designed to be easy to embed
+and does its best to avoid doing allocations/garbage collection.
 
-It compiles a program to it's own bytecode and then executes this bytecode.
-
-The following is an example program:
-
+## Examples
 ```
+// Reverse polish notation calculator
+stack := array()
+op = ""
 
-read x y z end
-write x + y + z end
+while op != "quit" {
+    op = input()
 
-```
-
-This program will write the sum of 3 numbers which it reads from stdin to stdout.
-
-Another example program:
-
-```
-
-func fact(x) {						# compute the factorial of a number
-	if $x == 0 {
-		return 1
-	}
-	
-	return $x * fact($x - 1)
+    if strchar(op, 0) == '+' { 
+        array_push(stack, array_pop(stack) + array_pop(stack))
+    } else if strchar(op, 0) == '-' {
+        array_push(stack, array_pop(stack) - array_pop(stack))
+    } else if strchar(op, 0) == '*' {
+        array_push(stack, array_pop(stack) * array_pop(stack))
+    } else if strchar(op, 0) == '/' {
+        array_push(stack, array_pop(stack) / array_pop(stack))
+    } else if op == "=" {
+        print(array_pop(stack))
+    } else if op != "quit" {
+        array_push(stack, ston(op))
+    }
 }
-
-write fact(5) end					# compute factorial of 5 and write to stdout
-
 ```
 
-This program willl write the factorial of 5 (120) to stdout
+## Usage
+You can use CMake to build a static library which you can integrate into your project
+like any other. Alternatively, you can just copy `include/tiny.h`, `include/tiny_detail.h` and `src/tiny.c` (also `src/tinystd.c` if you want the standard library) into your project.
 
-The language also has support for local variables and the included interpreter (tinystd.c) 
-supports arrays:
+## Embedding
+The entire API available to the host application is supplied in `include/tiny.h`.
+Here is few examples of how you could use Tiny in your program.
 
-```
+### Game Example
 
-func test()
-	local arr = array()
-	
-	array_push($arr, "hello world")
-	write array_get($arr, 0) end
-end
+![Alt text](examples/game/images/game.gif?raw=true "Tiny Game")
 
-# writes "hello world" (excluding quotes) to stdout
-test()
+I've written a small game which is scripted using Tiny. This example makes no use of garbage collection; in fact, there is no dynamic allocation being done in the scripts at all. 
+You can find the code in the `examples/game` subdirectory of the repository. I made use of https://bitbucket.org/rmitton/tigr to facilitate the windowing, graphics and input.
 
-```
+Notice how every entity in the game has a `Tiny_StateThread` encapsulating its execution state. Since `Tiny_StateThread` is relatively lightweight, you can have hundreds, even thousands of them.
 
-You can bind your own functions and structures to the language (see tinystd.c, as this is how arrays are implemented).
+### Text Editor Example
+Let's say I've written a text editor in C and I want users to be able to write plugins
+for it, but I don't want them to have to write/compile C code in order to do it. This is
+a good use case for something like a scripting language.
 
-Here is an example of the binding api:
+```c99
+// The plugin subsystem for an imaginary text editor
+#include "tiny.h"
 
-```
+#define MAX_PLUGINS 32
 
-// C Code
-
-// write this function in tinystd.c
-void MyNativeLibrary_add() {
-	double num2 = DoPop().number;
-	double num1 = DoPop().number;
-	
-	DoPush(NewNumber(num1 + num2));
-}
-
-// and then in the BindStandardLibrary function (in tinystd.c) add this code
-void BindStandardLibrary()
+typedef struct
 {
-	...
-	BindForeignFunction(MyNativeLibrary_add, "add");
+    // ...
+    int numPlugins;
+    Tiny_State* plugins[MAX_PLUGINS];
+} Editor;
+
+static Tiny_Value ReplaceAll(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    // We store the Editor* in the thread's userdata field
+    Editor* ed = thread->userdata;
+
+    // Make sure that 2 arguments are supplied
+    if(count != 2) {
+        PluginError(ed, "Invalid number of arguments supplied to replace_all.");
+        return Tiny_Null;
+    }
+
+    const char* from = Tiny_ToString(args[1]);
+    const char* to = Tiny_ToString(args[2]);
+
+    // Make sure these are valid strings
+    if(!from || !to) {
+        PluginError(ed, "Invalid strings supplied to replace_all.");
+        return Tiny_Null;
+    }
+
+    int numReplaced = EditorReplaceAll(ed, from, to);
+
+    return Tiny_NewNumber((double)numReplaced);
 }
 
-# Tiny code
+void LoadPlugin(Editor* editor, const char* filename)
+{
+    assert(editor->numPlugins < MAX_PLUGINS);
 
-write add(10, 20) end # will output 30 (but it will compute it in the cpu, not in the virtual machine)
+    Tiny_State* state = Tiny_CreateState();
 
+    Tiny_BindFunction(state, "replace_all", ReplaceAll);
+
+    // If this were an actual editor I'd supply more functions
+
+    Tiny_CompileFile(state, filename);
+
+    editor->plugins[editor->numPlugins++] = state;
+}
+
+void DestroyPlugins(Editor* editor)
+{
+    for(int i = 0; i < editor->numPlugins; ++i) {
+        Tiny_DeleteState(editor->plugins[i]);
+    }
+}
+
+// We can call this if we want to run the entire script all at once
+void RunPlugin(Editor* editor, int pluginIndex)
+{
+    assert(pluginIndex >= 0 && pluginIndex < editor->numPlugins);
+
+    // Let's spin up a single "thread" to run this plugin
+    Tiny_StateThread thread;
+
+    Tiny_InitThread(&thread, editor->plugins[pluginIndex]);
+
+    Tiny_StartThread(&thread);
+
+    // Just keep running until the VM halts (i.e. script is done)
+    while(Tiny_ExecuteCycle(&thread));
+
+    Tiny_DestroyThread(&thread);
+}
+
+// We can call this if we want to spin up a thread and execute cycles
+// whenever we can (i.e. run the plugin asynchronously).
+Tiny_StateThread* StartPlugin(Editor* editor, int pluginIndex)
+{ 
+    assert(pluginIndex >= 0 && pluginIndex < editor->numPlugins);
+
+    // Just like for RunPlugin
+    Tiny_StateThread* thread = malloc(sizeof(Tiny_StateThread));
+
+    Tiny_InitThread(thread, editor->plugins[pluginIndex]);
+
+    // We start the thread, but we don't execute any cycles
+    // the user is responsible for doing that.
+    Tiny_StartThread(thread);
+
+    return thread;
+}
 ```
 
-You can bind any C library to Tiny, but there is no support for structures/classes in the language itself.
+And that's an example of how one might integrate Tiny into their application.

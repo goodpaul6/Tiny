@@ -456,8 +456,6 @@ static void test_TinyDict(void)
 
 	Tiny_BindStandardLibrary(state);
 
-	Tiny_BindFunction(state, "lequal", Lib_Lequal);
-
     Tiny_CompileString(state, "test_dict", "d := dict(\"a\", 10, \"b\", 20)");
 
 	Tiny_StateThread thread;
@@ -491,6 +489,68 @@ static void test_TinyDict(void)
 	Tiny_DeleteState(state);
 }
 
+static Tiny_Value Lib_MyInput(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    static int i = 0;
+
+    const char* input[] = {
+        "10",
+        "20",
+        "+",
+		"30",
+		"-",
+        "quit"
+    };
+
+    return Tiny_NewConstString(input[i++]);
+}
+
+static void test_RevPolishCalc(void)
+{
+    Tiny_State* state = Tiny_CreateState();
+
+	Tiny_BindStandardLibrary(state);
+
+    Tiny_BindFunction(state, "my_input", Lib_MyInput);
+
+	const char* code = "stack := array()\n"
+		"op := \"\"\n"
+		"while op != \"quit\" {\n"
+		"op = my_input()\n"
+		"if strchar(op, 0) == '+' array_push(stack, array_pop(stack) + array_pop(stack))\n"
+		"else if strchar(op, 0) == '-' array_push(stack, array_pop(stack) - array_pop(stack))\n"
+		"else if strchar(op, 0) == '*' array_push(stack, array_pop(stack) * array_pop(stack))\n"
+		"else if strchar(op, 0) == '/' array_push(stack, array_pop(stack) / array_pop(stack))\n"
+		"else if op != \"quit\" array_push(stack, ston(op)) }\n";
+
+	Tiny_CompileString(state, "test_rpn", code);
+
+	Tiny_StateThread thread;
+
+	Tiny_InitThread(&thread, state);
+
+	Tiny_StartThread(&thread);
+
+	while (Tiny_ExecuteCycle(&thread));
+
+    extern const Tiny_NativeProp ArrayProp;
+
+    int stack = Tiny_GetGlobalIndex(state, "stack");
+
+    Array* a = Tiny_ToAddr(Tiny_GetGlobal(&thread, stack));
+
+    lok(a->length == 1);
+
+    Tiny_Value num = ArrayGetValue(a, 0, Tiny_Value);
+
+    lok(num.type == TINY_VAL_NUM);
+    lequal((int)Tiny_ToNumber(num), 0);
+
+	Tiny_DestroyThread(&thread);
+
+	Tiny_DeleteState(state);
+}
+
 int main(int argc, char* argv[])
 {
     lrun("All Array tests", test_Array);
@@ -501,6 +561,7 @@ int main(int argc, char* argv[])
     lrun("Tiny_CallFunction While Running", test_TinyStateCallFunction);
     lrun("Tiny Equality", test_TinyEquality);
     lrun("Tiny Stdlib Dict", test_TinyDict);
+    lrun("Tiny RPN", test_RevPolishCalc);
     lresults();
 
     return lfails != 0;
