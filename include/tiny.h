@@ -182,7 +182,21 @@ inline bool Tiny_IsThreadDone(const Tiny_StateThread* thread)
 // Returns whether the cycle was executed or not.
 bool Tiny_ExecuteCycle(Tiny_StateThread* thread);
 
-void Tiny_BindStandardLibrary(Tiny_State* state);
+// Gives access to fast dynamically allocated array type.
+// Requires tinystd.c and array.h/array.c
+void Tiny_BindStandardArray(Tiny_State* state);
+
+// Gives access to fast dictionary type.
+// Requires tinystd.c and dict.h/dict.c
+void Tiny_BindStandardDict(Tiny_State* state);
+
+// Gives access to a variety of IO functions.
+// Requires tinystd.c
+void Tiny_BindStandardIO(Tiny_State* state);
+
+// Provides general functions ala stdlib.h
+// Requires tinystd.c
+void Tiny_BindStandardLib(Tiny_State* state);
 
 void Tiny_DestroyThread(Tiny_StateThread* thread);
 

@@ -413,7 +413,7 @@ static void test_TinyEquality(void)
 {
 	Tiny_State* state = Tiny_CreateState();
 
-	Tiny_BindStandardLibrary(state);
+	Tiny_BindStandardLib(state);
 
 	Tiny_BindFunction(state, "get_static", Lib_GetStaticNative);
 
@@ -454,7 +454,7 @@ static void test_TinyDict(void)
 {
     Tiny_State* state = Tiny_CreateState();
 
-	Tiny_BindStandardLibrary(state);
+	Tiny_BindStandardDict(state);
 
     Tiny_CompileString(state, "test_dict", "d := dict(\"a\", 10, \"b\", 20)");
 
@@ -509,7 +509,8 @@ static void test_RevPolishCalc(void)
 {
     Tiny_State* state = Tiny_CreateState();
 
-	Tiny_BindStandardLibrary(state);
+	Tiny_BindStandardArray(state);
+	Tiny_BindStandardLib(state);
 
     Tiny_BindFunction(state, "my_input", Lib_MyInput);
 

@@ -559,18 +559,8 @@ static Tiny_Value Lib_Sleep(Tiny_StateThread* thread, const Tiny_Value* args, in
 	return Tiny_Null;
 }
 
-void Tiny_BindStandardLibrary(Tiny_State* state)
+void Tiny_BindStandardArray(Tiny_State* state)
 {
-	Tiny_BindFunction(state, "strlen", Strlen);
-	Tiny_BindFunction(state, "strchar", Strchar);
-
-	Tiny_BindFunction(state, "fopen", Lib_Fopen);
-	Tiny_BindFunction(state, "fclose", Lib_Fclose);
-	Tiny_BindFunction(state, "fread", Lib_Fread);
-	Tiny_BindFunction(state, "fwrite", Lib_Fwrite);
-	Tiny_BindFunction(state, "fseek", Lib_Fseek);
-	Tiny_BindFunction(state, "fsize", Lib_Fsize);
-
 	Tiny_BindFunction(state, "array", CreateArray);
 	Tiny_BindFunction(state, "array_clear", Lib_ArrayClear);
 	Tiny_BindFunction(state, "array_resize", Lib_ArrayResize);
@@ -579,7 +569,10 @@ void Tiny_BindStandardLibrary(Tiny_State* state)
 	Tiny_BindFunction(state, "array_len", Lib_ArrayLen);
 	Tiny_BindFunction(state, "array_push", Lib_ArrayPush);
 	Tiny_BindFunction(state, "array_pop", Lib_ArrayPop);
+}
 
+void Tiny_BindStandardDict(Tiny_State* state)
+{
 	Tiny_BindFunction(state, "dict", CreateDict);
 	Tiny_BindFunction(state, "dict_put", Lib_DictPut);
 	Tiny_BindFunction(state, "dict_exists", Lib_DictExists);
@@ -587,6 +580,26 @@ void Tiny_BindStandardLibrary(Tiny_State* state)
 	Tiny_BindFunction(state, "dict_remove", Lib_DictRemove);
 	Tiny_BindFunction(state, "dict_keys", Lib_DictKeys);
 	Tiny_BindFunction(state, "dict_clear", Lib_DictClear);
+}
+
+void Tiny_BindStandardIO(Tiny_State* state)
+{
+	Tiny_BindFunction(state, "fopen", Lib_Fopen);
+	Tiny_BindFunction(state, "fclose", Lib_Fclose);
+	Tiny_BindFunction(state, "fread", Lib_Fread);
+	Tiny_BindFunction(state, "fwrite", Lib_Fwrite);
+	Tiny_BindFunction(state, "fseek", Lib_Fseek);
+	Tiny_BindFunction(state, "fsize", Lib_Fsize);
+
+	Tiny_BindFunction(state, "input", Lib_Input);
+	Tiny_BindFunction(state, "print", Lib_Print);
+	Tiny_BindFunction(state, "printf", Lib_Printf);
+}
+
+void Tiny_BindStandardLib(Tiny_State* state)
+{
+	Tiny_BindFunction(state, "strlen", Strlen);
+	Tiny_BindFunction(state, "strchar", Strchar);
 
 	Tiny_BindFunction(state, "strcat", Strcat);
 	Tiny_BindFunction(state, "ston", Lib_Ston);
@@ -602,10 +615,6 @@ void Tiny_BindStandardLibrary(Tiny_State* state)
 	Tiny_BindFunction(state, "perf_count", Lib_PerfCount);
 	Tiny_BindFunction(state, "perf_freq", Lib_PerfFreq);
 	Tiny_BindFunction(state, "sleep", Lib_Sleep);
-
-	Tiny_BindFunction(state, "input", Lib_Input);
-	Tiny_BindFunction(state, "print", Lib_Print);
-	Tiny_BindFunction(state, "printf", Lib_Printf);
 
 	Tiny_BindFunction(state, "exit", Exit);
 }
