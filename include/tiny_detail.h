@@ -46,6 +46,9 @@ typedef struct sSymbol
 	SymbolType type;
 	char* name;
 
+    const char* fileName;
+    int lineNumber;
+
 	union
 	{
 		struct
@@ -99,5 +102,6 @@ typedef struct Tiny_State
 
 	const char* fileName;
 	int lineNumber;
-} Tiny_State;
 
+    FILE* curFile;
+} Tiny_State;

@@ -1,4 +1,5 @@
 // tiny.c -- an bytecode-based interpreter for the tiny language
+#include <stdarg.h>
 #include <stdlib.h>
 #include <stdio.h>
 #include <assert.h>
@@ -469,13 +470,16 @@ static int RegisterString(const char* string)
     return NumStrings - 1; 
 }
 
-static Symbol* Symbol_create(SymbolType type, const char* name)
+static Symbol* Symbol_create(SymbolType type, const char* name, const Tiny_State* state)
 {
 	Symbol* sym = emalloc(sizeof(Symbol));
 
 	sym->name = estrdup(name);
 	sym->type = type;
 	sym->next = NULL;
+
+    sym->fileName = state->fileName;
+    sym->lineNumber = state->lineNumber;
 
 	return sym;
 }
@@ -605,7 +609,7 @@ static Symbol* DeclareGlobalVar(Tiny_State* state, const char* name)
 		node = node->next;
 	}
 
-	Symbol* newNode = Symbol_create(SYM_GLOBAL, name);
+	Symbol* newNode = Symbol_create(SYM_GLOBAL, name, state);
 
 	newNode->var.initialized = false;
 	newNode->var.index = state->numGlobalVars;
@@ -643,7 +647,7 @@ static Symbol* DeclareArgument(Tiny_State* state, const char* name, int nargs)
 		node = node->next;
 	}
 
-	Symbol* newNode = Symbol_create(SYM_LOCAL, name);
+	Symbol* newNode = Symbol_create(SYM_LOCAL, name, state);
 
 	newNode->var.initialized = false;
 	newNode->var.scopeEnded = false;
@@ -677,7 +681,7 @@ static Symbol* DeclareLocal(Tiny_State* state, const char* name)
 		node = node->next;
 	}
 
-	Symbol* newNode = Symbol_create(SYM_LOCAL, name);
+	Symbol* newNode = Symbol_create(SYM_LOCAL, name, state);
 
 	newNode->var.initialized = false;
 	newNode->var.scopeEnded = false;
@@ -705,7 +709,7 @@ static Symbol* DeclareConst(Tiny_State* state, const char* name, bool isString, 
 	if (state->currFunc)
 		fprintf(stderr, "Warning: Constant '%s' declared inside function bodies will still have global scope.\n", name);
 	
-	Symbol* newNode = Symbol_create(SYM_CONST, name);
+	Symbol* newNode = Symbol_create(SYM_CONST, name, state);
 
 	newNode->constant.index = index;
     newNode->constant.isString = isString;
@@ -718,7 +722,7 @@ static Symbol* DeclareConst(Tiny_State* state, const char* name, bool isString, 
 
 static Symbol* DeclareFunction(Tiny_State* state, const char* name)
 {
-	Symbol* newNode = Symbol_create(SYM_FUNCTION, name);
+	Symbol* newNode = Symbol_create(SYM_FUNCTION, name, state);
 
 	newNode->func.index = state->numFunctions;
 	newNode->func.nargs = newNode->func.nlocals = 0;
@@ -775,7 +779,7 @@ void Tiny_BindFunction(Tiny_State* state, const char* name, Tiny_ForeignFunction
 		node = node->next;
 	}
 
-	Symbol* newNode = Symbol_create(SYM_FOREIGN_FUNCTION, name);
+	Symbol* newNode = Symbol_create(SYM_FOREIGN_FUNCTION, name, state);
 
 	newNode->foreignFunc.index = state->numForeignFunctions;
 	newNode->foreignFunc.callee = func;
@@ -1582,6 +1586,9 @@ typedef struct sExpr
 	ExprType type;
 	struct sExpr* next;
 
+    const char* fileName;
+    int lineNumber;
+
 	union
 	{
 		bool boolean;
@@ -1653,11 +1660,15 @@ typedef struct sExpr
 	};
 } Expr;
 
-static Expr* Expr_create(ExprType type)
+static Expr* Expr_create(ExprType type, const Tiny_State* state)
 {
 	Expr* exp = emalloc(sizeof(Expr));
+
+    exp->fileName = state->fileName;
+	exp->lineNumber = state->lineNumber;
 	exp->type = type;
 	exp->next = NULL;
+    
 	return exp;
 }
 
@@ -1671,21 +1682,93 @@ static int GetNextToken(Tiny_State* state, FILE* in)
 
 static Expr* ParseExpr(Tiny_State* state, FILE* in);
 
-static void ExpectToken(const Tiny_State* state, int tok, const char* msg)
+static void ReportErrorV(FILE* f, const char* fileName, int line, const char* s, va_list args)
+{
+	rewind(f);
+
+	int last;
+	
+    for(int i = 0; i < line + 4; ++i) {
+        last = getc(f);
+		
+		bool putLine = abs(line - (i + 1)) < 3;
+		
+		int lineLength = 0;
+
+		if (putLine) {
+			if (i == line - 1) {
+				fprintf(stderr, "%d ->\t", i + 1);
+			} else {
+				fprintf(stderr, "%d\t", i + 1);
+			}
+		}
+
+        while(last != '\n') {
+			// Print all lines within 3 lines
+			if (putLine) {
+				fputc(last, stderr);
+			}
+
+			lineLength += 1;
+            last = getc(f);
+        }
+
+		if (putLine) {
+			fputc('\n', stderr);
+		}
+    }
+
+	fputc('\n', stderr);
+
+	fprintf(stderr, "%s(%i): ", fileName, line);
+
+    vfprintf(stderr, s, args);
+    fputc('\n', stderr); 
+}
+
+static void ReportError(Tiny_State* state, const char* s, ...)
+{
+    va_list args;
+    va_start(args, s);
+
+    ReportErrorV(state->curFile, state->fileName, state->lineNumber, s, args);
+
+    va_end(args);
+}
+
+static void ReportErrorE(Tiny_State* state, const Expr* exp, const char* s, ...)
+{
+    va_list args;
+    va_start(args, s);
+
+    ReportErrorV(state->curFile, exp->fileName, exp->lineNumber, s, args);
+
+    va_end(args);
+	exit(1);
+}
+
+static void ReportErrorS(Tiny_State* state, const Symbol* sym, const char* s, ...)
+{
+    va_list args;
+    va_start(args, s);
+
+    ReportErrorV(state->curFile, sym->fileName, sym->lineNumber, s, args);
+
+    va_end(args);
+	exit(1);
+}
+
+static void ExpectToken(Tiny_State* state, int tok, const char* msg)
 {
 	if (CurTok != tok)
 	{
-		fprintf(stderr, "%s(%i):", state->fileName, state->lineNumber);
-		fprintf(stderr, "%s", msg);
-		putc('\n', stderr);
-
-		exit(1);
+        ReportError(state, msg);
 	}
 }
 
 static Expr* ParseIf(Tiny_State* state, FILE* in)
 {
-	Expr* exp = Expr_create(EXP_IF);
+	Expr* exp = Expr_create(EXP_IF, state);
 
 	GetNextToken(state, in);
 
@@ -1709,7 +1792,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 	{
 		case TOK_NULL:
 		{
-			Expr* exp = Expr_create(EXP_NULL);
+			Expr* exp = Expr_create(EXP_NULL, state);
 
 			GetNextToken(state, in);
 
@@ -1719,7 +1802,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 		case TOK_TRUE:
 		case TOK_FALSE:
 		{
-			Expr* exp = Expr_create(EXP_BOOL);
+			Expr* exp = Expr_create(EXP_BOOL, state);
 
 			exp->boolean = CurTok == TOK_TRUE;
 
@@ -1746,7 +1829,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 
 			CloseScope(state);
 
-			Expr* exp = Expr_create(EXP_BLOCK);
+			Expr* exp = Expr_create(EXP_BLOCK, state);
 
 			exp->block.exprHead = head;
 
@@ -1761,7 +1844,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 			{
 				Expr* exp;
 				
-				exp = Expr_create(EXP_ID);
+				exp = Expr_create(EXP_ID, state);
 				
 				exp->id.sym = ReferenceVariable(state, ident);
 				exp->id.name = ident;
@@ -1769,7 +1852,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 				return exp;
 			}
 			
-			Expr* exp = Expr_create(EXP_CALL);
+			Expr* exp = Expr_create(EXP_CALL, state);
 			
 			GetNextToken(state, in);
 			exp->call.numArgs = 0;
@@ -1778,8 +1861,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 			{
 				if (exp->call.numArgs >= MAX_ARGS)
 				{
-					fprintf(stderr, "Exceeded maximum number of arguments in call expression (%d).\n", MAX_ARGS);
-					exit(1);
+                    ReportError(state, "Exceeded maximum number of arguments in call expression.");
 				}
 
 				exp->call.args[exp->call.numArgs++] = ParseExpr(state, in);
@@ -1787,8 +1869,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 				if(CurTok == ',') GetNextToken(state, in);
 				else if(CurTok != ')')
 				{
-					fprintf(stderr, "Expected ')' after attempted call to func %s\n", ident);
-					exit(1);
+                    ReportError(state, "Expected ')' after call.");
 				}
 			}
 
@@ -1802,7 +1883,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 		{
 			int op = CurTok;
 			GetNextToken(state, in);
-			Expr* exp = Expr_create(EXP_UNARY);
+			Expr* exp = Expr_create(EXP_UNARY, state);
 			exp->unary.op = op;
 			exp->unary.exp = ParseFactor(state, in);
 
@@ -1811,7 +1892,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 		
 		case TOK_NUMBER:
 		{
-			Expr* exp = Expr_create(EXP_NUM);
+			Expr* exp = Expr_create(EXP_NUM, state);
 			exp->number = RegisterNumber(TokenNumber);
 			GetNextToken(state, in);
 			return exp;
@@ -1819,7 +1900,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 
 		case TOK_STRING:
 		{
-			Expr* exp = Expr_create(EXP_STRING);
+			Expr* exp = Expr_create(EXP_STRING, state);
 			exp->string = RegisterString(TokenBuffer);
 			GetNextToken(state, in);
 			return exp;
@@ -1829,11 +1910,10 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 		{
 			if(state->currFunc)
 			{
-				fprintf(stderr, "Attempted to define function inside function '%s'. This is not allowed.\n", state->currFunc->name);
-				exit(1);
+				ReportError(state, "Attempted to define function inside of function '%s'.", state->currFunc->name);
 			}
 			
-			Expr* exp = Expr_create(EXP_PROC);
+			Expr* exp = Expr_create(EXP_PROC, state);
 			
 			GetNextToken(state, in);
 
@@ -1854,8 +1934,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 			{
 				ExpectToken(state, TOK_IDENT, "Expected identifier in function parameter list");
 				if (nargs >= MAX_ARGS) {
-					fprintf(stderr, "Too many args.");
-					exit(1);
+                    ReportError(state, "Function '%s' takes in too many args.", exp->proc.decl->name);
 				}
 
 				argNames[nargs++] = estrdup(TokenBuffer);
@@ -1863,8 +1942,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 				
 				if (CurTok != ')' && CurTok != ',')
 				{
-					fprintf(stderr, "Expected ')' or ',' after parameter name in function parameter list");
-					exit(1);
+					ReportError(state, "Expected ')' or ',' after parameter name in function parameter list.");
 				}
 
 				if(CurTok == ',') GetNextToken(state, in);
@@ -1896,7 +1974,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 		case TOK_WHILE:
 		{
 			GetNextToken(state, in);
-			Expr* exp = Expr_create(EXP_WHILE);
+			Expr* exp = Expr_create(EXP_WHILE, state);
 
 			exp->whilex.cond = ParseExpr(state, in);
 
@@ -1913,7 +1991,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 		case TOK_FOR:
 		{
 			GetNextToken(state, in);
-			Expr* exp = Expr_create(EXP_FOR);
+			Expr* exp = Expr_create(EXP_FOR, state);
 			
 			// Every local declared after this is scoped to the for
 			OpenScope(state);
@@ -1942,7 +2020,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 		case TOK_RETURN:
 		{
 			GetNextToken(state, in);
-			Expr* exp = Expr_create(EXP_RETURN);
+			Expr* exp = Expr_create(EXP_RETURN, state);
 			if(CurTok == ';')
 			{
 				GetNextToken(state, in);	
@@ -1961,7 +2039,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 			assert(CurTok == ')' && "Expected matching ')' after previous '('");
 			GetNextToken(state, in);
 			
-			Expr* exp = Expr_create(EXP_PAREN);
+			Expr* exp = Expr_create(EXP_PAREN, state);
 			exp->paren = inner;
 			return exp;
 		} break;
@@ -1969,8 +2047,8 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 		default: break;
 	}
 
-	fprintf(stderr, "%s(%i): Unexpected token %i (%c)\n", state->fileName, state->lineNumber, CurTok, CurTok);
-	exit(1);
+	ReportError(state, "Unexpected token %i (%c)\n", CurTok, CurTok);
+	return NULL;
 }
 
 static int GetTokenPrec()
@@ -2014,8 +2092,7 @@ static Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
 		{
 			if (lhs->type != EXP_ID)
 			{
-				fprintf(stderr, "Expected identifier to the left-hand side of ':='.\n");
-				exit(1);
+				ReportError(state, "Expected identifier to the left-hand side of ':='.\n");
 			}
 
 			// If we're inside a function declare a local, otherwise a global
@@ -2037,8 +2114,7 @@ static Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
 		{
 			if (lhs->type != EXP_ID)
 			{
-				fprintf(stderr, "Expected identifier to the left-hand side of '::'.\n");
-				exit(1);
+				ReportError(state, "Expected identifier to the left-hand side of '::'.\n");
 			}
 
 			if (rhs->type == EXP_NUM)
@@ -2047,12 +2123,11 @@ static Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
 				DeclareConst(state, lhs->id.name, true, rhs->string);
 			else
 			{
-				fprintf(stderr, "Expected number or string to be bound to constant '%s'.\n", lhs->id.name);
-				exit(1);
+				ReportError(state, "Expected number or string to be bound to constant '%s'.\n", lhs->id.name);
 			}
 		}
 
-		Expr* newLhs = Expr_create(EXP_BINARY);
+		Expr* newLhs = Expr_create(EXP_BINARY, state);
 		
 		newLhs->binary.lhs = lhs;
 		newLhs->binary.rhs = rhs;
@@ -2225,8 +2300,7 @@ static void CompileGetId(Tiny_State* state, Expr* exp)
 
 	if (!exp->id.sym)
 	{
-		fprintf(stderr, "Referencing undeclared identifier '%s'.\n", exp->id.name);
-		exit(1);
+		ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name);
 	}
 
 	assert(exp->id.sym->type == SYM_GLOBAL ||
@@ -2264,8 +2338,7 @@ static void CompileCall(Tiny_State* state, Expr* exp)
 	Symbol* sym = ReferenceFunction(state, exp->call.calleeName);
 	if (!sym)
 	{
-		fprintf(stderr, "Attempted to call undefined function '%s'.\n", exp->call.calleeName);
-		exit(1);
+		ReportErrorE(state, exp, "Attempted to call undefined function '%s'.\n", exp->call.calleeName);
 	}
 
 	if (sym->type == SYM_FOREIGN_FUNCTION)
@@ -2431,8 +2504,7 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
 				} break;
 
 				default:
-					fprintf(stderr, "Found assignment when expecting expression.\n");
-					exit(1);
+					ReportErrorE(state, exp, "Found assignment when expecting expression.\n");
 					break;
 			}
 		} break;
@@ -2460,15 +2532,13 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
 				} break;
 
 				default:
-					fprintf(stderr, "Unsupported unary operator %c (%d)\n", exp->unary.op, exp->unary.op);
-					exit(1);
+					ReportErrorE(state, exp, "Unsupported unary operator %c (%d)\n", exp->unary.op, exp->unary.op);
 					break;
 			}
 		} break;
 
         default:
-            fprintf(stderr, "Got statement when expecting expression.\n");
-            exit(1);
+            ReportErrorE(state, exp, "Got statement when expecting expression.\n");
             break;
 	}
 }
@@ -2567,8 +2637,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 						if (!exp->binary.lhs->id.sym)
 						{
 							// The variable being referenced doesn't exist
-							fprintf(stderr, "Assigning to undeclared identifier '%s'.\n", exp->binary.lhs->id.name);
-							exit(1);
+							ReportErrorE(state, exp, "Assigning to undeclared identifier '%s'.\n", exp->binary.lhs->id.name);
 						}
 
 						if (exp->binary.lhs->id.sym->type == SYM_GLOBAL)
@@ -2577,8 +2646,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 							GenerateCode(state, OP_SETLOCAL);
 						else		// Probably a constant, can't change it
 						{
-							fprintf(stderr, "Cannot assign to id '%s'.\n", exp->binary.lhs->id.name);
-							exit(1);
+							ReportErrorE(state, exp, "Cannot assign to id '%s'.\n", exp->binary.lhs->id.name);
 						}
 
 						GenerateInt(state, exp->binary.lhs->id.sym->var.index);
@@ -2586,14 +2654,12 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 					}
 					else
 					{
-						fprintf(stderr, "LHS of assignment operation must be a variable\n");
-						exit(1);
+						ReportErrorE(state, exp, "LHS of assignment operation must be a variable\n");
 					}
 				} break;
 
 				default:
-					fprintf(stderr, "Invalid operation when expecting statement.\n");
-					exit(1);
+					ReportErrorE(state, exp, "Invalid operation when expecting statement.\n");
 					break;
 			}
 		} break;
@@ -2695,8 +2761,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 		} break;
 
         default:
-            fprintf(stderr, "Got expression when expecting statement.\n");
-            exit(1);
+            ReportErrorE(state, exp, "Got expression when expecting statement.\n");
             break;
 	}
 }
@@ -2821,7 +2886,6 @@ static void CheckInitialized(Tiny_State* state)
 {
 	Symbol* node = state->globalSymbols;
 
-	bool error = false;
 	const char* fmt = "Attempted to use uninitialized variable '%s'.\n";
 
 	while(node)
@@ -2832,8 +2896,7 @@ static void CheckInitialized(Tiny_State* state)
 		{
 			if (!node->var.initialized)
 			{
-				fprintf(stderr, fmt, node->name);
-				error = true;
+				ReportErrorS(state, node, fmt, node->name);
 			}
 		}
 		else if (node->type == SYM_FUNCTION)
@@ -2847,8 +2910,7 @@ static void CheckInitialized(Tiny_State* state)
 
 				if (!local->var.initialized)
 				{
-					fprintf(stderr, fmt, local->name);
-					error = true;
+					ReportErrorS(state, local, fmt, local->name);
 				}
 
 				local = local->next;
@@ -2857,9 +2919,6 @@ static void CheckInitialized(Tiny_State* state)
 
 		node = node->next;
 	}
-
-	if (error)
-		exit(1);
 }
 
 // Goes through the registered symbols (GlobalSymbols) and assigns all foreign
@@ -2917,12 +2976,15 @@ void Tiny_CompileString(Tiny_State* state, const char* name, const char* string)
     state->lineNumber = 1;
     state->fileName = name;
 
+	state->curFile = file;
+
     CurTok = 0;
     Expr* prog = ParseProgram(state, file); 
-
-    fclose(file);
         
     CompileState(state, prog);
+
+    fclose(file);
+	state->curFile = NULL;
 
 	DeleteProgram(prog);
 }
@@ -2940,10 +3002,14 @@ void Tiny_CompileFile(Tiny_State* state, const char* filename)
 	state->lineNumber = 1;
 	state->fileName = filename;
 
+	state->curFile = file;
+
 	CurTok = 0;
 	Expr* prog = ParseProgram(state, file);
     
     CompileState(state, prog);
 
 	DeleteProgram(prog);
+
+	state->curFile = NULL;
 }

@@ -1,20 +1,21 @@
+v :: 2
 frames_since_last_bullet := 10
 
 func update() {
     if is_key_down('W') {
-        accel(0, -2)
+        accel(0, -v)
     }
     
     if is_key_down('A') {
-        accel(-2, 0)
+        accel(-v, 0)
     }
 
     if is_key_down('S') {
-        accel(0, 2)
+        accel(0, v)
     }
 
     if is_key_down('D') {
-        accel(2, 0)
+        accel(v, 0)
     }
 
     frames_since_last_bullet += 1
