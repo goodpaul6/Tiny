@@ -49,8 +49,8 @@ typedef struct Tiny_Value
 	{
 		bool boolean;
 		double number;
-		const char* cstr;	  // for TINY_VAL_CONST_STRING
-        void* addr;           // for TINY_VAL_LIGHT_NATIVE
+		const char* cstr;   // for TINY_VAL_CONST_STRING
+        void* addr;         // for TINY_VAL_LIGHT_NATIVE
 		Tiny_Object* obj;
 	};
 } Tiny_Value;

@@ -133,7 +133,7 @@ void RunPlugin(Editor* editor, int pluginIndex)
 // We can call this if we want to spin up a thread and execute cycles
 // whenever we can (i.e. run the plugin asynchronously).
 Tiny_StateThread* StartPlugin(Editor* editor, int pluginIndex)
-{ 
+{
     assert(pluginIndex >= 0 && pluginIndex < editor->numPlugins);
 
     // Just like for RunPlugin
