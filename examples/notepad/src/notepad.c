@@ -9,6 +9,7 @@
 #include "tigr.h"
 
 #define MAX_NUM_LINES		2048
+#define MAX_TRACKED_DEFNS	128
 #define MAX_LINE_LENGTH		512
 #define MAX_TOKEN_LENGTH	64
 #define MAX_TOKENS			512
@@ -18,7 +19,6 @@
 typedef enum
 {
 	MODE_NORMAL,
-	MODE_NORMAL_TO_INSERT,
 	MODE_INSERT,
 } Mode;
 
@@ -31,6 +31,8 @@ typedef enum
     TOK_STRING,
     TOK_CHAR,
 	TOK_NUM,
+	TOK_DEFINITION,
+	TOK_COMMENT,
     NUM_TOKEN_TYPES
 } TokenType;
 
@@ -45,6 +47,9 @@ typedef struct
     bool highlight;
     int numLines;
     char lines[MAX_NUM_LINES][MAX_LINE_LENGTH];
+
+	int numDefns;
+	char defns[MAX_TRACKED_DEFNS][MAX_TOKEN_LENGTH];
 } Buffer;
 
 static Buffer GBuffer;
@@ -114,6 +119,33 @@ static void OpenFile(const char* filename)
     fclose(f);
 }
 
+static void UpdateDefinitions(void)
+{
+	GBuffer.numDefns = 0;
+
+	for (int i = 0; i < GBuffer.numLines; ++i) {
+		const char* s = strstr(GBuffer.lines[i], "#define");	
+		if (!s) continue;
+
+		if (GBuffer.numDefns >= MAX_TRACKED_DEFNS) break;
+
+		s += strlen("#define");
+		
+		while (isspace(*s)) {
+			s += 1;
+		}
+
+		int i = 0;
+
+		while (!isspace(*s)) {
+			GBuffer.defns[GBuffer.numDefns][i++] = *s++;
+		}
+
+		GBuffer.defns[GBuffer.numDefns][i] = '\0';
+		GBuffer.numDefns += 1;
+	}
+}
+
 // Returns number of tokens extracted
 static int Tokenize(const char* line, Token* tokens, int maxTokens)
 {
@@ -173,8 +205,15 @@ static int Tokenize(const char* line, Token* tokens, int maxTokens)
 				(strcmp(lexeme, "long") == 0) ||
 				(strcmp(lexeme, "false") == 0) ||
 				(strcmp(lexeme, "true") == 0) ||
-				(strcmp(lexeme, "static") == 0)) {
+				(strcmp(lexeme, "static") == 0) ||
+				(strcmp(lexeme, "return") == 0)) {
 				tokens[curTok].type = TOK_KEYWORD;
+			}
+
+			for (int i = 0; i < GBuffer.numDefns; ++i) {
+				if (strcmp(GBuffer.defns[i], lexeme) == 0) {
+					tokens[curTok].type = TOK_DEFINITION;
+				}
 			}
 
             curTok += 1;
@@ -204,7 +243,23 @@ static int Tokenize(const char* line, Token* tokens, int maxTokens)
 
             tokens[curTok].lexeme[i] = '\0';
             curTok += 1;
-        } else {
+		} else if (*line == '/' && line[1] == '/') {
+			line += 2;
+
+			int i = 0;
+
+			tokens[curTok].type = TOK_COMMENT;
+
+			tokens[curTok].lexeme[i++] = '/';
+			tokens[curTok].lexeme[i++] = '/';
+
+			while (*line) {
+				tokens[curTok].lexeme[i++] = *line++;
+			}
+
+			tokens[curTok].lexeme[i] = '\0';
+			curTok += 1;
+		} else {
             tokens[curTok].type = TOK_CHAR;
             tokens[curTok].lexeme[0] = *line++;
             tokens[curTok].lexeme[1] = '\0';
@@ -214,6 +269,15 @@ static int Tokenize(const char* line, Token* tokens, int maxTokens)
     }
 
     return curTok;
+}
+
+static void RemoveLine(int y)
+{
+	assert(y >= 0 && y < GBuffer.numLines);
+
+	// Shift all other lines up
+	memmove(&GBuffer.lines[y], GBuffer.lines[y + 1], (GBuffer.numLines - y) * sizeof(GBuffer.lines[0]));
+	GBuffer.numLines -= 1;
 }
 
 // Basically backspace (will move around yp if backspace moves up a line)
@@ -244,10 +308,30 @@ static void RemoveChar(int* xp, int* yp)
 		strcat(GBuffer.lines[y - 1], GBuffer.lines[y]);
 
 		// Shift all other lines up
-		memmove(&GBuffer.lines[y], GBuffer.lines[y + 1], (GBuffer.numLines - y) * sizeof(GBuffer.lines[0]));
-		GBuffer.numLines -= 1;
+		RemoveLine(y);
 		*yp -= 1;
 	}
+}
+
+static void InsertChar(char ch, int* xp, int* yp)
+{
+	int x = *xp;
+	int y = *yp;
+
+	assert(y >= 0 && y < GBuffer.numLines);
+	int len = strlen(GBuffer.lines[y]);
+	assert(x >= 0 && x <= len);
+
+	if (x == len) {
+		GBuffer.lines[y][x] = ch;
+		GBuffer.lines[y][x + 1] = '\0';
+	} else {
+		memmove(&GBuffer.lines[y][x + 1], &GBuffer.lines[y][x], len - x);
+		GBuffer.lines[y][x] = ch;
+		GBuffer.lines[y][len + 1] = '\0';
+	}
+
+	*xp += 1;
 }
 
 static void InsertNewline(int* xp, int* yp)
@@ -281,27 +365,35 @@ static void InsertNewline(int* xp, int* yp)
 	}
 
 	*xp = 0;
-}
 
-static void InsertChar(char ch, int* xp, int* yp)
-{
-	int x = *xp;
-	int y = *yp;
+	// If the previous thing was a curly brace, try and put the cursor at the correct place
+	if (y > 0 && len > 0 && (GBuffer.lines[y - 1][len - 1] == '{' || GBuffer.lines[y - 1][len - 1] == '}')) {
+		int openBraces = 0;
+		int closeBraces = 0;
 
-	assert(y >= 0 && y < GBuffer.numLines);
-	int len = strlen(GBuffer.lines[y]);
-	assert(x >= 0 && x <= len);
+		for (int i = 0; i < y; ++i) {
+			const char* s = strchr(GBuffer.lines[i], '{');
+			const char* e = strchr(GBuffer.lines[i], '}');
 
-	if (x == len) {
-		GBuffer.lines[y][x] = ch;
-		GBuffer.lines[y][x + 1] = '\0';
-	} else {
-		memmove(&GBuffer.lines[y][x + 1], &GBuffer.lines[y][x], len - x);
-		GBuffer.lines[y][x] = ch;
-		GBuffer.lines[y][len + 1] = '\0';
+			// We only count one brace per line because if you have multiple braces in a single
+			// line then you probably don't want the next line to be spaced twice
+			if (s) {
+				openBraces += 1;
+			}
+
+			if (e) {
+				closeBraces += 1;
+			}
+		}
+
+		int spc = openBraces - closeBraces;
+
+		for (int i = 0; i < spc; ++i) {
+			for (int k = 0; k < 4; ++k) {
+				InsertChar(' ', xp, yp);
+			}
+		}
 	}
-
-	*xp += 1;
 }
 
 int main(int argc, char** argv)
@@ -319,7 +411,9 @@ int main(int argc, char** argv)
         tigrRGB(0, 0, 0),
         tigrRGB(40, 150, 40),
         tigrRGB(130, 130, 130),
-        tigrRGB(150, 150, 40)
+        tigrRGB(150, 150, 40),
+		tigrRGB(150, 30, 150),
+		tigrRGB(20, 80, 20)
     };
 
 	int scrollY = 0;
@@ -331,8 +425,12 @@ int main(int argc, char** argv)
 	float elapsed = tigrTime();
 	float lastReleaseTime[8] = { 0 };
 
+	char cmd[3] = { 0 };
+
     while(!tigrClosed(screen)) {
         tigrClear(screen, tigrRGB(20, 20, 20));
+
+		UpdateDefinitions();
 
         int y = 0;
 
@@ -340,11 +438,6 @@ int main(int argc, char** argv)
 
 		elapsed += tigrTime();
 		int ticks = (int)(elapsed / 0.5f);
-
-		bool left = tigrKeyDown(screen, TK_LEFT) || tigrKeyDown(screen, 'H');
-		bool right = tigrKeyDown(screen, TK_RIGHT) || tigrKeyDown(screen, 'L');
-		bool up = tigrKeyDown(screen, TK_UP) || tigrKeyDown(screen, 'K');
-		bool down = tigrKeyDown(screen, TK_DOWN) || tigrKeyDown(screen, 'J');
 
 		// Key repeat
 		if (!tigrKeyHeld(screen, TK_LEFT) && !tigrKeyHeld(screen, 'H')) {
@@ -365,50 +458,95 @@ int main(int argc, char** argv)
 
 		bool blink = ticks % 2 == 0;
 
+		assert(curX >= 0);
+
 		// Movement
 		if (mode == MODE_NORMAL) {
-			if ((left || (elapsed - lastReleaseTime[0]) > repeatTime) && curX > 0) {
+			int val = tigrReadChar(screen);
+
+			if (val > 0) {
+				if (cmd[1] > 0) {
+					cmd[0] = '\0';
+				}
+
+				char s[2] = { val, '\0' };
+				strcat(cmd, s);
+			}
+
+			bool left = cmd[0] == 'h';
+			bool right = cmd[0] == 'l';
+			bool up = cmd[0] == 'k';
+			bool down = cmd[0] == 'j';
+
+			if (left && curX > 0) {
+				cmd[0] = '\0';
 				--curX;
 				blink = true;
 			}
 
-			if ((right || (elapsed - lastReleaseTime[1]) > repeatTime) && curX < strlen(GBuffer.lines[curY]) - 1) {
+			if (right && curX < strlen(GBuffer.lines[curY]) - 1) {
+				cmd[0] = '\0';
 				++curX;
 				blink = true;
 			}
 
-			if ((up || (elapsed - lastReleaseTime[2]) > repeatTime) && curY > 0) {
+			if (up && curY > 0) {
+				cmd[0] = '\0';
 				--curY;
 				blink = true;
 			}
 
-			if ((down || (elapsed - lastReleaseTime[3] > repeatTime)) && curY < GBuffer.numLines - 2) {
+			if (down && curY < GBuffer.numLines - 2) {
+				cmd[0] = '\0';
 				++curY;
 				blink = true;
 			}
 
-			if (tigrKeyDown(screen, 'E')) {
+			if (GBuffer.numLines > 0 && cmd[0] == 'd' && cmd[1] == 'd') {
+				RemoveLine(curY);
+				cmd[0] = '\0';
+			}
+
+			if (cmd[0] == 'x') {
+				cmd[0] = '\0';
+
+				int x = curX + 1;
+				if (x < strlen(GBuffer.lines[curY])) {
+					RemoveChar(&x, &curY);
+				} else {
+					GBuffer.lines[curY][curX] = '\0';
+					curX = 0;
+				}
+			}
+
+			if (cmd[0] == 'e') {
+				cmd[0] = '\0';
+
 				// Move to end of word
 				const char* cur = &GBuffer.lines[curY][curX];
 
 				if (cur[1] == ' ') {
 					// Space right after, move up
-					curX += 1;
 					cur += 1;
-					curX += strspn(cur, " ");
+					curX += 1;
+					int spn = strspn(cur, " ");
+
+					curX += spn;
 				}
 				else {
 					const char* spc = strchr(cur, ' ');
 					if (spc) {
 						curX += spc - cur - 1;
-					}
-					else {
+					} else {
 						curX += strlen(cur) - 1;
+						if (curX < 0) curX = 0;
 					}
 				}
 			}
 
-			if (tigrKeyDown(screen, 'B')) {
+			if (cmd[0] == 'b') {
+				cmd[0] = '\0';
+
 				// Move to start of word
 				const char* cur = &GBuffer.lines[curY][curX];
 
@@ -425,35 +563,41 @@ int main(int argc, char** argv)
 						--curX;
 						--cur;
 					}
-				}
-				else {
+				} else {
 					while (curX > 0 && cur[-1] != ' ') {
 						--curX;
 						--cur;
 					}
 				}
+
+				if (curX < 0) curX = 0;
 			}
 
-			if (tigrKeyDown(screen, 'I')) {
-				if (tigrKeyHeld(screen, TK_SHIFT)) {
+			if (cmd[0] == 'i' || cmd[0] == 'I') {
+				if (cmd[0] == 'I') {
 					curX = 0;
 				}
 
-				mode = MODE_NORMAL_TO_INSERT;
+				cmd[0] = '\0';
+
+				mode = MODE_INSERT;
 			}
 
-			if (tigrKeyDown(screen, 'A')) {
-				if (tigrKeyHeld(screen, TK_SHIFT)) {
+			if (cmd[0] == 'a' || cmd[0] == 'A') {
+				if (cmd[0] == 'A') {
 					curX = strlen(GBuffer.lines[curY]);
 				} else {
 					curX += 1;
 				}
 
-				mode = MODE_NORMAL_TO_INSERT;
+				cmd[0] = '\0';
+
+				mode = MODE_INSERT;
 			}
 
-			if (tigrKeyDown(screen, 'O')) {
-				if (tigrKeyHeld(screen, TK_SHIFT)) {
+			if (cmd[0] == 'o' || cmd[0] == 'O') {
+
+				if (cmd[0] == 'O') {
 					curX = 0;
 					InsertNewline(&curX, &curY);
 					curY -= 1;
@@ -462,15 +606,40 @@ int main(int argc, char** argv)
 					InsertNewline(&curX, &curY);
 				}
 
-				mode = MODE_NORMAL_TO_INSERT;
+				cmd[0] = '\0';
+
+				mode = MODE_INSERT;
 			}
 
-			if (tigrKeyDown(screen, 'G') && tigrKeyHeld(screen, TK_SHIFT)) {
-				scrollY = GBuffer.numLines - (lastMaxLine - scrollY) - 1;
-				curY = GBuffer.numLines - 1;
+			if (cmd[0] == 'g' || cmd[0] == 'G') {
+				if (cmd[0] == 'G') {
+					cmd[0] = '\0';
+					scrollY = GBuffer.numLines - (lastMaxLine - scrollY) - 1;
+					curY = GBuffer.numLines - 1;
+				} else if(cmd[1] == 'g') {
+					cmd[0] = '\0';
+					scrollY = 0;
+					curY = 0;
+				}	
+			}
+
+			if (cmd[0] == 'c') {
+				if (cmd[1] == 'c') {
+					cmd[0] = '\0';
+
+					RemoveLine(curY);
+					int x = 0;
+					InsertNewline(&x, &curY);
+					curY -= 1;
+
+					tigrReadChar(screen);
+					mode = MODE_INSERT;
+				} 			
 			}
 		} else if(mode == MODE_INSERT) {
 			if (tigrKeyDown(screen, TK_ESCAPE)) {
+				tigrReadChar(screen);
+				cmd[0] = '\0';
 				mode = MODE_NORMAL;
 			} else {
 				int value = tigrReadChar(screen);
@@ -491,9 +660,6 @@ int main(int argc, char** argv)
 					}
 				}
 			}
-		} else if (mode == MODE_NORMAL_TO_INSERT) {
-			char key = tigrReadChar(screen);
-			mode = MODE_INSERT;
 		}
 
         for(int i = scrollY; i < GBuffer.numLines; ++i) {
@@ -512,6 +678,7 @@ int main(int argc, char** argv)
 					if (curX >= lineLen) {
 						// Move back to bounds of line
 						curX = lineLen - 1;
+						if (curX < 0) curX = 0;
 					}
 				} else if(mode == MODE_INSERT) {
 					if (curX > lineLen) {
