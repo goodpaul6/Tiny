@@ -1,0 +1,26 @@
+last_char := ' '
+
+func fileOpened(name) {
+}
+
+func update() {
+    ch := read_char()
+
+    if ch == 'h' move(-1, 0)
+    if ch == 'j' move(0, 1)
+    if ch == 'k' move(0, -1)
+    if ch == 'l' move(1, 0)
+
+    if ch == 'G' {
+        move(0, line_count())
+        set_status("To the bottom it is...")
+    } else if ch == 'g' {
+        if last_char == 'g' {
+            set_status("To the top!")
+            move(0, -line_count())
+            last_char = ' '
+        } else {
+            last_char = 'g'
+        }
+    }
+}

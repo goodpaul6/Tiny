@@ -1,5 +1,8 @@
 set(SOURCES
     src/notepad.c
+    src/editor.c
+    src/buffer.c
+    src/display.c
     src/tigr.c)
 
 add_executable(tiny_notepad ${SOURCES})
