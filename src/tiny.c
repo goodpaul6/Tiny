@@ -1286,13 +1286,29 @@ static int GetToken(Tiny_State* state, FILE* in)
 	if (last == '\'')
 	{
 		last = getc(in);	
+        
+        if(last == '\\') {
+            last = getc(in);
+            switch(last) {
+                case '\'': last = '\''; break;
+                case 'n': last = '\n'; break;
+                case 'r': last = '\r'; break;
+                case 't': last = '\t'; break;
+                case 'b': last = '\b'; break;
+                case 'a': last = '\a'; break;
+                case 'v': last = '\v'; break;
+                case 'f': last = '\f'; break;
+                case '\\': last = '\\'; break;
+                case '"': last = '"'; break;
+            }
+        }
+
 		TokenNumber = (double)last;	
 		last = getc(in);
 
 		if (last != '\'')
 		{
-			fprintf(stderr, "Expected ' to follow previous '.");
-			exit(1);
+			ReportError(state, "Expected ' to follow previous '.");
 		}
 		last = getc(in);
 

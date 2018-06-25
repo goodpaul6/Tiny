@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <string.h>
+#include <math.h>
 
 #include "tigr.h"
 #include "display.h"
@@ -44,10 +45,28 @@ static Tiny_Value Lib_Strlen(Tiny_StateThread* thread, const Tiny_Value* args, i
     return Tiny_NewNumber((double)strlen(Tiny_ToString(args[0])));
 }
 
+static Tiny_Value Lib_Strspn(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    assert(count == 2);
+    return Tiny_NewNumber((double)strspn(Tiny_ToString(args[0]), Tiny_ToString(args[1])));
+}
+
 static Tiny_Value Lib_Stridx(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 2);
     return Tiny_NewNumber((double)Tiny_ToString(args[0])[(int)Tiny_ToNumber(args[1])]);
+}
+
+static Tiny_Value Lib_Floor(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    assert(count == 1);
+	return Tiny_NewNumber((double)floor(Tiny_ToNumber(args[0])));
+}
+
+static Tiny_Value Lib_Ceil(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    assert(count == 1);
+	return Tiny_NewNumber((double)ceil(Tiny_ToNumber(args[0])));
 }
 
 static Tiny_Value Lib_SetStatus(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -65,6 +84,7 @@ static Tiny_Value Lib_SetStatus(Tiny_StateThread* thread, const Tiny_Value* args
             switch(*fmt) {
                 case 's': s += sprintf(s, "%s", Tiny_ToString(args[arg])); break;
                 case 'g': s += sprintf(s, "%g", Tiny_ToNumber(args[arg])); break;
+                case 'c': s += sprintf(s, "%c", (char)Tiny_ToNumber(args[arg])); break;
             }
             fmt += 1;
 
@@ -328,7 +348,12 @@ static void BindFunctions(Tiny_State* state)
 	Tiny_BindConstNumber(state, "MODE_VISUAL_LINE", (double)MODE_VISUAL_LINE);
 
     Tiny_BindFunction(state, "strlen", Lib_Strlen);
+    Tiny_BindFunction(state, "strspn", Lib_Strspn);
     Tiny_BindFunction(state, "stridx", Lib_Stridx);
+
+    Tiny_BindFunction(state, "floor", Lib_Floor);
+    Tiny_BindFunction(state, "ceil", Lib_Ceil);
+
     Tiny_BindFunction(state, "set_status", Lib_SetStatus);
 	Tiny_BindFunction(state, "get_vstart_x", Lib_GetVstartX);
 	Tiny_BindFunction(state, "get_vstart_y", Lib_GetVstartY);
