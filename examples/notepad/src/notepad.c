@@ -20,6 +20,7 @@ typedef enum
 {
 	MODE_NORMAL,
 	MODE_INSERT,
+	MODE_VISUAL
 } Mode;
 
 typedef enum
@@ -238,9 +239,11 @@ static int Tokenize(const char* line, Token* tokens, int maxTokens)
             while (*line && *line != '"') {
                 tokens[curTok].lexeme[i++] = *line++;
             }
-			tokens[curTok].lexeme[i++] = '"';
 
-			line += 1;
+			if (*line == '"') {
+				tokens[curTok].lexeme[i++] = '"';
+				line += 1;
+			}
 
             tokens[curTok].lexeme[i] = '\0';
             curTok += 1;
@@ -293,14 +296,24 @@ static int CountBracesDown(int upto)
 	int braces = 0;
 
 	for (int i = 0; i < upto; ++i) {
-		const char* s = strchr(GBuffer.lines[i], '{');
-		const char* e = strchr(GBuffer.lines[i], '}');
+		const char* s = GBuffer.lines[i];
 
-		// We only count one brace per line because if you have multiple braces in a single
-		// line then you probably don't want the next line to be spaced twice
-		if (!(s && e)) {
-			if (s) ++braces;
-			if (e) --braces;
+		while (*s) {
+			if (*s == '"') {
+				s += 1;
+				while (*s && *s != '"') ++s;
+				s += 1;
+			} else if(*s == '\'') {
+				s += 2;
+			} else if (*s == '{') {
+				++braces;
+				s += 1;
+			} else if (*s == '}') {
+				--braces;
+				s += 1;
+			} else {
+				++s;
+			}
 		}
 	}
 
@@ -330,22 +343,33 @@ static void RemoveChar(int* xp, int* yp, bool tabSpacing)
 		*xp -= 1;
 
 		if (tabSpacing) {
-			static char line[MAX_LINE_LENGTH];
-			strcpy(line, GBuffer.lines[y]);
-
-			const char* s = line;
-			s += strspn(s, " ");
-
-			int spc = ((int)(x - 1) / 4);
-
-			int pos = 0;
-			for (int i = 0; i < spc * 4; ++i) {
-				GBuffer.lines[y][pos++] = ' ';
+			bool spacesBefore = true;
+			
+			for (int i = 0; i < x - 1; ++i) {
+				if (GBuffer.lines[y][i] != ' ') {
+					spacesBefore = false;
+					break;
+				}
 			}
-			GBuffer.lines[y][pos] = '\0';
 
-			*xp = pos;
-			strcat(GBuffer.lines[y], s);
+			if (spacesBefore) {
+				static char line[MAX_LINE_LENGTH];
+				strcpy(line, GBuffer.lines[y]);
+
+				const char* s = line;
+				s += strspn(s, " ");
+
+				int spc = ((int)(x - 1) / 4);
+
+				int pos = 0;
+				for (int i = 0; i < spc * 4; ++i) {
+					GBuffer.lines[y][pos++] = ' ';
+				}
+				GBuffer.lines[y][pos] = '\0';
+
+				*xp = pos;
+				strcat(GBuffer.lines[y], s);
+			}
 		}
 	} else if (y > 0 && GBuffer.numLines > 1) {
 		// Move the contents of the rest of this line to the end of the previous line
@@ -491,6 +515,8 @@ int main(int argc, char** argv)
 
 	tigrSetPostFX(screen, 0, 0, 0.5f, 1.0f);
 
+	int startLine = -1, endLine = -1;
+
     while(!tigrClosed(screen)) {
         tigrClear(screen, tigrRGB(20, 20, 20));
 
@@ -525,7 +551,7 @@ int main(int argc, char** argv)
 		assert(curX >= 0);
 
 		// Movement
-		if (mode == MODE_NORMAL) {
+		if (mode == MODE_NORMAL || mode == MODE_VISUAL) {
 			int val = tigrReadChar(screen);
 
 			if (val > 0) {
@@ -535,6 +561,11 @@ int main(int argc, char** argv)
 
 				char s[2] = { val, '\0' };
 				strcat(cmd, s);
+			}
+
+			if (tigrKeyDown(screen, TK_ESCAPE)) {
+				cmd[0] = '\0';
+				mode = MODE_NORMAL;
 			}
 
 			bool left = cmd[0] == 'h';
@@ -566,11 +597,6 @@ int main(int argc, char** argv)
 				blink = true;
 			}
 
-			if (GBuffer.numLines > 0 && cmd[0] == 'd' && cmd[1] == 'd') {
-				RemoveLine(curY);
-				cmd[0] = '\0';
-			}
-
 			if (cmd[0] == '{') {
 				cmd[0] = '\0';
 
@@ -593,15 +619,78 @@ int main(int argc, char** argv)
 				}
 			}
 
-			if (cmd[0] == 'x') {
-				cmd[0] = '\0';
+			if (mode == MODE_NORMAL) {
+				if (GBuffer.numLines > 0 && cmd[0] == 'd' && cmd[1] == 'd') {
+					RemoveLine(curY);
+					cmd[0] = '\0';
+				}
 
-				int x = curX + 1;
-				if (x < strlen(GBuffer.lines[curY])) {
-					RemoveChar(&x, &curY, true);
-				} else {
-					GBuffer.lines[curY][curX] = '\0';
-					curX = 0;
+				if (cmd[0] == 'V') {
+					cmd[0] = '\0';
+
+					startLine = curY;
+					endLine = curY;
+					mode = MODE_VISUAL;
+				}
+
+				if (cmd[0] == 'c') {
+					if (cmd[1] == 'c') {
+						cmd[0] = '\0';
+
+						RemoveLine(curY);
+						int x = 0;
+						InsertNewline(&x, &curY, true);
+						curY -= 1;
+
+						tigrReadChar(screen);
+						mode = MODE_INSERT;
+					} 			
+				}
+
+				if (cmd[0] == '<' && cmd[1] == '<') {
+					cmd[0] = '\0';
+
+					const char* s = GBuffer.lines[curY];
+					size_t col = strspn(s, " ");
+					s += col;
+
+					int spc = ((int)(col - 1) / 4);
+
+					strcpy(GBuffer.lines[curY] + spc * 4, s);
+					curX = spc * 4;
+				}
+
+				if (cmd[0] == '>' && cmd[1] == '>') {
+					cmd[0] = '\0';
+
+					const char* s = GBuffer.lines[curY];
+					size_t col = strspn(s, " ");
+					s += col;
+
+					static char buf[MAX_LINE_LENGTH];
+					strcpy(buf, s);
+
+					int spc = ((int)(col + 1) / 4) + 1;
+
+					for (int i = 0; i < spc * 4; ++i) {
+						GBuffer.lines[curY][i] = ' ';
+					}
+
+					strcpy(GBuffer.lines[curY] + spc * 4, buf);
+					curX = spc * 4;
+				}
+
+				if (cmd[0] == 'x') {
+					cmd[0] = '\0';
+
+					int x = curX + 1;
+					if (x < strlen(GBuffer.lines[curY])) {
+						RemoveChar(&x, &curY, true);
+					}
+					else {
+						GBuffer.lines[curY][curX] = '\0';
+						curX = 0;
+					}
 				}
 			}
 
@@ -657,6 +746,30 @@ int main(int argc, char** argv)
 				}
 
 				if (curX < 0) curX = 0;
+			} else if(mode == MODE_VISUAL) {
+				if (cmd[0] == 'd' || cmd[0] == 'c') {
+					int a = startLine;
+					int b = endLine;
+
+					if (a > b) {
+						int temp = b;
+						b = a;
+						a = temp;
+					}
+
+					for (int i = a; i <= b; ++i) {
+						RemoveLine(a);
+					}
+
+					curY = a;
+
+					if (curY >= GBuffer.numLines) curY = GBuffer.numLines - 1;
+					if (curY < 0) curY = 0;
+
+					mode = cmd[0] == 'd' ? MODE_NORMAL : MODE_INSERT;
+
+					cmd[0] = '\0';
+				} 
 			}
 
 			if (cmd[0] == 'i' || cmd[0] == 'I') {
@@ -714,18 +827,8 @@ int main(int argc, char** argv)
 				}	
 			}
 
-			if (cmd[0] == 'c') {
-				if (cmd[1] == 'c') {
-					cmd[0] = '\0';
-
-					RemoveLine(curY);
-					int x = 0;
-					InsertNewline(&x, &curY, true);
-					curY -= 1;
-
-					tigrReadChar(screen);
-					mode = MODE_INSERT;
-				} 			
+			if (mode == MODE_VISUAL) {
+				endLine = curY;
 			}
 		} else if(mode == MODE_INSERT) {
 			if (tigrKeyDown(screen, TK_ESCAPE)) {
@@ -770,6 +873,21 @@ int main(int argc, char** argv)
 			tigrPrint(screen, tfont, x, y, tigrRGB(40, 40, 40), lbuf);
 			x += tigrTextWidth(tfont, lbuf) + 4;
 #endif
+
+			if (mode == MODE_VISUAL) {
+				int a = startLine;
+				int b = endLine;
+
+				if (a > b) {
+					int temp = b;
+					b = a;
+					a = temp;
+				}
+				
+				if (i >= a && i <= b) {
+					tigrFill(screen, x, y, tigrTextWidth(tfont, GBuffer.lines[i]), tigrTextHeight(tfont, GBuffer.lines[i]), tigrRGB(80, 80, 80));
+				}
+			}
 
 			int lineLen = strlen(GBuffer.lines[i]);
 
