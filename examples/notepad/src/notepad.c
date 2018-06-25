@@ -452,6 +452,19 @@ int main(int argc, char** argv)
 				mode = MODE_NORMAL_TO_INSERT;
 			}
 
+			if (tigrKeyDown(screen, 'O')) {
+				if (tigrKeyHeld(screen, TK_SHIFT)) {
+					curX = 0;
+					InsertNewline(&curX, &curY);
+					curY -= 1;
+				} else {
+					curX = strlen(GBuffer.lines[curY]);
+					InsertNewline(&curX, &curY);
+				}
+
+				mode = MODE_NORMAL_TO_INSERT;
+			}
+
 			if (tigrKeyDown(screen, 'G') && tigrKeyHeld(screen, TK_SHIFT)) {
 				scrollY = GBuffer.numLines - (lastMaxLine - scrollY) - 1;
 				curY = GBuffer.numLines - 1;
@@ -480,9 +493,7 @@ int main(int argc, char** argv)
 			}
 		} else if (mode == MODE_NORMAL_TO_INSERT) {
 			char key = tigrReadChar(screen);
-			if (key == 'i' || key == 'I' || key == 'a' || key == 'A') {
-				mode = MODE_INSERT;
-			}
+			mode = MODE_INSERT;
 		}
 
         for(int i = scrollY; i < GBuffer.numLines; ++i) {
