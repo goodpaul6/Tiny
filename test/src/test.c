@@ -7,6 +7,7 @@
 
 #include "tiny.h"
 #include "tiny_detail.h"
+#include "t_mem.h"
 
 static void test_InitArrayEx(void)
 {
@@ -554,6 +555,8 @@ static void test_RevPolishCalc(void)
 
 int main(int argc, char* argv[])
 {
+    tiny_init_mem();
+
     lrun("All Array tests", test_Array);
     lrun("All Dict tests", test_Dict);
     lrun("Tiny State compilation and many threads", test_TinyState);
@@ -564,6 +567,8 @@ int main(int argc, char* argv[])
     lrun("Tiny Stdlib Dict", test_TinyDict);
     lrun("Tiny RPN", test_RevPolishCalc);
     lresults();
+
+    tiny_destroy_mem();
 
     return lfails != 0;
 }

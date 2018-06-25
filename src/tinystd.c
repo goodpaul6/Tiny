@@ -10,6 +10,8 @@
 #include "dict.h"
 #include "tiny_detail.h"
 
+#include "t_mem.h"
+
 #ifdef _WIN32
 typedef int BOOL;
 typedef unsigned long DWORD;
@@ -104,7 +106,7 @@ static Tiny_Value Lib_Fread(Tiny_StateThread* thread, const Tiny_Value* args, in
 	FILE* file = Tiny_ToAddr(args[0]);
 	int num = (int)Tiny_ToNumber(args[1]);
 
-	char* str = emalloc(num + 1);
+	char* str = malloc(num + 1);
 	
 	fread(str, 1, num, file);
 	str[num] = '\0';
@@ -165,7 +167,7 @@ const Tiny_NativeProp ArrayProp = {
 
 static Tiny_Value CreateArray(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	Array* array = emalloc(sizeof(Array));
+	Array* array = malloc(sizeof(Array));
     
     InitArray(array, sizeof(Tiny_Value));
 
@@ -269,7 +271,7 @@ const Tiny_NativeProp DictProp = {
 
 static Tiny_Value CreateDict(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	Dict* dict = emalloc(sizeof(Dict));
+	Dict* dict = malloc(sizeof(Dict));
 
 	InitDict(dict, sizeof(Tiny_Value));
 
@@ -337,11 +339,11 @@ static Tiny_Value Lib_DictKeys(Tiny_StateThread* thread, const Tiny_Value* args,
 {
 	Dict* dict = args[0].obj->nat.addr;
 
-	Array* array = emalloc(sizeof(Array));
+	Array* array = malloc(sizeof(Array));
 
 	array->capacity = dict->filledCount;
 	array->length = 0;
-	array->data = emalloc(sizeof(Tiny_Value) * dict->filledCount);
+	array->data = malloc(sizeof(Tiny_Value) * dict->filledCount);
 
 	for (int i = 0; i < dict->bucketCount; ++i)
 	{
@@ -363,7 +365,7 @@ static Tiny_Value Strcat(Tiny_StateThread* thread, const Tiny_Value* args, int c
 	size_t len1 = strlen(str1);
 	size_t len2 = strlen(str2);
 	
-	char* newString = emalloc(len1 + len2 + 1);
+	char* newString = malloc(len1 + len2 + 1);
 	strcpy(newString, str1);
 	strcpy(newString + len1, str2);
 	newString[len1 + len2] = '\0';
@@ -385,7 +387,7 @@ static Tiny_Value Lib_Ntos(Tiny_StateThread* thread, const Tiny_Value* args, int
 {
 	double num = args[0].number;
 	
-	char* string = emalloc(NUMTOSTR_CONV_BUFFER_SIZE + 1);
+	char* string = malloc(NUMTOSTR_CONV_BUFFER_SIZE + 1);
 	int c = sprintf(string, "%g", num);
 
 	string[c] = '\0';
@@ -414,7 +416,7 @@ static Tiny_Value Lib_Input(Tiny_StateThread* thread, const Tiny_Value* args, in
 	if (count >= 1)
 		printf("%s", Tiny_ToString(args[0]));
 
-	char* buffer = emalloc(1);
+	char* buffer = malloc(1);
 	size_t bufferLength = 1;
 	size_t bufferCapacity = 1;
 
@@ -426,7 +428,7 @@ static Tiny_Value Lib_Input(Tiny_StateThread* thread, const Tiny_Value* args, in
 		if (bufferLength + 1 >= bufferCapacity)
 		{
 			bufferCapacity *= 2;
-			buffer = erealloc(buffer, bufferCapacity);
+			buffer = realloc(buffer, bufferCapacity);
 		}
 
 		++bufferLength;

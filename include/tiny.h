@@ -26,7 +26,7 @@ typedef struct
     const char* name;
 
     void(*protectFromGC)(void*);
-    void(*free)(void*);
+    void(*finalize)(void*);				
     struct Tiny_Value (*toString)(void*);
 } Tiny_NativeProp;
 

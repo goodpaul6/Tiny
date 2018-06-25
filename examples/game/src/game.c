@@ -8,6 +8,7 @@
 
 #include "tigr.h"
 #include "tiny.h"
+#include "t_mem.h"
 
 #define MAX_ENTITIES 200
 
@@ -41,6 +42,8 @@ static Entity* AddEnt(int hp, double x, double y, EntityType type)
 {
     for(int i = 0; i < MAX_ENTITIES; ++i) {
         if(Ents[i].hp <= 0) {
+			if (Ents[i].hp == -1) Tiny_DestroyThread(&Ents[i].thread);
+
             Ents[i].hp = hp;
             Ents[i].x = x;
 			Ents[i].y = y;
@@ -111,6 +114,21 @@ static Tiny_Value IsKeyDown(Tiny_StateThread* thread, const Tiny_Value* args, in
     return Tiny_NewBool(tigrKeyHeld(Screen, (int)Tiny_ToNumber(args[0])) != 0);
 }
 
+static Tiny_Value AccelAngle(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    assert(count == 2);
+
+    double angle = Tiny_ToNumber(args[0]) * (M_PI / 180);
+    double speed = Tiny_ToNumber(args[1]);
+
+    Entity* e = thread->userdata;
+
+    e->velX += cos(angle) * speed;
+    e->velY += sin(angle) * speed;
+
+	return Tiny_Null;
+}
+
 static Tiny_Value Accel(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 2);
@@ -164,11 +182,16 @@ static Tiny_Value GetY(Tiny_StateThread* thread, const Tiny_Value* args, int cou
 
 static Tiny_Value Kill(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
+	Entity* e = NULL;
+
     if(count == 1) {
-        ((Entity*)Tiny_ToAddr(args[0]))->hp = 0;
+		e = Tiny_ToAddr(args[0]);
     } else {
-        ((Entity*)thread->userdata)->hp = 0;
+		e = thread->userdata;
     }
+
+	// This means its marked for destruction
+	e->hp = -1;
 
     return Tiny_Null;
 }
@@ -246,6 +269,8 @@ static Tiny_Value GetPlayerKills(Tiny_StateThread* thread, const Tiny_Value* arg
 
 int main(int argc, char** argv)
 {
+	tiny_init_mem();
+
     srand(time(NULL));
     
     Screen = tigrWindow(320, 240, "Tiny Game", 0);
@@ -278,6 +303,7 @@ int main(int argc, char** argv)
         Tiny_BindFunction(EntityStates[i], "add_bullet", AddBullet);
         Tiny_BindFunction(EntityStates[i], "is_key_down", IsKeyDown);
         Tiny_BindFunction(EntityStates[i], "accel", Accel);
+        Tiny_BindFunction(EntityStates[i], "accel_angle", AccelAngle);
         Tiny_BindFunction(EntityStates[i], "accel_towards", AccelTowards);
         Tiny_BindFunction(EntityStates[i], "get_x", GetX);
         Tiny_BindFunction(EntityStates[i], "get_y", GetY);
@@ -303,7 +329,7 @@ int main(int argc, char** argv)
 
     const float timePerFrame = 1.0f / 60.0f;
 	
-    tigrSetPostFX(Screen, 2, 2, 1.0f, 1);
+    tigrSetPostFX(Screen, 2, 2, 0.5f, 1);
     
     while (!tigrClosed(Screen)) {
         tigrClear(Screen, tigrRGB(20, 20, 20));
@@ -332,6 +358,7 @@ int main(int argc, char** argv)
                 if(Ents[i].hp <= 0) continue;
 
                 for(int j = i + 1; j < MAX_ENTITIES; ++j) {
+					if (Ents[i].hp <= 0) break;
                     if(Ents[j].hp <= 0) continue;
 
                     if(Ents[i].thread.state == EntityStates[ENT_SPAWNER] ||
@@ -363,6 +390,9 @@ int main(int argc, char** argv)
                             Ents[i].hp -= 1;
                             Ents[j].hp -= 1;
 
+							if (Ents[i].hp <= 0) Tiny_DestroyThread(&Ents[i].thread);
+							if (Ents[j].hp <= 0) Tiny_DestroyThread(&Ents[j].thread);
+
                             if(Ents[i].thread.state == EntityStates[ENT_BULLET] &&
                                Ents[i].playerBullet &&
                                Ents[j].hp <= 0) {
@@ -371,7 +401,7 @@ int main(int argc, char** argv)
 
                             if(Ents[j].thread.state == EntityStates[ENT_BULLET] &&
                                Ents[j].playerBullet &&
-                               Ents[i].hp <= 0) {
+                               Ents[i].hp <= 0) {								
                                 PlayerKills += 1;
                             }
                         } else {
@@ -395,11 +425,19 @@ int main(int argc, char** argv)
         tigrUpdate(Screen);
     }
 
+	for (int i = 0; i < MAX_ENTITIES; ++i) {
+		if (Ents[i].hp > 0 || Ents[i].hp == -1) {
+			Tiny_DestroyThread(&Ents[i].thread);
+		}
+	}
+
     for(int i = 0; i < NUM_ENTITY_TYPES; ++i) {
         Tiny_DeleteState(EntityStates[i]);
     }
 
     tigrFree(Screen);
+
+	tiny_destroy_mem();
 
     return 0;
 }

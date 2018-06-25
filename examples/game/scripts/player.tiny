@@ -2,22 +2,33 @@ v :: 2
 frames_since_last_bullet := 10
 
 func update() {
+    ang := 0  
+
     if is_key_down('W') {
-        accel(0, -v)
+        ang -= 90
+        if is_key_down('A') {
+            ang -= 45
+        } else if is_key_down('D') {
+            ang += 45
+        }
+
+        accel_angle(ang, v)
+    } else if is_key_down('S') {
+        ang += 90
+        if is_key_down('A') {
+            ang += 45
+        } else if is_key_down('D') {
+            ang -= 45
+        }
+
+        accel_angle(ang, v)
+    } else if is_key_down('A') {
+        ang = 180
+        accel_angle(ang, v)
+    } else if is_key_down('D') {
+        accel_angle(ang, v)
     }
     
-    if is_key_down('A') {
-        accel(-v, 0)
-    }
-
-    if is_key_down('S') {
-        accel(0, v)
-    }
-
-    if is_key_down('D') {
-        accel(v, 0)
-    }
-
     frames_since_last_bullet += 1
 
     if frames_since_last_bullet >= 10 {

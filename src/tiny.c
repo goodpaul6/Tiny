@@ -10,6 +10,7 @@
 #include "tiny.h"
 #include "tiny_detail.h"
 #include "stretchy_buffer.h"
+#include "t_mem.h"
 
 const Tiny_Value Tiny_Null = { TINY_VAL_NULL };
 
@@ -18,6 +19,11 @@ static double Numbers[MAX_NUMBERS];
 
 static int NumStrings = 0;
 static char Strings[MAX_STRINGS][MAX_TOK_LEN] = { 0 };
+
+#define emalloc(size) malloc(size)
+#define erealloc(mem, size) realloc(mem, size)
+
+#if 0
 
 void* emalloc(size_t size)
 {
@@ -33,6 +39,8 @@ void* erealloc(void* mem, size_t newSize)
 	return newMem;
 }
 
+#endif
+
 char* estrdup(const char* string)
 {
 	char* dupString = emalloc(strlen(string) + 1);
@@ -45,8 +53,8 @@ static void DeleteObject(Tiny_Object* obj)
 	if(obj->type == TINY_VAL_STRING) free(obj->string);
 	if (obj->type == TINY_VAL_NATIVE)
 	{
-		if (obj->nat.prop && obj->nat.prop->free)
-			obj->nat.prop->free(obj->nat.addr);
+		if (obj->nat.prop && obj->nat.prop->finalize)
+			obj->nat.prop->finalize(obj->nat.addr);
 	}
 
 	free(obj);
@@ -260,6 +268,8 @@ void Tiny_DeleteState(Tiny_State* state)
     // Reset function and variable data
 	free(state->functionPcs);
 	free(state->foreignFunctions);
+
+    free(state);
 }
 
 void Tiny_InitThread(Tiny_StateThread* thread, const Tiny_State* state)
@@ -2585,6 +2595,8 @@ static void Expr_destroy(Expr* exp)
 			free(exp->call.calleeName);
 			for(int i = 0; i < sb_count(exp->call.args); ++i)
 				Expr_destroy(exp->call.args[i]);
+
+            sb_free(exp->call.args);
 		} break;
 
 		case EXP_BLOCK:
@@ -2726,8 +2738,13 @@ static void CompileState(Tiny_State* state, Expr** prog)
 	// Allocate room for vm execution info
 
 	// We realloc because this state might be compiled multiple times (if, e.g., Tiny_CompileString is called twice with same state)
-    state->functionPcs = realloc(state->functionPcs, state->numFunctions * sizeof(int));
-	state->foreignFunctions = realloc(state->foreignFunctions, state->numForeignFunctions * sizeof(Tiny_ForeignFunction));
+	if (state->numFunctions > 0) {
+		state->functionPcs = realloc(state->functionPcs, state->numFunctions * sizeof(int));
+	}
+
+	if (state->numForeignFunctions > 0) {
+		state->foreignFunctions = realloc(state->foreignFunctions, state->numForeignFunctions * sizeof(Tiny_ForeignFunction));
+	}
 	
 	assert(state->numForeignFunctions == 0 || state->foreignFunctions);
 	assert(state->numFunctions == 0 || state->functionPcs);
