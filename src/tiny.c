@@ -216,9 +216,6 @@ Tiny_Value Tiny_NewString(Tiny_StateThread* thread, char* string)
 {
 	assert(thread && thread->state && string);
     
-    // Make sure thread is alive
-    assert(thread->pc >= 0);
-	
     Tiny_Object* obj = NewObject(thread, TINY_VAL_STRING);
 	obj->string = string;
 
@@ -1634,8 +1631,6 @@ static void ReportErrorV(FILE* f, const char* fileName, int line, const char* s,
 		
 		bool putLine = abs(line - (i + 1)) < 3;
 		
-		int lineLength = 0;
-
 		if (putLine) {
 			if (i == line - 1) {
 				fprintf(stderr, "%d ->\t", i + 1);
@@ -1650,7 +1645,6 @@ static void ReportErrorV(FILE* f, const char* fileName, int line, const char* s,
 				fputc(last, stderr);
 			}
 
-			lineLength += 1;
             last = getc(f);
         }
 
@@ -1675,6 +1669,7 @@ static void ReportError(Tiny_State* state, const char* s, ...)
     ReportErrorV(state->curFile, state->fileName, state->lineNumber, s, args);
 
     va_end(args);
+	exit(1);
 }
 
 static void ReportErrorE(Tiny_State* state, const Expr* exp, const char* s, ...)

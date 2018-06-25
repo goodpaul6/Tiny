@@ -123,21 +123,21 @@ void SetLine(Buffer* buf, int y, const char* text)
 
 void InsertEmptyLine(Buffer* buf, int y)
 {
-    assert(y >= 0 && y < buf->numLines);
-    assert(buf->numLines < MAX_NUM_LINES);
+    assert(buf->numLines + 1 < MAX_NUM_LINES);
 
     // Shift rest of the lines down
-    memmove(buf->lines[y + 1], buf->lines[y], (buf->numLines - y) * MAX_LINE_LENGTH);
+    memmove(&buf->lines[y + 1], &buf->lines[y], (buf->numLines - y) * MAX_LINE_LENGTH);
 
     // Empty line
     buf->lines[y][0] = 0;
+	buf->numLines += 1;
 }
 
 void RemoveLine(Buffer* buf, int y)
 {
     assert(y >= 0 && y < buf->numLines);
 
-    memmove(buf->lines[y], buf->lines[y + 1], (buf->numLines - y + 1) * MAX_LINE_LENGTH);
+    memmove(&buf->lines[y], &buf->lines[y + 1], (buf->numLines - y + 1) * MAX_LINE_LENGTH);
     buf->numLines -= 1;
 }
 

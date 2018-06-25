@@ -1,26 +1,197 @@
 last_char := ' '
 
-func fileOpened(name) {
+func move_reset(x, y) {
+    last_char = ' '
+    move(x, y)
 }
 
-func update() {
+func file_opened(name) {
+    set_status("Opened file %s", name)
+}
+
+func update_normal_mode() {
     ch := read_char()
 
-    if ch == 'h' move(-1, 0)
-    if ch == 'j' move(0, 1)
-    if ch == 'k' move(0, -1)
-    if ch == 'l' move(1, 0)
+    if last_char == 'r' and ch > 0 {
+        set_char(ch)
+        last_char = ' '
+        return;
+    }
+    
+    if ch == 'i' {
+        set_mode(MODE_INSERT)
+        return;
+    }
 
+    if ch == 'a' {
+        set_mode(MODE_INSERT)
+        move(1, 0)
+        return;
+    }
+
+    if ch == 'A' {
+        set_mode(MODE_INSERT)
+        move(strlen(get_line()), 0)
+        return;
+    }
+
+    if ch == 'o' {
+        set_mode(MODE_INSERT)
+        insert_empty_line(get_y() + 1)
+        move(0, 1)
+        return;
+    }
+
+    if ch == 'O' {
+        set_mode(MODE_INSERT)
+        insert_empty_line()
+        return;
+    }
+
+    if ch == 'e' {
+        i := get_x()
+        s := get_line()
+        len := strlen(s)
+
+        if i < len - 1 {
+            if stridx(s, i + 1) == ' ' {
+                i += 1
+                    while stridx(s, i) == ' ' and i < len {
+                        i += 1
+                    }
+
+                i += 1
+            } else {
+                while stridx(s, i) != ' ' and i < len {
+                    i += 1
+                }
+            }
+
+            move_to(i - 1, get_y())
+        }
+
+        last_char = ' '
+    }
+
+    if ch == 'b' {
+        i := get_x()
+        s := get_line()
+        
+        if i > 0 {
+            if i - 1 >= 0 and stridx(s, i - 1) == ' ' {
+                i -= 1
+                while stridx(s, i) == ' ' and i >= 0 {
+                    i -= 1
+                }
+
+                move_to(i, get_y())
+            } else {
+                while stridx(s, i) != ' ' and i >= 0 {
+                    i -= 1
+                }
+
+                move_to(i + 1, get_y())
+            }
+        }
+
+        last_char = ' '
+    }
+
+    if ch == 'h' {
+        move_reset(-1, 0)
+    } else if ch == 'j' {
+        move_reset(0, 1)
+    } else if ch == 'k' {
+        move_reset(0, -1)
+    } else if ch == 'l' {
+        move_reset(1, 0)
+    } 
+ 
+    if ch == '{' {
+        done := false
+        for i := get_y() - 1; i >= 0 and not done; i -= 1 {
+            if get_line(i) == "" {
+                move(0, i - get_y())
+                done = true
+            }
+        }
+        
+        if not done {
+            move(0, -line_count())
+        }
+    } else if ch == '}' {
+        done := false
+        for i := get_y() + 1; i < line_count() and not done; i += 1 {
+            if get_line(i) == "" {
+                move(0, i - get_y())
+                done = true
+            }
+        }
+        
+        if not done {
+            move(0, line_count())
+        }
+    }
+    
     if ch == 'G' {
-        move(0, line_count())
-        set_status("To the bottom it is...")
+        move_reset(0, line_count())
+        set_status("To the bottom!")
     } else if ch == 'g' {
         if last_char == 'g' {
             set_status("To the top!")
-            move(0, -line_count())
-            last_char = ' '
+            move_reset(0, -line_count())
         } else {
             last_char = 'g'
         }
+    } 
+
+    if ch == 'r' {
+        last_char = 'r'
     }
+}
+
+func update_insert_mode() {
+    ch := read_char()
+
+    if ch == 27 {
+        set_mode(MODE_NORMAL)
+    } else if ch == 8 {
+        if get_x() == 0 {
+            if get_y() > 0 {
+                s := get_line()
+
+                move_to(0, get_y() - 1)
+                move(strlen(get_line()), 0)
+
+                insert_string(s)
+                remove_line(get_y() + 1)
+            }
+        } else {
+            move(-1, 0)
+            remove_char()
+        }
+    } else if ch == 10 {
+        x := get_x()
+        
+        if x == strlen(get_line()) {
+            insert_empty_line(get_y() + 1)
+            move(0, 1)
+        } else {
+            rest := get_line_from(get_x()) 
+            move(0, 1)
+
+            insert_empty_line()
+            insert_string(rest)
+
+            terminate_line(get_y() - 1, x)
+        }
+    } else if ch > 0 {
+        insert_char(ch)
+        move(1, 0)
+    }
+}
+
+func update() {
+    if get_mode() == MODE_INSERT update_insert_mode()
+    else if get_mode() == MODE_NORMAL update_normal_mode()
 }
