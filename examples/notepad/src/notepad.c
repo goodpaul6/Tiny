@@ -8,7 +8,7 @@
 
 #include "tigr.h"
 
-#define MAX_NUM_LINES		2048
+#define MAX_NUM_LINES		4096
 #define MAX_TRACKED_DEFNS	128
 #define MAX_LINE_LENGTH		512
 #define MAX_TOKEN_LENGTH	256
@@ -201,6 +201,7 @@ static int Tokenize(const char* line, Token* tokens, int maxTokens)
 				(strcmp(lexeme, "enum") == 0) ||
 				(strcmp(lexeme, "char") == 0) ||
 				(strcmp(lexeme, "int") == 0) ||
+				(strcmp(lexeme, "void") == 0) ||
 				(strcmp(lexeme, "unsigned") == 0) ||
 				(strcmp(lexeme, "bool") == 0) ||
 				(strcmp(lexeme, "short") == 0) ||
@@ -481,6 +482,37 @@ static void InsertNewline(int* xp, int* yp, bool applySpacing)
 	}
 }
 
+static void IndentLine(int line, int* startOfLine)
+{
+	const char* s = GBuffer.lines[line];
+	size_t col = strspn(s, " ");
+	s += col;
+
+	static char buf[MAX_LINE_LENGTH];
+	strcpy(buf, s);
+
+	int spc = ((int)(col + 1) / 4) + 1;
+
+	for (int i = 0; i < spc * 4; ++i) {
+		GBuffer.lines[line][i] = ' ';
+	}
+
+	strcpy(GBuffer.lines[line] + spc * 4, buf);
+	if(startOfLine) *startOfLine = spc * 4;
+}
+
+static void DedentLine(int line, int* startOfLine)
+{
+	const char* s = GBuffer.lines[line];
+	size_t col = strspn(s, " ");
+	s += col;
+
+	int spc = ((int)(col - 1) / 4);
+
+	strcpy(GBuffer.lines[line] + spc * 4, s);
+	if(startOfLine) *startOfLine = spc * 4;
+}
+
 int main(int argc, char** argv)
 {
     if(argc > 1) {
@@ -513,7 +545,7 @@ int main(int argc, char** argv)
 
 	char cmd[3] = { 0 };
 
-	tigrSetPostFX(screen, 0, 0, 0.5f, 1.0f);
+	tigrSetPostFX(screen, 0, 0, 0.5f, 1.2f);
 
 	int startLine = -1, endLine = -1;
 
@@ -649,35 +681,12 @@ int main(int argc, char** argv)
 
 				if (cmd[0] == '<' && cmd[1] == '<') {
 					cmd[0] = '\0';
-
-					const char* s = GBuffer.lines[curY];
-					size_t col = strspn(s, " ");
-					s += col;
-
-					int spc = ((int)(col - 1) / 4);
-
-					strcpy(GBuffer.lines[curY] + spc * 4, s);
-					curX = spc * 4;
+					DedentLine(curY, &curX);
 				}
 
 				if (cmd[0] == '>' && cmd[1] == '>') {
 					cmd[0] = '\0';
-
-					const char* s = GBuffer.lines[curY];
-					size_t col = strspn(s, " ");
-					s += col;
-
-					static char buf[MAX_LINE_LENGTH];
-					strcpy(buf, s);
-
-					int spc = ((int)(col + 1) / 4) + 1;
-
-					for (int i = 0; i < spc * 4; ++i) {
-						GBuffer.lines[curY][i] = ' ';
-					}
-
-					strcpy(GBuffer.lines[curY] + spc * 4, buf);
-					curX = spc * 4;
+					IndentLine(curY, &curX);
 				}
 
 				if (cmd[0] == 'x') {
@@ -747,16 +756,16 @@ int main(int argc, char** argv)
 
 				if (curX < 0) curX = 0;
 			} else if(mode == MODE_VISUAL) {
+                int a = startLine;
+                int b = endLine;
+
+                if (a > b) {
+                    int temp = b;
+                    b = a;
+                    a = temp;
+                }
+
 				if (cmd[0] == 'd' || cmd[0] == 'c') {
-					int a = startLine;
-					int b = endLine;
-
-					if (a > b) {
-						int temp = b;
-						b = a;
-						a = temp;
-					}
-
 					for (int i = a; i <= b; ++i) {
 						RemoveLine(a);
 					}
@@ -770,6 +779,32 @@ int main(int argc, char** argv)
 
 					cmd[0] = '\0';
 				} 
+
+				if (cmd[0] == '>') {
+					cmd[0] = '\0';
+
+                    for(int i = a; i <= b; ++i) {
+                        IndentLine(i, NULL);
+                    }
+
+					curX = 0;
+					curY = a;
+					
+					mode = MODE_NORMAL;
+				}
+
+                if(cmd[0] == '<') {
+					cmd[0] = '\0';
+
+                    for(int i = a; i <= b; ++i) {
+                        DedentLine(i, NULL);
+                    }
+
+					curX = 0;
+					curY = a;
+
+					mode = MODE_NORMAL;
+                }
 			}
 
 			if (cmd[0] == 'i' || cmd[0] == 'I') {
@@ -819,12 +854,43 @@ int main(int argc, char** argv)
 				if (cmd[0] == 'G') {
 					cmd[0] = '\0';
 					scrollY = GBuffer.numLines - (lastMaxLine - scrollY) - 1;
-					curY = GBuffer.numLines - 1;
+					curY = GBuffer.numLines - 2;
 				} else if(cmd[1] == 'g') {
 					cmd[0] = '\0';
 					scrollY = 0;
 					curY = 0;
 				}	
+			}
+
+			if (cmd[0] == 'c' && cmd[1] == 'e') {
+				cmd[0] = '\0';
+
+				// Move to end of word
+				const char* cur = &GBuffer.lines[curY][curX];
+
+				if (cur[1] == ' ') {
+					// Space right after, move up
+					RemoveChar(&curX, &curY, false);
+					curX += 1;
+					int spn = strspn(cur, " ");
+
+					for (int i = 0; i < spn; ++i) {
+						RemoveChar(&curX, &curY, false);
+						curX += 1;
+					}
+				} else {
+					const char* spc = strchr(cur, ' ');
+					if (spc) {
+						for (int i = 0; i < spc - cur; ++i) {
+							curX += 1;
+							RemoveChar(&curX, &curY, false);
+						}
+					} else {
+						GBuffer.lines[curY][curX] = '\0';
+					}
+				}
+
+				mode = MODE_INSERT;
 			}
 
 			if (mode == MODE_VISUAL) {
@@ -840,6 +906,32 @@ int main(int argc, char** argv)
 				
 				if (value == '\b') {
 					RemoveChar(&curX, &curY, true);
+				} else if (value == 127) {
+					// CTRL+BACKSPACE
+
+					const char* cur = &GBuffer.lines[curY][curX];
+
+					if (curX > 0 && cur[-1] == ' ') {
+						// Space right before, move back
+						RemoveChar(&curX, &curY, false);
+
+						while (*cur == ' ') {
+							RemoveChar(&curX, &curY, false);
+							cur--;
+						}
+
+						while (curX > 0 && *cur != ' ') {
+							RemoveChar(&curX, &curY, false);
+							cur--;
+						}
+					} else {
+						while (curX > 0 && cur[-1] != ' ') {
+							RemoveChar(&curX, &curY, false);
+							--cur;
+						}
+					}
+
+					if (curX < 0) curX = 0;
 				} else if (value == '\n') {
 					InsertNewline(&curX, &curY, true);
 				} else if (value > 0) {
@@ -967,12 +1059,12 @@ int main(int argc, char** argv)
         }
 
 		if (curY < scrollY) {
-			scrollY -= 1;
+			scrollY = curY;
 			blink = true;
 		}
 
 		if (curY >= lastMaxLine && lastMaxLine < GBuffer.numLines - 1) {
-			++scrollY;
+			scrollY = curY - (lastMaxLine - scrollY) + 1;
 		}
 		
         tigrUpdate(screen);
