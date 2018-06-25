@@ -8,6 +8,7 @@
 
 #include "tigr.h"
 
+#define POS_STACK_SIZE	64
 #define MAX_NUM_LINES		4096
 #define MAX_TRACKED_DEFNS	128
 #define MAX_LINE_LENGTH		512
@@ -46,15 +47,29 @@ typedef struct
 
 typedef struct
 {
+	int line;
+} Pos;
+
+typedef struct
+{
     bool highlight;
+	
+	const char* filename;
+
     int numLines;
     char lines[MAX_NUM_LINES][MAX_LINE_LENGTH];
 
 	int numDefns;
 	char defns[MAX_TRACKED_DEFNS][MAX_TOKEN_LENGTH];
+
+	int posCount;
+	Pos posStack[POS_STACK_SIZE];
+
+	int inPosCount;
+	Pos inPosStack[POS_STACK_SIZE];
 } Buffer;
 
-static Buffer GBuffer;
+static Buffer GBuffer = { 0 };
 
 static void Log(const char* s, ...)
 {
@@ -81,6 +96,8 @@ static void OpenFile(const char* filename)
 		strcmp(ext, ".hh") == 0 || strcmp(ext, ".hpp") == 0)) {
 		GBuffer.highlight = true;
 	}
+
+	GBuffer.filename = filename;
 
     int curChar = 0;
     int curLine = 0;
@@ -285,7 +302,7 @@ static void RemoveLine(int y)
 	assert(y >= 0 && y < GBuffer.numLines);
 
 	// Shift all other lines up
-	memmove(&GBuffer.lines[y], GBuffer.lines[y + 1], (GBuffer.numLines - y) * sizeof(GBuffer.lines[0]));
+	memmove(&GBuffer.lines[y], GBuffer.lines[y + 1], (GBuffer.numLines - y + 1) * sizeof(GBuffer.lines[0]));
 	GBuffer.numLines -= 1;
 }
 
@@ -513,6 +530,31 @@ static void DedentLine(int line, int* startOfLine)
 	if(startOfLine) *startOfLine = spc * 4;
 }
 
+static void PushPos(int y)
+{
+	if (GBuffer.posCount >= POS_STACK_SIZE) {
+		memmove(&GBuffer.posStack[0], &GBuffer.posStack[1], (POS_STACK_SIZE - 1) * sizeof(Pos));
+		GBuffer.posCount -= 1;
+	} 
+
+	GBuffer.posStack[GBuffer.posCount++] = (Pos){ y };
+}
+
+static bool PopPos(Pos* pos, int cur)
+{
+	if (GBuffer.posCount == 0) return false;
+	
+	if (GBuffer.inPosCount >= POS_STACK_SIZE) {
+		memmove(&GBuffer.inPosStack[0], &GBuffer.inPosStack[1], (POS_STACK_SIZE - 1) * sizeof(Pos));
+		GBuffer.inPosCount -= 1;
+	} 
+
+	GBuffer.inPosStack[GBuffer.inPosCount++] = (Pos) { cur };
+
+	*pos = GBuffer.posStack[--GBuffer.posCount];
+	return true;
+}
+
 int main(int argc, char** argv)
 {
     if(argc > 1) {
@@ -629,9 +671,33 @@ int main(int argc, char** argv)
 				blink = true;
 			}
 
+			if (cmd[0] == 15) {
+				// CTRL+O
+				cmd[0] = '\0';
+
+				int y = curY;
+				Pos p;
+
+				if (PopPos(&p, curY)) {
+					curY = p.line;
+				}
+			}
+
+			if (cmd[0] == 9) {
+				// CTRL+I
+				cmd[0] = '\0';
+
+				if (GBuffer.inPosCount > 0) {
+					int y = curY;
+					curY = GBuffer.inPosStack[--GBuffer.inPosCount].line;
+					PushPos(y);
+				}
+			}
+
 			if (cmd[0] == '{') {
 				cmd[0] = '\0';
 
+				PushPos(curY);
 				if (curY > 0) curY -= 1;
 
 				// Move up to the last empty line
@@ -643,6 +709,7 @@ int main(int argc, char** argv)
 			if (cmd[0] == '}') {
 				cmd[0] = '\0';
 
+				PushPos(curY);
 				if (curY < GBuffer.numLines - 1) curY += 1;
 
 				// Move up to the last empty line
@@ -783,11 +850,15 @@ int main(int argc, char** argv)
 				if (cmd[0] == '>') {
 					cmd[0] = '\0';
 
+					int start = 0;
+					int* pStart = &start;
+
                     for(int i = a; i <= b; ++i) {
-                        IndentLine(i, NULL);
+                        IndentLine(i, pStart);
+						pStart = NULL;
                     }
 
-					curX = 0;
+					curX = start;
 					curY = a;
 					
 					mode = MODE_NORMAL;
@@ -796,11 +867,15 @@ int main(int argc, char** argv)
                 if(cmd[0] == '<') {
 					cmd[0] = '\0';
 
+					int start = 0;
+					int* pStart = &start;
+
                     for(int i = a; i <= b; ++i) {
-                        DedentLine(i, NULL);
+                        DedentLine(i, pStart);
+						pStart = NULL;
                     }
 
-					curX = 0;
+					curX = start;
 					curY = a;
 
 					mode = MODE_NORMAL;
@@ -830,7 +905,6 @@ int main(int argc, char** argv)
 			}
 
 			if (cmd[0] == 'o' || cmd[0] == 'O') {
-
 				if (cmd[0] == 'O') {
 					curX = 0;
 					InsertNewline(&curX, &curY, false);
@@ -853,10 +927,16 @@ int main(int argc, char** argv)
 			if (cmd[0] == 'g' || cmd[0] == 'G') {
 				if (cmd[0] == 'G') {
 					cmd[0] = '\0';
+
+					PushPos(curY);
+
 					scrollY = GBuffer.numLines - (lastMaxLine - scrollY) - 1;
 					curY = GBuffer.numLines - 2;
 				} else if(cmd[1] == 'g') {
 					cmd[0] = '\0';
+
+					PushPos(curY);
+
 					scrollY = 0;
 					curY = 0;
 				}	
