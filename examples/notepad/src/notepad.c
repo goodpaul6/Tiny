@@ -286,12 +286,11 @@ static void RemoveLine(int y)
 }
 
 // Returns open braces - close braces upto line (upto)
-static int CountBraces(int upto)
+static int CountBracesDown(int upto)
 {
 	assert(upto >= 0 && upto <= GBuffer.numLines);
 
-	int openBraces = 0;
-	int closeBraces = 0;
+	int braces = 0;
 
 	for (int i = 0; i < upto; ++i) {
 		const char* s = strchr(GBuffer.lines[i], '{');
@@ -299,16 +298,13 @@ static int CountBraces(int upto)
 
 		// We only count one brace per line because if you have multiple braces in a single
 		// line then you probably don't want the next line to be spaced twice
-		if (s) {
-			openBraces += 1;
-		}
-
-		if (e) {
-			closeBraces += 1;
+		if (!(s && e)) {
+			if (s) ++braces;
+			if (e) --braces;
 		}
 	}
 
-	return openBraces - closeBraces;
+	return braces;
 }
 
 // Basically backspace (will move around yp if backspace moves up a line)
@@ -369,7 +365,7 @@ static void InsertChar(char ch, int* xp, int* yp)
 
 			if (isAllSpace) {
 				// We can mess with the line; it's just a close bracket
-				int spc = CountBraces(y) - 1;
+				int spc = CountBracesDown(y) - 1;
 				
 				int pos = 0;
 
@@ -392,7 +388,7 @@ static void InsertChar(char ch, int* xp, int* yp)
 	*xp += 1;
 }
 
-static void InsertNewline(int* xp, int* yp)
+static void InsertNewline(int* xp, int* yp, bool applySpacing)
 {
 	int x = *xp;
 	int y = *yp;
@@ -424,12 +420,19 @@ static void InsertNewline(int* xp, int* yp)
 
 	*xp = 0;
 
-	// try and put the cursor at the correct place based on scope
-	int spc = CountBraces(y);
+	if (applySpacing) {
+		// try and put the cursor at the correct place based on scope	
+		// Strip all whitespace before we do that tho
+		size_t span = strspn(GBuffer.lines[y], " ");
 
-	for (int i = 0; i < spc; ++i) {
-		for (int k = 0; k < 4; ++k) {
-			InsertChar(' ', xp, yp);
+		memmove(&GBuffer.lines[y][0], &GBuffer.lines[y][span], span);
+
+		int spc = CountBracesDown(y);
+
+		for (int i = 0; i < spc; ++i) {
+			for (int k = 0; k < 4; ++k) {
+				InsertChar(' ', xp, yp);
+			}
 		}
 	}
 }
@@ -465,6 +468,8 @@ int main(int argc, char** argv)
 	float lastReleaseTime[8] = { 0 };
 
 	char cmd[3] = { 0 };
+
+	tigrSetPostFX(screen, 0, 0, 0.5f, 1.0f);
 
     while(!tigrClosed(screen)) {
         tigrClear(screen, tigrRGB(20, 20, 20));
@@ -660,11 +665,16 @@ int main(int argc, char** argv)
 
 				if (cmd[0] == 'O') {
 					curX = 0;
-					InsertNewline(&curX, &curY);
+					InsertNewline(&curX, &curY, false);
 					curY -= 1;
+
+					int spc = CountBracesDown(curY);
+					for (int i = 0; i < spc * 4; ++i) {
+						InsertChar(' ', &curX, &curY);
+					}
 				} else {
 					curX = strlen(GBuffer.lines[curY]);
-					InsertNewline(&curX, &curY);
+					InsertNewline(&curX, &curY, true);
 				}
 
 				cmd[0] = '\0';
@@ -690,7 +700,7 @@ int main(int argc, char** argv)
 
 					RemoveLine(curY);
 					int x = 0;
-					InsertNewline(&x, &curY);
+					InsertNewline(&x, &curY, true);
 					curY -= 1;
 
 					tigrReadChar(screen);
@@ -708,7 +718,7 @@ int main(int argc, char** argv)
 				if (value == '\b') {
 					RemoveChar(&curX, &curY);
 				} else if (value == '\n') {
-					InsertNewline(&curX, &curY);
+					InsertNewline(&curX, &curY, true);
 				} else if (value > 0) {
 					int len = strlen(GBuffer.lines[curY]);
 					
@@ -731,6 +741,15 @@ int main(int argc, char** argv)
 
 			int drawCurX = 0;
             int x = 0;
+
+#if 1
+			// Show line numbers
+			char lbuf[32];
+			sprintf(lbuf, "%*d", (int)ceil(log10(GBuffer.numLines)), i + 1);
+
+			tigrPrint(screen, tfont, x, y, tigrRGB(40, 40, 40), lbuf);
+			x += tigrTextWidth(tfont, lbuf) + 4;
+#endif
 
 			int lineLen = strlen(GBuffer.lines[i]);
 
@@ -764,14 +783,14 @@ int main(int argc, char** argv)
 						w = 2;
 					}
 
-					tigrFill(screen, 0, y, w, h, tigrRGB(100, 100, 100));
+					tigrFill(screen, x, y, w, h, tigrRGB(100, 100, 100));
 				} else if(curX == lineLen) {
 					assert(mode != MODE_NORMAL);
 
 					int w = tigrTextWidth(tfont, GBuffer.lines[curY]);
 					int h = tigrTextHeight(tfont, GBuffer.lines[curY]);
 
-					tigrFill(screen, w, y, 2, h, tigrRGB(100, 100, 100));
+					tigrFill(screen, x + w, y, 2, h, tigrRGB(100, 100, 100));
 				}
 			}
 
