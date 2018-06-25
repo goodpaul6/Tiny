@@ -9,6 +9,7 @@
 
 #include "tiny.h"
 #include "tiny_detail.h"
+#include "stretchy_buffer.h"
 
 const Tiny_Value Tiny_Null = { TINY_VAL_NULL };
 
@@ -250,13 +251,11 @@ Tiny_State* Tiny_CreateState(void)
 void Tiny_DeleteState(Tiny_State* state)
 {
 	// Delete all symbols
-	while (state->globalSymbols)
-	{
-		Symbol* next = state->globalSymbols->next;
-
-		Symbol_destroy(state->globalSymbols);
-		state->globalSymbols = next;
+    for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
+		Symbol_destroy(state->globalSymbols[i]);
 	}
+
+    sb_free(state->globalSymbols);
 
     // Reset function and variable data
 	free(state->functionPcs);
@@ -306,14 +305,12 @@ static bool ExecuteCycle(Tiny_StateThread* thread);
 
 int Tiny_GetGlobalIndex(const Tiny_State* state, const char* name)
 {
-	Symbol* sym = state->globalSymbols;
+	for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+		Symbol* sym = state->globalSymbols[i];
 
-	while (sym) {
 		if (sym->type == SYM_GLOBAL && strcmp(sym->name, name) == 0) {
 			return sym->var.index;
 		}
-
-		sym = sym->next;
 	}
 
 	return -1;
@@ -321,14 +318,12 @@ int Tiny_GetGlobalIndex(const Tiny_State* state, const char* name)
 
 int Tiny_GetFunctionIndex(const Tiny_State* state, const char* name)
 {
-	Symbol* sym = state->globalSymbols;
-	
-	while (sym) {
+	for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+		Symbol* sym = state->globalSymbols[i];
+
 		if (sym->type == SYM_FUNCTION && strcmp(sym->name, name) == 0) {
 			return sym->func.index;
 		}
-
-		sym = sym->next;
 	}
 
 	return -1;
@@ -476,7 +471,6 @@ static Symbol* Symbol_create(SymbolType type, const char* name, const Tiny_State
 
 	sym->name = estrdup(name);
 	sym->type = type;
-	sym->next = NULL;
 
     sym->fileName = state->fileName;
     sym->lineNumber = state->lineNumber;
@@ -488,31 +482,25 @@ static void Symbol_destroy(Symbol* sym)
 {
 	if (sym->type == SYM_FUNCTION)
 	{
-		Symbol* arg = sym->func.argsHead;
+        for(int i = 0; i < sb_count(sym->func.args); ++i) {
+            Symbol* arg = sym->func.args[i];
 
-		while (arg)
-		{
 			assert(arg->type == SYM_LOCAL);
 
-			Symbol* next = arg->next;
-
 			Symbol_destroy(arg);
-
-			arg = next;
 		}
+        
+        sb_free(sym->func.args);
 	
-		Symbol* local = sym->func.localsHead;
+	    for(int i = 0; i < sb_count(sym->func.locals); ++i) {
+            Symbol* local = sym->func.locals[i];
 
-		while (local)
-		{
 			assert(local->type == SYM_LOCAL);
 
-			Symbol* next = local->next;
-
 			Symbol_destroy(local);
-
-			local = next;
 		}
+
+        sb_free(sym->func.locals);
 	}
 
 	free(sym->name);
@@ -528,17 +516,15 @@ static void CloseScope(Tiny_State* state)
 {
 	if (state->currFunc)
 	{
-		Symbol* node = state->currFunc->func.localsHead;
+        for(int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
+            Symbol* sym = state->currFunc->func.locals[i];
 
-		while (node)
-		{
-			assert(node->type == SYM_LOCAL);
+            assert(sym->type == SYM_LOCAL);
 
-			if (node->var.scope == state->currScope)
-				node->var.scopeEnded = true;
-
-			node = node->next;
-		}
+            if(sym->var.scope == state->currScope) {
+                sym->var.scopeEnded = true;
+            }
+        }
 	}
 
 	--state->currScope;
@@ -549,75 +535,63 @@ static Symbol* ReferenceVariable(Tiny_State* state, const char* name)
 	if (state->currFunc)
 	{
 		// Check local variables
-		Symbol* node = state->currFunc->func.localsHead;
+		for(int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
+            Symbol* sym = state->currFunc->func.locals[i];
 
-		while (node)
-		{
-			assert(node->type == SYM_LOCAL);
+            assert(sym->type == SYM_LOCAL);
 
 			// Make sure that it's available in the current scope too
-			if (!node->var.scopeEnded && strcmp(node->name, name) == 0)
-				return node;
-
-			node = node->next;
+			if (!sym->var.scopeEnded && strcmp(sym->name, name) == 0) {
+				return sym;
+            }
 		}
 
 		// Check arguments
-		node = state->currFunc->func.argsHead;
+		for(int i = 0; i < sb_count(state->currFunc->func.args); ++i) {
+            Symbol* sym = state->currFunc->func.args[i];
 
-		while (node)
-		{
-			assert(node->type == SYM_LOCAL);
+            assert(sym->type == SYM_LOCAL);
 
-			if (strcmp(node->name, name) == 0)
-				return node;
-
-			node = node->next;
+			if (strcmp(sym->name, name) == 0) {
+				return sym;
+            }
 		}
 	}
 
 	// Check global variables/constants
-	Symbol* node = state->globalSymbols;
+	for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        Symbol* sym = state->globalSymbols[i];
 
-	while (node)
-	{
-		if (node->type == SYM_GLOBAL || node->type == SYM_CONST)
+		if (sym->type == SYM_GLOBAL || sym->type == SYM_CONST)
 		{
-			if (strcmp(node->name, name) == 0)
-				return node;
+			if (strcmp(sym->name, name) == 0)
+				return sym;
 		}
-
-		node = node->next;
 	}
 
 	// This variable doesn't exist
 	return NULL;
 }
 
+static void ReportError(Tiny_State* state, const char* s, ...);
+
 static Symbol* DeclareGlobalVar(Tiny_State* state, const char* name)
 {
-	Symbol* node = ReferenceVariable(state, name);
+	Symbol* sym = ReferenceVariable(state, name);
 
-	while (node)
-	{
-		if ((node->type == SYM_GLOBAL || node->type == SYM_CONST) && strcmp(node->name, name) == 0)
-		{
-			fprintf(stderr, "Attempted to declare multiple global entities with the same name '%s'.", name);
-			exit(1);
-		}
+    if(sym && (sym->type == SYM_GLOBAL || sym->type == SYM_CONST)) {
+        ReportError(state, "Attempted to declare multiple global entities with the same name '%s'.", name);
+    }
 
-		node = node->next;
-	}
 
 	Symbol* newNode = Symbol_create(SYM_GLOBAL, name, state);
 
 	newNode->var.initialized = false;
 	newNode->var.index = state->numGlobalVars;
 	newNode->var.scope = 0;					// Global variable scope don't matter
-	newNode->var.scopeEnded = true;
+	newNode->var.scopeEnded = false;
 
-	newNode->next = state->globalSymbols;
-	state->globalSymbols = newNode;
+    sb_push(state->globalSymbols, newNode);
 
 	state->numGlobalVars += 1;
 
@@ -632,32 +606,24 @@ static Symbol* DeclareArgument(Tiny_State* state, const char* name, int nargs)
 {
 	assert(state->currFunc);
 
-	Symbol* node = state->currFunc->func.argsHead;
+	for(int i = 0; i < sb_count(state->currFunc->func.args); ++i) {
+        Symbol* sym = state->currFunc->func.args[i];
 
-	while (node)
-	{
-		assert(node->type == SYM_LOCAL);
+		assert(sym->type == SYM_LOCAL);
 
-		if (strcmp(node->name, name) == 0)
-		{
-			fprintf(stderr, "Function '%s' takes multiple arguments with the same name '%s'.\n", state->currFunc->name, name);
-			exit(1);
+		if (strcmp(sym->name, name) == 0) {
+            ReportError(state, "Function '%s' takes multiple arguments with name '%s'.\n", state->currFunc->name, name);
 		}
-
-		node = node->next;
 	}
 
 	Symbol* newNode = Symbol_create(SYM_LOCAL, name, state);
 
 	newNode->var.initialized = false;
 	newNode->var.scopeEnded = false;
-	newNode->var.index = -nargs + state->currFunc->func.nargs;
+	newNode->var.index = -nargs + sb_count(state->currFunc->func.args);
 	newNode->var.scope = 0;								// These should be accessible anywhere in the function
 
-	newNode->next = state->currFunc->func.argsHead;
-	state->currFunc->func.argsHead = newNode;
-
-	state->currFunc->func.nargs += 1;
+    sb_push(state->currFunc->func.args, newNode);
 	
 	return newNode;
 }
@@ -666,44 +632,34 @@ static Symbol* DeclareLocal(Tiny_State* state, const char* name)
 {
 	assert(state->currFunc);
 
-	Symbol* node = state->currFunc->func.localsHead;
+	for(int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
+        Symbol* sym = state->currFunc->func.locals[i];
 
-	while (node)
-	{
-		assert(node->type == SYM_LOCAL);
+		assert(sym->type == SYM_LOCAL);
 
-		if (!node->var.scopeEnded && strcmp(node->name, name) == 0)
-		{
-			fprintf(stderr, "Attempted to declare multiple local variables in the same scope '%s' with the same name '%s'.\n", state->currFunc->name, name);
-			exit(1);
+		if (!sym->var.scopeEnded && strcmp(sym->name, name) == 0) {
+            ReportError(state, "Function '%s' has multiple locals in the same scope with name '%s'.\n", state->currFunc->name, name);
 		}
-
-		node = node->next;
 	}
 
 	Symbol* newNode = Symbol_create(SYM_LOCAL, name, state);
 
 	newNode->var.initialized = false;
 	newNode->var.scopeEnded = false;
-	newNode->var.index = state->currFunc->func.nlocals;
+	newNode->var.index = sb_count(state->currFunc->func.locals);
 	newNode->var.scope = state->currScope;
 
-	newNode->next = state->currFunc->func.localsHead;
-	state->currFunc->func.localsHead = newNode;
-
-	state->currFunc->func.nlocals += 1;
+    sb_push(state->currFunc->func.locals, newNode);
 
 	return newNode;
 }
 
 static Symbol* DeclareConst(Tiny_State* state, const char* name, bool isString, int index)
 {
-	Symbol* node = ReferenceVariable(state, name);
+	Symbol* sym = ReferenceVariable(state, name);
 
-	if (node && (node->type != SYM_LOCAL && node->type != SYM_FUNCTION && node->type != SYM_FOREIGN_FUNCTION))
-	{
-		fprintf(stderr, "Attempted to define constant with the same name '%s' as another value.\n", name);
-		exit(1);
+	if (sym && (sym->type == SYM_CONST || sym->type == SYM_LOCAL || sym->type == SYM_GLOBAL)) {
+        ReportError(state, "Attempted to define constant with the same name '%s' as another value.\n", name);
 	}
 
 	if (state->currFunc)
@@ -714,10 +670,9 @@ static Symbol* DeclareConst(Tiny_State* state, const char* name, bool isString, 
 	newNode->constant.index = index;
     newNode->constant.isString = isString;
 
-	newNode->next = state->globalSymbols;
-	state->globalSymbols = newNode;
+    sb_push(state->globalSymbols, newNode);
 
-	return node;
+	return newNode;
 }
 
 static Symbol* DeclareFunction(Tiny_State* state, const char* name)
@@ -725,12 +680,10 @@ static Symbol* DeclareFunction(Tiny_State* state, const char* name)
 	Symbol* newNode = Symbol_create(SYM_FUNCTION, name, state);
 
 	newNode->func.index = state->numFunctions;
-	newNode->func.nargs = newNode->func.nlocals = 0;
-	newNode->func.argsHead = NULL;
-	newNode->func.localsHead = NULL;
+	newNode->func.args = NULL;
+	newNode->func.locals = NULL;
 
-	newNode->next = state->globalSymbols;
-	state->globalSymbols = newNode;
+    sb_push(state->globalSymbols, newNode);
 
 	state->numFunctions += 1;
 
@@ -739,44 +692,27 @@ static Symbol* DeclareFunction(Tiny_State* state, const char* name)
 
 static Symbol* ReferenceFunction(Tiny_State* state, const char* name)
 {
-	Symbol* node = state->globalSymbols;
+    for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
+	    Symbol* node = state->globalSymbols[i];
 
-	while (node)
-	{
 		if ((node->type == SYM_FUNCTION || node->type == SYM_FOREIGN_FUNCTION) &&
 			strcmp(node->name, name) == 0)
 			return node;
-
-		node = node->next;
 	}
 
 	return NULL;
 }
 
-/*static void CallProc(int id, int nargs)
-{
-	if(id < 0) return;
-	
-	DoPushIndir(nargs);
-	ProgramCounter = FunctionPcs[id];
-	
-	while(ProgramCounter < state->programLength && ProgramCounter >= 0)
-		ExecuteCycle();
-}*/
-
 void Tiny_BindFunction(Tiny_State* state, const char* name, Tiny_ForeignFunction func)
 {
-	Symbol* node = state->globalSymbols;
+    for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        Symbol* node = state->globalSymbols[i];
 
-	while (node)
-	{
 		if (node->type == SYM_FOREIGN_FUNCTION && strcmp(node->name, name) == 0)
 		{
 			fprintf(stderr, "There is already a foreign function bound to name '%s'.", name);
 			exit(1);
 		}
-
-		node = node->next;
 	}
 
 	Symbol* newNode = Symbol_create(SYM_FOREIGN_FUNCTION, name, state);
@@ -784,8 +720,7 @@ void Tiny_BindFunction(Tiny_State* state, const char* name, Tiny_ForeignFunction
 	newNode->foreignFunc.index = state->numForeignFunctions;
 	newNode->foreignFunc.callee = func;
 
-	newNode->next = state->globalSymbols;
-	state->globalSymbols = newNode;
+    sb_push(state->globalSymbols, newNode);
 
 	state->numForeignFunctions += 1;
 }
@@ -1584,7 +1519,6 @@ typedef enum
 typedef struct sExpr
 {
 	ExprType type;
-	struct sExpr* next;
 
     const char* fileName;
     int lineNumber;
@@ -1605,8 +1539,7 @@ typedef struct sExpr
 		struct
 		{
 			char* calleeName;
-			struct sExpr* args[MAX_ARGS];
-			int numArgs;
+            struct sExpr** args; // array
 		} call;
 		
 		struct
@@ -1624,10 +1557,7 @@ typedef struct sExpr
 			struct sExpr* exp;
 		} unary;
 		
-		struct
-		{
-			struct sExpr* exprHead;
-		} block;
+        struct sExpr** block;    // array
 
 		struct
 		{
@@ -1667,7 +1597,6 @@ static Expr* Expr_create(ExprType type, const Tiny_State* state)
     exp->fileName = state->fileName;
 	exp->lineNumber = state->lineNumber;
 	exp->type = type;
-	exp->next = NULL;
     
 	return exp;
 }
@@ -1815,25 +1744,23 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 
 		case '{':
 		{
+			Expr* exp = Expr_create(EXP_BLOCK, state);
+
+            exp->block = NULL;
+
 			GetNextToken(state, in);
 
 			OpenScope(state);
 
-			Expr* curExp = ParseExpr(state, in);
-			Expr* head = curExp;
-
 			while (CurTok != '}')
 			{
-				curExp->next = ParseExpr(state, in);
-				curExp = curExp->next;
+				Expr* e = ParseExpr(state, in);
+                sb_push(exp->block, e);
 			}
+
 			GetNextToken(state, in);
 
 			CloseScope(state);
-
-			Expr* exp = Expr_create(EXP_BLOCK, state);
-
-			exp->block.exprHead = head;
 
 			return exp;
 		} break;
@@ -1855,18 +1782,14 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 			}
 			
 			Expr* exp = Expr_create(EXP_CALL, state);
+
+			exp->call.args = NULL;
 			
 			GetNextToken(state, in);
-			exp->call.numArgs = 0;
 			
 			while(CurTok != ')')
 			{
-				if (exp->call.numArgs >= MAX_ARGS)
-				{
-                    ReportError(state, "Exceeded maximum number of arguments in call expression.");
-				}
-
-				exp->call.args[exp->call.numArgs++] = ParseExpr(state, in);
+				sb_push(exp->call.args, ParseExpr(state, in));
 
 				if(CurTok == ',') GetNextToken(state, in);
 				else if(CurTok != ')')
@@ -2145,156 +2068,28 @@ static Expr* ParseExpr(Tiny_State* state, FILE* in)
 	return ParseBinRhs(state, in, 0, factor);
 }
 
-static Expr* ParseProgram(Tiny_State* state, FILE* in)
+static Expr** ParseProgram(Tiny_State* state, FILE* in)
 {
 	ResetGetToken = true;
 	GetNextToken(state, in);
 		
 	if(CurTok != TOK_EOF)
-	{
-		Expr* head = ParseExpr(state, in);
-		Expr* exp = head;
-		
+	{	
+        Expr** arr = NULL;
+
 		while(CurTok != TOK_EOF)
 		{
 			Expr* stmt = ParseExpr(state, in);
-			head->next = stmt;
-			head = stmt;
+            sb_push(arr, stmt);
 		}
-		return exp;
+
+		return arr;
 	}
+
 	return NULL;
 }
 
-static void PrintProgram(Tiny_State* state, Expr* program);
-
-static void PrintExpr(Tiny_State* state, Expr* exp)
-{
-	switch(exp->type)
-	{
-		case EXP_BLOCK:
-		{
-			Expr* node = exp->block.exprHead;
-			printf("{\n");
-
-			while (node)
-			{
-				PrintExpr(state, exp);
-				node = node->next;
-			}
-
-			printf("\n}\n");
-		} break;
-
-		case EXP_ID:
-		{	
-			printf("%s", exp->id.name);
-		} break;
-		
-		case EXP_CALL:
-		{
-			printf("%s(", exp->call.calleeName);
-			for(int i = 0; i < exp->call.numArgs; ++i)
-			{
-				PrintExpr(state, exp->call.args[i]);
-				if(i + 1 < exp->call.numArgs) printf(",");
-			}
-			printf(")");
-		} break;
-		
-		case EXP_NUM:
-		{
-			printf("%g", Numbers[exp->number]);
-		} break;
-
-		case EXP_STRING:
-		{
-			printf("%s", Strings[exp->string]);
-		} break;	
-		
-		case EXP_BINARY:
-		{
-			printf("(");
-			PrintExpr(state, exp->binary.lhs);
-			printf(" %c ", exp->binary.op);
-			PrintExpr(state, exp->binary.rhs);
-			printf(")");
-		} break;
-		
-		case EXP_PAREN:
-		{
-			printf("(");
-			PrintExpr(state, exp->paren);
-			printf(")");
-		} break;
-		
-		case EXP_UNARY:
-		{
-			printf("%c", exp->unary.op);
-			PrintExpr(state, exp->unary.exp);
-		} break;
-		
-		case EXP_PROC:
-		{
-			printf("func %s\n", exp->proc.decl->name);
-			if (exp->proc.body)
-				PrintExpr(state, exp->proc.body);
-
-			printf("end\n");
-		} break;
-		
-		case EXP_IF:
-		{
-			printf("if ");
-			PrintExpr(state, exp->ifx.cond);
-			if (exp->ifx.body)
-				PrintExpr(state, exp->ifx.body);
-
-			if (exp->ifx.alt)
-			{
-				printf("else\n");
-				PrintProgram(state, exp->ifx.alt);
-			}
-
-			printf("end\n");
-		} break;
-		
-		case EXP_WHILE:
-		{
-			printf("while ");
-			PrintExpr(state, exp->whilex.cond);
-			if (exp->whilex.body)
-				PrintExpr(state, exp->ifx.body);
-			printf("end\n");
-		} break;
-		
-		case EXP_RETURN:
-		{
-			printf("return ");
-			if(exp->retExpr)
-				PrintExpr(state, exp->retExpr);
-		} break;
-		
-		default:
-		{
-			printf("cannot print expression type %i\n", exp->type);
-		} break;
-	}
-}
-
-static void PrintProgram(Tiny_State* state, Expr* program)
-{
-	Expr* exp = program;
-	printf("begin\n");
-	while(exp)
-	{
-		PrintExpr(state, exp);
-		exp = exp->next;
-	}
-	printf("\nend\n");
-}
-
-static void CompileProgram(Tiny_State* state, Expr* program);
+static void CompileProgram(Tiny_State* state, Expr** program);
 
 static void CompileGetId(Tiny_State* state, Expr* exp)
 {
@@ -2334,7 +2129,7 @@ static void CompileCall(Tiny_State* state, Expr* exp)
 {
 	assert(exp->type == EXP_CALL);
 
-	for (int i = 0; i < exp->call.numArgs; ++i)
+	for (int i = 0; i < sb_count(exp->call.args); ++i)
 		CompileExpr(state, exp->call.args[i]);
 
 	Symbol* sym = ReferenceFunction(state, exp->call.calleeName);
@@ -2346,13 +2141,13 @@ static void CompileCall(Tiny_State* state, Expr* exp)
 	if (sym->type == SYM_FOREIGN_FUNCTION)
 	{
 		GenerateCode(state, OP_CALLF);
-		GenerateInt(state, exp->call.numArgs);
+		GenerateInt(state, sb_count(exp->call.args));
 		GenerateInt(state, sym->foreignFunc.index);
 	}
 	else
 	{
 		GenerateCode(state, OP_CALL);
-		GenerateInt(state, exp->call.numArgs);
+		GenerateInt(state, sb_count(exp->call.args));
 		GenerateInt(state, sym->func.index);
 	}
 }
@@ -2556,12 +2351,8 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 
 		case EXP_BLOCK:
 		{
-			Expr* node = exp->block.exprHead;
-
-			while (node)
-			{
-				CompileStatement(state, node);
-				node = node->next;
+            for(int i = 0; i < sb_count(exp->block); ++i) {
+				CompileStatement(state, exp->block[i]);
 			}
 		} break;
 
@@ -2674,7 +2465,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 			
 			state->functionPcs[exp->proc.decl->func.index] = state->programLength;
 			
-			for(int i = 0; i < exp->proc.decl->func.nlocals; ++i)
+			for(int i = 0; i < sb_count(exp->proc.decl->func.locals); ++i)
 			{
 				GenerateCode(state, OP_PUSH_NUMBER);
 				GenerateInt(state, RegisterNumber(0));
@@ -2768,17 +2559,15 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 	}
 }
 
-static void CompileProgram(Tiny_State* state, Expr* program)
+static void CompileProgram(Tiny_State* state, Expr** program)
 {
-	Expr* exp = program;
-	while(exp)
-	{
-		CompileStatement(state, exp);
-		exp = exp->next;
+	Expr** arr = program;
+    for(int i = 0; i < sb_count(arr); ++i)  {
+		CompileStatement(state, arr[i]);
 	}
 }
 
-static void DeleteProgram(Expr* program);
+static void DeleteProgram(Expr** program);
 
 static void Expr_destroy(Expr* exp)
 {
@@ -2794,20 +2583,17 @@ static void Expr_destroy(Expr* exp)
 		case EXP_CALL: 
 		{
 			free(exp->call.calleeName);
-			for(int i = 0; i < exp->call.numArgs; ++i)
+			for(int i = 0; i < sb_count(exp->call.args); ++i)
 				Expr_destroy(exp->call.args[i]);
 		} break;
 
 		case EXP_BLOCK:
 		{
-			Expr* node = exp->block.exprHead;
-
-			while (node)
-			{
-				Expr* next = node->next;
-				Expr_destroy(node);
-				node = next;
+            for(int i = 0; i < sb_count(exp->block); ++i) {
+				Expr_destroy(exp->block[i]);
 			}
+
+            sb_free(exp->block);
 		} break;
 		
 		case EXP_BINARY: Expr_destroy(exp->binary.lhs); Expr_destroy(exp->binary.rhs); break;
@@ -2838,15 +2624,14 @@ static void Expr_destroy(Expr* exp)
 	free(exp);
 }
 
-void DeleteProgram(Expr* program)
+void DeleteProgram(Expr** program)
 {
-	Expr* exp = program;
-	while(exp)
-	{
-		Expr* next = exp->next;
-		Expr_destroy(exp);
-		exp = next;
+	Expr** arr = program;
+    for(int i = 0; i < sb_count(program); ++i) {
+		Expr_destroy(arr[i]);
 	}
+
+    sb_free(program);
 }
 
 static void DebugMachineProgram(Tiny_State* state)
@@ -2886,12 +2671,11 @@ static void DebugMachineProgram(Tiny_State* state)
 
 static void CheckInitialized(Tiny_State* state)
 {
-	Symbol* node = state->globalSymbols;
-
 	const char* fmt = "Attempted to use uninitialized variable '%s'.\n";
 
-	while(node)
-	{
+    for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        Symbol* node = state->globalSymbols[i];
+
 		assert(node->type != SYM_LOCAL);
 
 		if (node->type == SYM_GLOBAL)
@@ -2904,22 +2688,17 @@ static void CheckInitialized(Tiny_State* state)
 		else if (node->type == SYM_FUNCTION)
 		{
 			// Only check locals, arguments are initialized implicitly
-			Symbol* local = node->func.localsHead;
+			for(int i = 0; i < sb_count(node->func.locals); ++i) {
+                Symbol* local = node->func.locals[i];
 
-			while (local)
-			{
 				assert(local->type == SYM_LOCAL);
 
 				if (!local->var.initialized)
 				{
 					ReportErrorS(state, local, fmt, local->name);
 				}
-
-				local = local->next;
 			}
 		}
-
-		node = node->next;
 	}
 }
 
@@ -2927,18 +2706,15 @@ static void CheckInitialized(Tiny_State* state)
 // functions to their respective index in ForeignFunctions
 static void BuildForeignFunctions(Tiny_State* state)
 {
-	Symbol* node = state->globalSymbols;
+    for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        Symbol* node = state->globalSymbols[i];
 
-	while (node)
-	{
 		if (node->type == SYM_FOREIGN_FUNCTION)
 		    state->foreignFunctions[node->foreignFunc.index] = node->foreignFunc.callee;
-
-		node = node->next;
 	}
 }
 
-static void CompileState(Tiny_State* state, Expr* prog)
+static void CompileState(Tiny_State* state, Expr** prog)
 {
     // If this state was already compiled and it ends with an OP_HALT, We'll just overwrite it
     if(state->programLength > 0) {
@@ -2981,7 +2757,7 @@ void Tiny_CompileString(Tiny_State* state, const char* name, const char* string)
 	state->curFile = file;
 
     CurTok = 0;
-    Expr* prog = ParseProgram(state, file); 
+    Expr** prog = ParseProgram(state, file); 
         
     CompileState(state, prog);
 
@@ -3007,7 +2783,7 @@ void Tiny_CompileFile(Tiny_State* state, const char* filename)
 	state->curFile = file;
 
 	CurTok = 0;
-	Expr* prog = ParseProgram(state, file);
+	Expr** prog = ParseProgram(state, file);
     
     CompileState(state, prog);
 

@@ -8,7 +8,6 @@
 #include <math.h>
 
 #include "dict.h"
-#include "iniparser.h"
 #include "tiny_detail.h"
 
 #ifdef _WIN32

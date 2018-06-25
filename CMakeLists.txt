@@ -10,7 +10,6 @@ set(SOURCES
     src/tiny.c
     src/array.c
     src/dict.c
-    src/iniparser.c
     src/tinystd.c)
 
 add_library(tiny STATIC ${SOURCES})

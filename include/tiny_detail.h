@@ -42,7 +42,6 @@ typedef enum
 
 typedef struct sSymbol
 {
-	struct sSymbol* next;
 	SymbolType type;
 	char* name;
 
@@ -67,10 +66,9 @@ typedef struct sSymbol
 		struct
 		{
 			int index;
-			int nargs, nlocals;
 
-			struct sSymbol* argsHead;
-			struct sSymbol* localsHead;
+			struct sSymbol** args;       // array
+			struct sSymbol** locals;     // array
 		} func;
 
 		struct
@@ -98,7 +96,8 @@ typedef struct Tiny_State
 	// Compiler Info
     int currScope;
 	Symbol* currFunc;
-	Symbol* globalSymbols;
+
+	Symbol** globalSymbols;  // array
 
 	const char* fileName;
 	int lineNumber;
