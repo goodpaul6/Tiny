@@ -33,6 +33,7 @@ typedef enum
 	TOK_NUM,
 	TOK_DEFINITION,
 	TOK_COMMENT,
+	TOK_SPECIAL_COMMENT,
     NUM_TOKEN_TYPES
 } TokenType;
 
@@ -257,6 +258,10 @@ static int Tokenize(const char* line, Token* tokens, int maxTokens)
 				tokens[curTok].lexeme[i++] = *line++;
 			}
 
+			if (strstr(tokens[curTok].lexeme, "TODO")) {
+				tokens[curTok].type = TOK_SPECIAL_COMMENT;
+			}
+
 			tokens[curTok].lexeme[i] = '\0';
 			curTok += 1;
 		} else {
@@ -278,6 +283,32 @@ static void RemoveLine(int y)
 	// Shift all other lines up
 	memmove(&GBuffer.lines[y], GBuffer.lines[y + 1], (GBuffer.numLines - y) * sizeof(GBuffer.lines[0]));
 	GBuffer.numLines -= 1;
+}
+
+// Returns open braces - close braces upto line (upto)
+static int CountBraces(int upto)
+{
+	assert(upto >= 0 && upto <= GBuffer.numLines);
+
+	int openBraces = 0;
+	int closeBraces = 0;
+
+	for (int i = 0; i < upto; ++i) {
+		const char* s = strchr(GBuffer.lines[i], '{');
+		const char* e = strchr(GBuffer.lines[i], '}');
+
+		// We only count one brace per line because if you have multiple braces in a single
+		// line then you probably don't want the next line to be spaced twice
+		if (s) {
+			openBraces += 1;
+		}
+
+		if (e) {
+			closeBraces += 1;
+		}
+	}
+
+	return openBraces - closeBraces;
 }
 
 // Basically backspace (will move around yp if backspace moves up a line)
@@ -325,6 +356,33 @@ static void InsertChar(char ch, int* xp, int* yp)
 	if (x == len) {
 		GBuffer.lines[y][x] = ch;
 		GBuffer.lines[y][x + 1] = '\0';
+
+		if (ch == '}') {
+			bool isAllSpace = true;
+
+			for (int i = 0; i < x - 1; ++i) {
+				if (!isspace(GBuffer.lines[y][i])) {
+					isAllSpace = false;
+					break;
+				}
+			}
+
+			if (isAllSpace) {
+				// We can mess with the line; it's just a close bracket
+				int spc = CountBraces(y) - 1;
+				
+				int pos = 0;
+
+				for (int i = 0; i < spc; ++i) {
+					for (int k = 0; k < 4; ++k) {
+						GBuffer.lines[y][pos++] = ' ';
+					}
+				}
+
+				GBuffer.lines[y][pos++] = '}';
+				GBuffer.lines[y][pos] = '\0';
+			}
+		}
 	} else {
 		memmove(&GBuffer.lines[y][x + 1], &GBuffer.lines[y][x], len - x);
 		GBuffer.lines[y][x] = ch;
@@ -368,25 +426,8 @@ static void InsertNewline(int* xp, int* yp)
 
 	// If the previous thing was a curly brace, try and put the cursor at the correct place
 	if (y > 0 && len > 0 && (GBuffer.lines[y - 1][len - 1] == '{' || GBuffer.lines[y - 1][len - 1] == '}')) {
-		int openBraces = 0;
-		int closeBraces = 0;
 
-		for (int i = 0; i < y; ++i) {
-			const char* s = strchr(GBuffer.lines[i], '{');
-			const char* e = strchr(GBuffer.lines[i], '}');
-
-			// We only count one brace per line because if you have multiple braces in a single
-			// line then you probably don't want the next line to be spaced twice
-			if (s) {
-				openBraces += 1;
-			}
-
-			if (e) {
-				closeBraces += 1;
-			}
-		}
-
-		int spc = openBraces - closeBraces;
+		int spc = CountBraces(y);
 
 		for (int i = 0; i < spc; ++i) {
 			for (int k = 0; k < 4; ++k) {
@@ -413,7 +454,8 @@ int main(int argc, char** argv)
         tigrRGB(130, 130, 130),
         tigrRGB(150, 150, 40),
 		tigrRGB(150, 30, 150),
-		tigrRGB(20, 80, 20)
+		tigrRGB(20, 80, 20),
+		tigrRGB(200, 120, 40)
     };
 
 	int scrollY = 0;
@@ -505,6 +547,28 @@ int main(int argc, char** argv)
 			if (GBuffer.numLines > 0 && cmd[0] == 'd' && cmd[1] == 'd') {
 				RemoveLine(curY);
 				cmd[0] = '\0';
+			}
+
+			if (cmd[0] == '{') {
+				cmd[0] = '\0';
+
+				if (curY > 0) curY -= 1;
+
+				// Move up to the last empty line
+				while (curY > 0 && GBuffer.lines[curY][0] != '\0') {
+					curY -= 1;
+				}
+			}
+
+			if (cmd[0] == '}') {
+				cmd[0] = '\0';
+
+				if (curY < GBuffer.numLines - 1) curY += 1;
+
+				// Move up to the last empty line
+				while (curY < GBuffer.numLines - 1 && GBuffer.lines[curY][0] != '\0') {
+					curY += 1;
+				}
 			}
 
 			if (cmd[0] == 'x') {
