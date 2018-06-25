@@ -81,6 +81,33 @@ static void Log(const char* s, ...)
     va_end(args);
 }
 
+static void UpdateDefinitions(void)
+{
+	GBuffer.numDefns = 0;
+
+	for (int i = 0; i < GBuffer.numLines; ++i) {
+		const char* s = strstr(GBuffer.lines[i], "#define");	
+		if (!s) continue;
+
+		if (GBuffer.numDefns >= MAX_TRACKED_DEFNS) break;
+
+		s += strlen("#define");
+		
+		while (isspace(*s)) {
+			s += 1;
+		}
+
+		int i = 0;
+
+		while (!isspace(*s)) {
+			GBuffer.defns[GBuffer.numDefns][i++] = *s++;
+		}
+
+		GBuffer.defns[GBuffer.numDefns][i] = '\0';
+		GBuffer.numDefns += 1;
+	}
+}
+
 static void OpenFile(const char* filename)
 {
     Log("Opening file: %s\n", filename);
@@ -136,33 +163,8 @@ static void OpenFile(const char* filename)
 	GBuffer.numLines = curLine + 1;
 
     fclose(f);
-}
 
-static void UpdateDefinitions(void)
-{
-	GBuffer.numDefns = 0;
-
-	for (int i = 0; i < GBuffer.numLines; ++i) {
-		const char* s = strstr(GBuffer.lines[i], "#define");	
-		if (!s) continue;
-
-		if (GBuffer.numDefns >= MAX_TRACKED_DEFNS) break;
-
-		s += strlen("#define");
-		
-		while (isspace(*s)) {
-			s += 1;
-		}
-
-		int i = 0;
-
-		while (!isspace(*s)) {
-			GBuffer.defns[GBuffer.numDefns][i++] = *s++;
-		}
-
-		GBuffer.defns[GBuffer.numDefns][i] = '\0';
-		GBuffer.numDefns += 1;
-	}
+	UpdateDefinitions();
 }
 
 // Returns number of tokens extracted
@@ -306,6 +308,39 @@ static void RemoveLine(int y)
 	GBuffer.numLines -= 1;
 }
 
+static int CountBracesOnLine(int line)
+{
+	assert(line >= 0 && line <= GBuffer.numLines);
+
+	const char* s = GBuffer.lines[line];
+
+	int braces = 0;
+
+	while (*s) {
+		if (*s == '"') {
+			s += 1;
+			while (*s && *s != '"') ++s;
+			s += 1;
+		}
+		else if (*s == '\'') {
+			s += 2;
+		}
+		else if (*s == '{') {
+			++braces;
+			s += 1;
+		}
+		else if (*s == '}') {
+			--braces;
+			s += 1;
+		}
+		else {
+			++s;
+		}
+	}
+
+	return braces;
+}
+
 // Returns open braces - close braces upto line (upto)
 static int CountBracesDown(int upto)
 {
@@ -314,25 +349,7 @@ static int CountBracesDown(int upto)
 	int braces = 0;
 
 	for (int i = 0; i < upto; ++i) {
-		const char* s = GBuffer.lines[i];
-
-		while (*s) {
-			if (*s == '"') {
-				s += 1;
-				while (*s && *s != '"') ++s;
-				s += 1;
-			} else if(*s == '\'') {
-				s += 2;
-			} else if (*s == '{') {
-				++braces;
-				s += 1;
-			} else if (*s == '}') {
-				--braces;
-				s += 1;
-			} else {
-				++s;
-			}
-		}
+		braces += CountBracesOnLine(i);
 	}
 
 	return braces;
@@ -410,6 +427,8 @@ static void InsertChar(char ch, int* xp, int* yp)
 	assert(y >= 0 && y < GBuffer.numLines);
 	int len = strlen(GBuffer.lines[y]);
 	assert(x >= 0 && x <= len);
+
+	UpdateDefinitions();
 
 	if (x == len) {
 		GBuffer.lines[y][x] = ch;
@@ -562,6 +581,7 @@ int main(int argc, char** argv)
     }
 
     Tigr* screen = tigrWindow(WIDTH, HEIGHT, "Tiny Notepad", TIGR_FIXED | TIGR_2X);
+    TigrFont* font = tfont;
 
     const TPixel tokenColors[NUM_TOKEN_TYPES] = {
         tigrRGB(60, 60, 60),
@@ -593,9 +613,7 @@ int main(int argc, char** argv)
 
     while(!tigrClosed(screen)) {
         tigrClear(screen, tigrRGB(20, 20, 20));
-
-		UpdateDefinitions();
-
+		
         int y = 0;
 
 		const float repeatTime = 0.6f;
@@ -882,6 +900,50 @@ int main(int argc, char** argv)
                 }
 			}
 
+			if (cmd[0] == '%') {
+				cmd[0] = '\0';
+
+				if (GBuffer.lines[curY][curX] == '}') {
+					int balance = 0;
+					
+					int line = -1;
+
+					for (int i = curY; i >= 0; --i) {
+						balance += CountBracesOnLine(i);
+						if (balance == 0) {
+							line = i;
+							break;
+						}
+					}
+
+					if (line >= 0) {
+						// TODO(Apaar): Find the brace properly
+						PushPos(curY);
+						curY = line;
+						curX = strrchr(GBuffer.lines[curY], '{') - GBuffer.lines[curY];
+					}
+				} else if (GBuffer.lines[curY][curX] == '{') {
+					int balance = 0;
+					
+					int line = -1;
+
+					for (int i = curY; i < GBuffer.numLines; ++i) {
+						balance += CountBracesOnLine(i);
+						if (balance == 0) {
+							line = i;
+							break;
+						}
+					}
+
+					if (line >= 0) {
+						// TODO(Apaar): Find the brace properly
+						PushPos(curY);
+						curY = line;
+						curX = strrchr(GBuffer.lines[curY], '}') - GBuffer.lines[curY];
+					}
+				}
+			}
+
 			if (cmd[0] == 'i' || cmd[0] == 'I') {
 				if (cmd[0] == 'I') {
 					curX = 0;
@@ -1042,8 +1104,8 @@ int main(int argc, char** argv)
 			char lbuf[32];
 			sprintf(lbuf, "%*d", (int)ceil(log10(GBuffer.numLines)), i + 1);
 
-			tigrPrint(screen, tfont, x, y, tigrRGB(40, 40, 40), lbuf);
-			x += tigrTextWidth(tfont, lbuf) + 4;
+			tigrPrint(screen, font, x, y, tigrRGB(40, 40, 40), lbuf);
+			x += tigrTextWidth(font, lbuf) + 4;
 #endif
 
 			if (mode == MODE_VISUAL) {
@@ -1057,7 +1119,7 @@ int main(int argc, char** argv)
 				}
 				
 				if (i >= a && i <= b) {
-					tigrFill(screen, x, y, tigrTextWidth(tfont, GBuffer.lines[i]), tigrTextHeight(tfont, GBuffer.lines[i]), tigrRGB(80, 80, 80));
+					tigrFill(screen, x, y, tigrTextWidth(font, GBuffer.lines[i]), tigrTextHeight(font, GBuffer.lines[i]), tigrRGB(80, 80, 80));
 				}
 			}
 
@@ -1086,8 +1148,8 @@ int main(int argc, char** argv)
 					// Move/draw the cursor at 0
 					curX = 0;
 
-					int w = tigrTextWidth(tfont, " ");
-					int h = tigrTextHeight(tfont, "A");
+					int w = tigrTextWidth(font, " ");
+					int h = tigrTextHeight(font, "A");
 
 					if (mode == MODE_INSERT) {
 						w = 2;
@@ -1097,8 +1159,8 @@ int main(int argc, char** argv)
 				} else if(curX == lineLen) {
 					assert(mode != MODE_NORMAL);
 
-					int w = tigrTextWidth(tfont, GBuffer.lines[curY]);
-					int h = tigrTextHeight(tfont, GBuffer.lines[curY]);
+					int w = tigrTextWidth(font, GBuffer.lines[curY]);
+					int h = tigrTextHeight(font, GBuffer.lines[curY]);
 
 					tigrFill(screen, x + w, y, 2, h, tigrRGB(100, 100, 100));
 				}
@@ -1107,7 +1169,7 @@ int main(int argc, char** argv)
             for (int j = 0; j < numTokens; ++j) {
 				int len = strlen(tokens[j].lexeme);
 
-                tigrPrint(screen, tfont, x, y, tokenColors[tokens[j].type], tokens[j].lexeme);
+                tigrPrint(screen, font, x, y, tokenColors[tokens[j].type], tokens[j].lexeme);
 
 				if (blink && i == curY && drawCurX <= curX && curX < drawCurX + len) {
 					char buf[MAX_TOKEN_LENGTH];
@@ -1115,14 +1177,14 @@ int main(int argc, char** argv)
 
 					buf[curX - drawCurX] = '\0';
 
-					int xx = tigrTextWidth(tfont, buf);
+					int xx = tigrTextWidth(font, buf);
 
 					strcpy(buf, tokens[j].lexeme);
 
 					buf[1] = '\0';
 
-					int w = tigrTextWidth(tfont, buf);
-					int h = tigrTextHeight(tfont, buf);
+					int w = tigrTextWidth(font, buf);
+					int h = tigrTextHeight(font, buf);
 
 					if (mode == MODE_INSERT) {
 						w = 2;
@@ -1131,11 +1193,11 @@ int main(int argc, char** argv)
 					tigrFill(screen, xx + x, y, w, h, tigrRGB(100, 100, 100));
 				}
 
-                x += tigrTextWidth(tfont, tokens[j].lexeme);
+                x += tigrTextWidth(font, tokens[j].lexeme);
 				drawCurX += strlen(tokens[j].lexeme);
             }
 
-            y += tigrTextHeight(tfont, GBuffer.lines[i]);
+            y += tigrTextHeight(font, GBuffer.lines[i]);
         }
 
 		if (curY < scrollY) {
@@ -1151,5 +1213,6 @@ int main(int argc, char** argv)
     }
 
 	tigrFree(screen);
+
     return 0;
 }
