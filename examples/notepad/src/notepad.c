@@ -424,15 +424,12 @@ static void InsertNewline(int* xp, int* yp)
 
 	*xp = 0;
 
-	// If the previous thing was a curly brace, try and put the cursor at the correct place
-	if (y > 0 && len > 0 && (GBuffer.lines[y - 1][len - 1] == '{' || GBuffer.lines[y - 1][len - 1] == '}')) {
+	// try and put the cursor at the correct place based on scope
+	int spc = CountBraces(y);
 
-		int spc = CountBraces(y);
-
-		for (int i = 0; i < spc; ++i) {
-			for (int k = 0; k < 4; ++k) {
-				InsertChar(' ', xp, yp);
-			}
+	for (int i = 0; i < spc; ++i) {
+		for (int k = 0; k < 4; ++k) {
+			InsertChar(' ', xp, yp);
 		}
 	}
 }
