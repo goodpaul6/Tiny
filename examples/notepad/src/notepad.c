@@ -11,7 +11,7 @@
 #define MAX_NUM_LINES		2048
 #define MAX_TRACKED_DEFNS	128
 #define MAX_LINE_LENGTH		512
-#define MAX_TOKEN_LENGTH	64
+#define MAX_TOKEN_LENGTH	256
 #define MAX_TOKENS			512
 #define WIDTH				640
 #define HEIGHT				480
@@ -258,7 +258,7 @@ static int Tokenize(const char* line, Token* tokens, int maxTokens)
 				tokens[curTok].lexeme[i++] = *line++;
 			}
 
-			if (strstr(tokens[curTok].lexeme, "TODO")) {
+			if (strstr(tokens[curTok].lexeme, "TODO") || strstr(tokens[curTok].lexeme, "NOTE")) {
 				tokens[curTok].type = TOK_SPECIAL_COMMENT;
 			}
 
@@ -308,7 +308,8 @@ static int CountBracesDown(int upto)
 }
 
 // Basically backspace (will move around yp if backspace moves up a line)
-static void RemoveChar(int* xp, int* yp)
+// If tabSpacing is true, it will try to jump back one tab if you backspace near a space
+static void RemoveChar(int* xp, int* yp, bool tabSpacing)
 {
 	int x = *xp;
 	int y = *yp;
@@ -327,6 +328,25 @@ static void RemoveChar(int* xp, int* yp)
 		}
 
 		*xp -= 1;
+
+		if (tabSpacing) {
+			static char line[MAX_LINE_LENGTH];
+			strcpy(line, GBuffer.lines[y]);
+
+			const char* s = line;
+			s += strspn(s, " ");
+
+			int spc = ((int)(x - 1) / 4);
+
+			int pos = 0;
+			for (int i = 0; i < spc * 4; ++i) {
+				GBuffer.lines[y][pos++] = ' ';
+			}
+			GBuffer.lines[y][pos] = '\0';
+
+			*xp = pos;
+			strcat(GBuffer.lines[y], s);
+		}
 	} else if (y > 0 && GBuffer.numLines > 1) {
 		// Move the contents of the rest of this line to the end of the previous line
 		// and put the cursor there
@@ -578,7 +598,7 @@ int main(int argc, char** argv)
 
 				int x = curX + 1;
 				if (x < strlen(GBuffer.lines[curY])) {
-					RemoveChar(&x, &curY);
+					RemoveChar(&x, &curY, true);
 				} else {
 					GBuffer.lines[curY][curX] = '\0';
 					curX = 0;
@@ -716,7 +736,7 @@ int main(int argc, char** argv)
 				int value = tigrReadChar(screen);
 				
 				if (value == '\b') {
-					RemoveChar(&curX, &curY);
+					RemoveChar(&curX, &curY, true);
 				} else if (value == '\n') {
 					InsertNewline(&curX, &curY, true);
 				} else if (value > 0) {
@@ -840,5 +860,6 @@ int main(int argc, char** argv)
         tigrUpdate(screen);
     }
 
+	tigrFree(screen);
     return 0;
 }
