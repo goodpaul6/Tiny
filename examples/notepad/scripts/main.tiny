@@ -226,6 +226,23 @@ func update_normal_mode() {
         return;
     }
 
+    if ch == 'p' {
+        if get_mode() == MODE_VISUAL_LINE {
+            // TODO(Apaar): Implement this
+        } else {
+            cur_x := get_x()
+            cur_y := get_y()
+
+            for i := 0; i < temp_line_count(); i += 1 {
+                insert_empty_line()
+                insert_string(get_temp_line(i))
+                move(0, 1)
+            }
+
+            move_to(cur_x, cur_y)
+        }
+    }
+
     if get_mode() == MODE_VISUAL_LINE {
         if ch == 'd' or ch == 'c' {
             a := get_vstart_y()
@@ -245,6 +262,7 @@ func update_normal_mode() {
             for i := a; i <= b and not failed_to_store; i += 1 {
                 if store_temp_line(get_line(a)) {
                     remove_line(a)
+                } else {
                     failed_to_store = true
                 }
             }
