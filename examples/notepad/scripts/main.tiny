@@ -18,12 +18,15 @@ func count_braces_in_line(line_index) {
     inside_comment := false
 
     braces := 0
+    done := false
 
-    for i := 0; i < len; i += 1 {
+    for i := 0; i < len and not done; i += 1 {
         if stridx(line, i) == '"' {
             inside_quotes = not inside_quotes
         } else if stridx(line, i) == '\'' {
             i += 2
+        } else if stridx(line, i) == '/' and stridx(line, i + 1) == '/' {
+            done = true
         } else if not inside_quotes {
             c := stridx(line, i)
             if c == '{' braces += 1
@@ -238,15 +241,6 @@ func update_normal_mode() {
         move_reset(1, 0)
     } 
 
-    if ch == 127 {
-        start_x := get_prev_word_x()
-
-        while get_x() > start_x {
-            remove_char()
-            move_reset(-1, 0)
-        }
-    }
-
     if ch == 'x' {
         if get_line() != "" {
             remove_char()
@@ -347,6 +341,32 @@ func update_insert_mode() {
             terminate_line(get_y() - 1, x)
         }
         apply_brace_indent()
+    } else if ch == 127 {
+        // Ctrl + backspace 
+        line := get_line()
+        start_x := get_x()
+        
+        if strlen(line) == 0 {
+            if get_y() > 0 {
+                remove_line()
+                move(0, -1)
+                move_to(strlen(get_line()), get_y())
+            }
+            return;
+        }
+
+        if start_x == strlen(line) {
+            start_x -= 1
+        }
+
+        while stridx(line, start_x) != ' ' and start_x > 0 {
+            start_x -= 1
+        }
+
+        while get_x() > start_x {
+            move(-1, 0)
+            remove_char()
+        }
     } else if ch > 0 {
         if ch == 9 {
             spaces := ceil((get_x() + 1) / spaces_per_tab) * spaces_per_tab - get_x()
