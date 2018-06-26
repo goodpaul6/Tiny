@@ -233,13 +233,17 @@ func update_normal_mode() {
             cur_x := get_x()
             cur_y := get_y()
 
-            for i := 0; i < temp_line_count(); i += 1 {
+            count := temp_line_count()
+
+            for i := 0; i < count; i += 1 {
                 insert_empty_line()
                 insert_string(get_temp_line(i))
                 move(0, 1)
             }
 
             move_to(cur_x, cur_y)
+
+            set_status("Pasted %g lines.", count) 
         }
     }
 
