@@ -161,6 +161,8 @@ void InsertChar(Buffer* buf, int x, int y, char ch)
         buf->lines[y][x] = ch;
         buf->lines[y][len + 1] = '\0';
     }
+
+    UpdateDefinitions(buf);
 }
 
 void InsertString(Buffer* buf, int x, int y, const char* str)
@@ -181,6 +183,8 @@ void InsertString(Buffer* buf, int x, int y, const char* str)
 
         buf->lines[y][len + slen + 1] = '\0';
     }
+
+    UpdateDefinitions(buf);
 }
 
 void RemoveChar(Buffer* buf, int x, int y)

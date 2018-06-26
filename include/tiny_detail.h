@@ -3,7 +3,7 @@
 #include "tiny.h"
 
 #define MAX_TOK_LEN		256
-#define MAX_PROG_LEN	4096
+#define MAX_PROG_LEN	8000
 #define MAX_STACK		256
 #define MAX_INDIR		512
 #define MAX_ARGS		32

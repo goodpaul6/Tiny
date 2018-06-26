@@ -25,6 +25,8 @@ typedef struct
 
 void InitDefaultBuffer(Buffer* buf);
 
+void UpdateDefinitions(Buffer* buf);
+
 void OpenFile(Buffer* buf, const char* filename);
 
 const char* GetLine(Buffer* buf, int y);

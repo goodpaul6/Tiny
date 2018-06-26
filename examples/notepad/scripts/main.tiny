@@ -62,6 +62,11 @@ func update_normal_mode() {
         last_char = ' '
         return;
     }
+
+    if ch == 'V' {
+        set_mode(MODE_VISUAL_LINE)
+        return;
+    }
     
     if ch == 'i' {
         set_mode(MODE_INSERT)
@@ -151,6 +156,19 @@ func update_normal_mode() {
         }
 
         last_char = ' '
+    }
+
+    if ch == 'd' {
+        if get_mode() == MODE_VISUAL_LINE {
+            // TODO(Apaar): Delete range
+        } else {
+            if last_char == 'd' {
+                if line_count() > 1 remove_line()
+                last_char = ' '
+            } else {
+                last_char = 'd'
+            }
+        }
     }
 
     if ch == 'h' {
@@ -284,10 +302,12 @@ func update_insert_mode() {
                     // Spaces all the way 
                     spaces := (count_braces_down(get_y()) - 1) * spaces_per_tab
 
-                    terminate_line(get_y(), spaces + 1)
-                    move_to(spaces, get_y())
-                    set_char('}')
-                    move(1, 0)
+                    if spaces >= 0 {
+                        terminate_line(get_y(), spaces + 1)
+                        move_to(spaces, get_y())
+                        set_char('}')
+                        move(1, 0)
+                    }
                 }
             }
         }
@@ -296,5 +316,5 @@ func update_insert_mode() {
 
 func update() {
     if get_mode() == MODE_INSERT update_insert_mode()
-    else if get_mode() == MODE_NORMAL update_normal_mode()
+    else if get_mode() == MODE_NORMAL or get_mode() == MODE_VISUAL_LINE update_normal_mode()
 }

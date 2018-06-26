@@ -271,6 +271,8 @@ static Tiny_Value Lib_RemoveLine(Tiny_StateThread* thread, const Tiny_Value* arg
         RemoveLine(&ed->buf, ed->cur.y);
     }
 
+    MoveTo(ed, ed->cur.x, ed->cur.y);
+
     return Tiny_Null;
 }
 

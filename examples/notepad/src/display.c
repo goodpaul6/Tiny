@@ -193,12 +193,6 @@ void DrawEditor(Tigr* screen, Editor* ed)
             break;
         }
 
-        if(Status[0] && i - ed->scrollY == LINES_PER_PAGE - 1) {
-            // print status
-            tigrPrint(screen, font, 10, y, tigrRGB(200, 200, 200), Status);
-			break;
-        }
-
         int x = 0;
         int drawCurX = 0;
 
@@ -291,4 +285,11 @@ void DrawEditor(Tigr* screen, Editor* ed)
 
         y += tigrTextHeight(font, buf->lines[i]);
     }
+
+	if(Status[0]) {
+		// print status
+		int h = tigrTextHeight(font, Status);
+		tigrFill(screen, 0, screen->h - h, screen->w, h, tigrRGB(0, 0, 0));
+		tigrPrint(screen, font, 0, screen->h - h, tigrRGB(200, 200, 200), Status);
+	}
 }
