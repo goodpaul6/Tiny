@@ -1,4 +1,5 @@
 last_char := ' '
+filename := ""
 spaces_per_tab :: 4
 
 func move_reset(x, y) {
@@ -7,7 +8,12 @@ func move_reset(x, y) {
 }
 
 func file_opened(name) {
+    filename = name
     set_status("Opened file %s", name)
+}
+
+func file_written(name) {
+    set_status("Wrote to file %s", name)
 }
 
 func handle_command(cmd) {
@@ -20,7 +26,17 @@ func handle_command(cmd) {
             i += 1
         }
 
-        open_file(substr(cmd, i, -1))
+        s := substr(cmd, i, -1)
+
+        if not open_file(s) {
+            set_status("Failed to open file %s for writing.", s)
+        }
+    } else if stridx(cmd, 0) == 'w' {
+        if not write_file(filename) {
+            set_status("Failed to write to file %s.", filename)
+        } else if strlen(cmd) > 1 and stridx(cmd, 1) == 'q' {
+            exit(0)
+        }
     } else if stridx(cmd, 0) == 'q' {
         exit(0)
     }
@@ -112,7 +128,13 @@ func get_next_word_x() {
             }
             
             return i
-        } else {
+        } else if stridx(s, i) == ' ' {
+            while stridx(s, i) == ' ' and i < len {
+                i += 1
+            }
+
+            return i
+        } else { 
             while stridx(s, i) != ' ' and i < len {
                i += 1
            }
@@ -182,7 +204,18 @@ func update_normal_mode() {
     }
 
     if ch == 'e' {
-        move_to(get_next_word_x(), get_y())
+        if last_char == 'c' {
+            x := get_next_word_x()
+            
+            set_mode(MODE_INSERT)
+
+            for i := get_x(); i <= x; i += 1 {
+                remove_char()
+            }
+        } else {
+            move_to(get_next_word_x(), get_y())
+        }
+
         last_char = ' '
         return;
     }
@@ -205,8 +238,19 @@ func update_normal_mode() {
                 a = temp
             }
 
-            for i := a; i <= b; i += 1 {
-                remove_line(a)
+            clear_temp_lines()
+
+            failed_to_store := false
+
+            for i := a; i <= b and not failed_to_store; i += 1 {
+                if store_temp_line(get_line(a)) {
+                    remove_line(a)
+                    failed_to_store = true
+                }
+            }
+
+            if failed_to_store {
+                set_status("Failed to store some lines in the temporary buffer. Not all lines were deleted.")
             }
 
             move_to(0, a)
@@ -221,7 +265,12 @@ func update_normal_mode() {
         }     
     } else if ch == 'd' {
         if last_char == 'd' {
-            if line_count() > 1 remove_line()
+            if line_count() > 1 {
+                clear_temp_lines()
+                store_temp_line(get_line())
+                remove_line()
+            }
+
             last_char = ' '
         } else {
             last_char = ch
@@ -229,7 +278,7 @@ func update_normal_mode() {
 
         return;
     }
-
+    
     if ch == 'c' {
         if last_char == 'c' {
             start_x := strspn(get_line(), " ")

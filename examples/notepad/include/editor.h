@@ -1,6 +1,7 @@
 #pragma once
 
 #define MAX_COMMAND_LENGTH  512
+#define MAX_TEMP_LINES      1024
 
 #include "tiny.h"
 #include "buffer.h"
@@ -35,7 +36,11 @@ typedef struct Editor
 
     Buffer buf;
 
-    bool blink;
+    // Can be used by the script to store strings
+    int numTempLines;
+    char tempLines[MAX_TEMP_LINES][MAX_LINE_LENGTH];
+
+    float blinkTime;
 
     float elapsed;
 

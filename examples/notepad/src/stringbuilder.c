@@ -44,3 +44,4 @@ void DestroyStringBuilder(StringBuilder* b)
 {
     free(b->s);
 }
+

@@ -43,15 +43,12 @@ void InitDefaultBuffer(Buffer* buf)
     buf->numDefns = 0;
 }
 
-void OpenFile(Buffer* buf, const char* filename)
+bool OpenFile(Buffer* buf, const char* filename)
 {
-    sprintf(Status, "Opening file '%s'.", filename);
-
     FILE* f = fopen(filename, "r");
 
     if(!f) {
-        sprintf(Status, "Failed to open file '%s' for reading.", filename);
-        return;
+        return false;
     }
 
     int last = getc(f);
@@ -107,6 +104,23 @@ void OpenFile(Buffer* buf, const char* filename)
     fclose(f);
 
 	UpdateDefinitions(buf);
+
+    return true;
+}
+
+bool WriteFile(Buffer* buf, const char* filename)
+{
+    FILE* f = fopen(filename, "w");
+
+    if(!f) {
+        return false;
+    }
+
+    for(int i = 0; i < buf->numLines; ++i) {
+        fprintf(f, "%s\n", buf->lines[i]);
+    }
+
+    return true;
 }
 
 const char* GetLine(Buffer* buf, int y)

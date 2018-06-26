@@ -38,6 +38,8 @@ static void MoveTo(Editor* ed, int x, int y)
     if(ed->cur.y >= ed->scrollY + LINES_PER_PAGE) {
 		ed->scrollY = ed->cur.y - LINES_PER_PAGE + 1;
     }
+
+    ed->blinkTime = 0;
 }
 
 static Tiny_Value Lib_Exit(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -94,6 +96,49 @@ static Tiny_Value Lib_Substr(Tiny_StateThread* thread, const Tiny_Value* args, i
     return Tiny_NewString(thread, sub);
 }
 
+static Tiny_Value Lib_StoreTempLine(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    assert(count == 1);
+
+    Editor* ed = thread->userdata;
+
+    if(ed->numTempLines >= MAX_TEMP_LINES) {
+        return Tiny_NewBool(false);
+    }
+
+    strcpy(ed->tempLines[ed->numTempLines++], Tiny_ToString(args[0]));
+    return Tiny_NewBool(true);
+}
+
+static Tiny_Value Lib_ClearTempLines(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    Editor* ed = thread->userdata;
+
+    ed->numTempLines = 0;
+
+    return Tiny_Null;
+}
+
+static Tiny_Value Lib_TempLineCount(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    Editor* ed = thread->userdata;
+
+    return Tiny_NewNumber((int)ed->numTempLines);
+}
+
+static Tiny_Value Lib_GetTempLine(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    Editor* ed = thread->userdata;
+
+    assert(count == 1);
+
+    int index = (int)Tiny_ToNumber(args[0]);
+
+    assert(index >= 0 && index < ed->numTempLines);
+
+    return Tiny_NewConstString(ed->tempLines[index]);
+}
+
 static Tiny_Value Lib_Floor(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 1);
@@ -112,17 +157,38 @@ static Tiny_Value Lib_OpenFile(Tiny_StateThread* thread, const Tiny_Value* args,
 
 	Editor* ed = thread->userdata;
 
-    OpenFile(&ed->buf, Tiny_ToString(args[0]));
+    if(OpenFile(&ed->buf, Tiny_ToString(args[0]))) {
+        int fileOpened = Tiny_GetFunctionIndex(ed->state, "file_opened");
 
-    int fileOpened = Tiny_GetFunctionIndex(ed->state, "file_opened");
+        if(fileOpened >= 0) {
+            Tiny_CallFunction(thread, fileOpened, args, 1);
+        }
 
-    if(fileOpened >= 0) {
-        Tiny_CallFunction(thread, fileOpened, args, 1);
+        MoveTo(ed, 0, 0);
+
+        return Tiny_NewBool(true);
     }
-
-    MoveTo(ed, 0, 0);
     
-    return Tiny_Null;
+    return Tiny_NewBool(false);
+}
+
+static Tiny_Value Lib_WriteFile(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    assert(count == 1);
+
+    Editor* ed = thread->userdata;
+
+    if(WriteFile(&ed->buf, Tiny_ToString(args[0]))) {
+        int fileWritten = Tiny_GetFunctionIndex(ed->state, "file_written");
+
+        if(fileWritten >= 0) {
+            Tiny_CallFunction(thread, fileWritten, args, 1);
+        }
+
+        return Tiny_NewBool(true);
+    } 
+
+    return Tiny_NewBool(false);
 }
 
 static Tiny_Value Lib_SetStatus(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -424,16 +490,27 @@ static void BindFunctions(Tiny_State* state)
     Tiny_BindFunction(state, "floor", Lib_Floor);
     Tiny_BindFunction(state, "ceil", Lib_Ceil);
 
-    Tiny_BindFunction(state, "set_status", Lib_SetStatus);
+    Tiny_BindFunction(state, "store_temp_line", Lib_StoreTempLine);
+    Tiny_BindFunction(state, "clear_temp_lines", Lib_ClearTempLines);
+    Tiny_BindFunction(state, "temp_line_count", Lib_TempLineCount);
+    Tiny_BindFunction(state, "get_temp_line", Lib_GetTempLine);
+
     Tiny_BindFunction(state, "open_file", Lib_OpenFile);
+    Tiny_BindFunction(state, "write_file", Lib_WriteFile);
+
+    Tiny_BindFunction(state, "set_status", Lib_SetStatus);
+
 	Tiny_BindFunction(state, "get_vstart_x", Lib_GetVstartX);
 	Tiny_BindFunction(state, "get_vstart_y", Lib_GetVstartY);
+
     Tiny_BindFunction(state, "get_mode", Lib_GetMode);
     Tiny_BindFunction(state, "set_mode", Lib_SetMode);
+
     Tiny_BindFunction(state, "set_char", Lib_SetChar);
     Tiny_BindFunction(state, "remove_char", Lib_RemoveChar);
     Tiny_BindFunction(state, "insert_char", Lib_InsertChar);
     Tiny_BindFunction(state, "insert_string", Lib_InsertString);
+
     Tiny_BindFunction(state, "line_count", Lib_LineCount);
     Tiny_BindFunction(state, "get_line", Lib_GetLine);
     Tiny_BindFunction(state, "get_line_from", Lib_GetLineFrom);
@@ -441,10 +518,13 @@ static void BindFunctions(Tiny_State* state)
     Tiny_BindFunction(state, "remove_line", Lib_RemoveLine);
     Tiny_BindFunction(state, "insert_empty_line", Lib_InsertEmptyLine);
     Tiny_BindFunction(state, "terminate_line", Lib_TerminateLine);
+
     Tiny_BindFunction(state, "get_x", Lib_GetX);
     Tiny_BindFunction(state, "get_y", Lib_GetY);
+
     Tiny_BindFunction(state, "move_to", Lib_MoveTo);
     Tiny_BindFunction(state, "move", Lib_Move);
+
     Tiny_BindFunction(state, "read_char", Lib_ReadChar);
 }
 
@@ -454,7 +534,7 @@ void InitEditor(Editor* ed)
 
     ed->cur.x = ed->cur.y = 0;
 
-    ed->blink = false;
+    ed->blinkTime = 0;
 
     ed->scrollY = 0;
 
@@ -485,6 +565,8 @@ void FileOpened(Editor* ed, const char* name)
 {
     int fileOpened = Tiny_GetFunctionIndex(ed->state, "file_opened");
 
+    MoveTo(ed, 0, 0);
+
     if(fileOpened >= 0) {
         Tiny_Value args[1] = {
             Tiny_NewString(&ed->thread, estrdup(name))
@@ -501,6 +583,11 @@ void UpdateEditor(Editor* ed, Tigr* screen)
     float diff = tigrTime();
 
     ed->elapsed += diff;
+    ed->blinkTime += diff;
+
+    if(ed->blinkTime > 1.0f) {
+        ed->blinkTime = 0;
+    }
 
     if(ed->mode == MODE_COMMAND) {
         int ch = tigrReadChar(screen);
@@ -557,8 +644,6 @@ void UpdateEditor(Editor* ed, Tigr* screen)
         }
 
         int ticks = (int)(ed->elapsed / 0.5f);
-
-        ed->blink = ticks % 2 == 0;
 
         Tiny_CallFunction(&ed->thread, ed->updateFunction, NULL, 0);
     }

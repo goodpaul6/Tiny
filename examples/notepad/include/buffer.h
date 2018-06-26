@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdbool.h>
+
 #define MAX_NUM_LINES       4096
 #define MAX_LINE_LENGTH     512
 #define MAX_TRACKED_DEFNS	128
@@ -25,7 +27,8 @@ typedef struct
 
 void InitDefaultBuffer(Buffer* buf);
 
-void OpenFile(Buffer* buf, const char* filename);
+bool OpenFile(Buffer* buf, const char* filename);
+bool WriteFile(const Buffer* buf, const char* filename);
 
 const char* GetLine(Buffer* buf, int y);
 void SetLine(Buffer* buf, int y, const char* text);

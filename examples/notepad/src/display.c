@@ -213,6 +213,8 @@ void DrawEditor(Tigr* screen, Editor* ed)
     // Whether we're inside a multiline comment
     bool insideComment = false;
 
+    bool blink = ed->blinkTime < 0.5f;
+
     for(int i = ed->scrollY; i < buf->numLines; ++i)  {
         if(y >= screen->h) {
             break;
@@ -256,7 +258,7 @@ void DrawEditor(Tigr* screen, Editor* ed)
         if(i == ed->cur.y) {
             assert(ed->cur.x >= 0 && ed->cur.x <= lineLen);
 
-            if(ed->blink) {
+            if(blink) {
                 if(numTokens == 0) {
                     int w = tigrTextWidth(font, " ");
                     int h = tigrTextHeight(font, "A");
@@ -313,7 +315,7 @@ void DrawEditor(Tigr* screen, Editor* ed)
 				insideComment = false;
 			}
 
-            if(ed->blink && i == ed->cur.y && drawCurX <= ed->cur.x && ed->cur.x < drawCurX + len) {
+            if(blink && i == ed->cur.y && drawCurX <= ed->cur.x && ed->cur.x < drawCurX + len) {
                 char buf[MAX_TOKEN_LENGTH];
                 strcpy(buf, tokens[j].lexeme);
 
