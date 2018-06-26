@@ -44,7 +44,7 @@ func count_braces_down(to_line) {
 }
 
 func apply_brace_indent() {
-    spaces := count_braces_down(get_y()) * 4
+    spaces := count_braces_down(get_y()) * spaces_per_tab
 
     move_to(0, get_y())
 
@@ -60,6 +60,11 @@ func update_normal_mode() {
     if last_char == 'r' and ch > 0 {
         set_char(ch)
         last_char = ' '
+        return;
+    }
+    
+    if ch == 27 {
+        set_mode(MODE_NORMAL)
         return;
     }
 
@@ -132,6 +137,7 @@ func update_normal_mode() {
         }
 
         last_char = ' '
+        return;
     }
 
     if ch == 'b' {
@@ -156,19 +162,44 @@ func update_normal_mode() {
         }
 
         last_char = ' '
+        return;
     }
 
-    if ch == 'd' {
-        if get_mode() == MODE_VISUAL_LINE {
-            // TODO(Apaar): Delete range
-        } else {
-            if last_char == 'd' {
-                if line_count() > 1 remove_line()
-                last_char = ' '
-            } else {
-                last_char = 'd'
+    if get_mode() == MODE_VISUAL_LINE {
+        if ch == 'd' or ch == 'c' {
+            a := get_vstart_y()
+
+            b := get_y()
+
+            if a > b {
+                temp := b
+                b = a
+                a = temp
             }
+
+            for i := a; i <= b; i += 1 {
+                remove_line(a)
+            }
+
+            move_to(0, a)
+
+            if ch == 'd' { 
+                set_mode(MODE_NORMAL)
+            } else {
+                set_mode(MODE_INSERT)
+                apply_brace_indent()
+            }
+            return;
+        }     
+    } else if ch == 'd' {
+        if last_char == 'd' {
+            if line_count() > 1 remove_line()
+            last_char = ' '
+        } else {
+            last_char = ch
         }
+
+        return;
     }
 
     if ch == 'h' {
@@ -180,6 +211,13 @@ func update_normal_mode() {
     } else if ch == 'l' {
         move_reset(1, 0)
     } 
+
+    if ch == 'x' {
+        if get_line() != "" {
+            remove_char()
+            if get_x() >= strlen(get_line()) move(-1, 0)
+        }
+    }
  
     if ch == '{' {
         done := false
@@ -244,17 +282,8 @@ func update_insert_mode() {
         } else {
             // if there's only spaces before us, maybe we can move back by
             // tab width
-            spaces_only := true
+            spaces_only := strspn(get_line(), " ") == get_x()
 
-            s := get_line()
-            x := get_x() - 1
-
-            for i := 0; i < x and spaces_only; i += 1 {
-                if stridx(s, i) != ' ' {
-                    spaces_only = false
-                }
-            }
-            
             if not spaces_only {
                 move(-1, 0)
                 remove_char()

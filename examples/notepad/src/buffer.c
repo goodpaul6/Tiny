@@ -210,7 +210,7 @@ void TerminateLine(Buffer* buf, int x, int y)
 
     int len = strlen(buf->lines[y]);
 
-    assert(x >= 0 && x < len);
+    assert(x >= 0 && x <= len);
 
     buf->lines[y][x] = '\0';
 }

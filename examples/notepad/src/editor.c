@@ -156,6 +156,7 @@ static Tiny_Value Lib_RemoveChar(Tiny_StateThread* thread, const Tiny_Value* arg
 	assert(count == 0);
 
 	RemoveChar(&ed->buf, ed->cur.x, ed->cur.y);
+
 	return Tiny_Null;
 }
 

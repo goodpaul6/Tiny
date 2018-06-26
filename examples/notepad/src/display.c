@@ -57,7 +57,7 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
 			tokens[curTok].type = TOK_NUM;
 			int i = 0;
 
-			while (isdigit(*line) || *line == '.') {
+			while (isdigit(*line) || *line == '.' || isxdigit(*line)) {
                 tokens[curTok].lexeme[i++] = *line++;
             }
 
@@ -146,7 +146,7 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
 			tokens[curTok].lexeme[i++] = '/';
 
 			while (*line) {
-				tokens[curTok].lexeme[i++] = *line++;
+                tokens[curTok].lexeme[i++] = *line++;
 			}
 
 			if (strstr(tokens[curTok].lexeme, "TODO") || strstr(tokens[curTok].lexeme, "NOTE")) {
@@ -253,9 +253,26 @@ void DrawEditor(Tigr* screen, Editor* ed)
         }
 
         for(int j = 0; j < numTokens; ++j) {
-            int len = strlen(tokens[j].lexeme);
+            int len = 0;
+            int k = 0;
 
-            tigrPrint(screen, font, x, y, tokenColors[tokens[j].type], tokens[j].lexeme);
+            const char* s = tokens[j].lexeme;
+
+            static char lexeme[MAX_TOKEN_LENGTH];
+
+            while(*s) {
+                if(*s == '%') {
+                    lexeme[k++] = '%';
+                    lexeme[k++] = '%';
+                    s += 1;
+                } else {
+                    lexeme[k++] = *s++;
+                }
+                len += 1;
+            }
+			lexeme[k] = 0;
+
+            tigrPrint(screen, font, x, y, tokenColors[tokens[j].type], lexeme);
 
             if(ed->blink && i == ed->cur.y && drawCurX <= ed->cur.x && ed->cur.x < drawCurX + len) {
                 char buf[MAX_TOKEN_LENGTH];
