@@ -1,5 +1,7 @@
 #pragma once
 
+#define MAX_COMMAND_LENGTH  512
+
 #include "tiny.h"
 #include "buffer.h"
 
@@ -9,7 +11,8 @@ typedef enum
 {
 	MODE_NORMAL,
 	MODE_INSERT,
-	MODE_VISUAL_LINE
+	MODE_VISUAL_LINE,
+    MODE_COMMAND
 } Mode;
 
 typedef struct
@@ -35,6 +38,9 @@ typedef struct Editor
     bool blink;
 
     float elapsed;
+
+    // When we enter command mode, all read characters are put into this buffer
+    char cmd[MAX_COMMAND_LENGTH];
 
     // We hold onto this screen for input
     Tigr* screen;

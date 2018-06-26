@@ -10,6 +10,22 @@ func file_opened(name) {
     set_status("Opened file %s", name)
 }
 
+func handle_command(cmd) {
+    if strlen(cmd) == 0 return;
+
+    if stridx(cmd, 0) == 'e' {
+        i := 1
+
+        while stridx(cmd, i) == ' ' or stridx(cmd, i) == '\t' {
+            i += 1
+        }
+
+        open_file(substr(cmd, i, -1))
+    } else if stridx(cmd, 0) == 'q' {
+        exit(0)
+    }
+}
+
 func count_braces_in_line(line_index) {
     line := get_line(line_index)
     len := strlen(line)
@@ -285,6 +301,10 @@ func update_normal_mode() {
             last_char = 'g'
         }
     } 
+
+    if ch == ':' {
+        set_mode(MODE_COMMAND)
+    }
 
     if ch == 'r' {
         last_char = 'r'

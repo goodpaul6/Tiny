@@ -342,10 +342,18 @@ void DrawEditor(Tigr* screen, Editor* ed)
         y += tigrTextHeight(font, buf->lines[i]);
     }
 
-	if(Status[0]) {
-		// print status
-		int h = tigrTextHeight(font, Status);
+	if(Status[0] || ed->mode == MODE_COMMAND) {
+		// print status/command
+        static char buf[MAX_COMMAND_LENGTH];
+        
+        if(ed->mode == MODE_COMMAND) {
+            sprintf(buf, ":%s", ed->cmd);
+        } else {
+            strcpy(buf, Status);
+        }
+
+		int h = tigrTextHeight(font, buf);
 		tigrFill(screen, 0, screen->h - h, screen->w, h, tigrRGB(0, 0, 0));
-		tigrPrint(screen, font, 0, screen->h - h, tigrRGB(200, 200, 200), Status);
+		tigrPrint(screen, font, 0, screen->h - h, tigrRGB(200, 200, 200), buf);
 	}
 }

@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <string.h>
 #include <math.h>
+#include <stdlib.h>
 
 #include "tigr.h"
 #include "display.h"
@@ -39,6 +40,11 @@ static void MoveTo(Editor* ed, int x, int y)
     }
 }
 
+static Tiny_Value Lib_Exit(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    exit((int)Tiny_ToNumber(args[0]));
+}
+
 static Tiny_Value Lib_Strlen(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 1);
@@ -57,6 +63,37 @@ static Tiny_Value Lib_Stridx(Tiny_StateThread* thread, const Tiny_Value* args, i
     return Tiny_NewNumber((double)Tiny_ToString(args[0])[(int)Tiny_ToNumber(args[1])]);
 }
 
+static Tiny_Value Lib_Substr(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    assert(count == 3);
+
+    const char* s = Tiny_ToString(args[0]);
+    int start = (int)Tiny_ToNumber(args[1]);
+    int end = (int)Tiny_ToNumber(args[2]);
+
+    if(end == -1) {
+        end = strlen(s);
+    }
+
+    assert(start >= 0 && start <= end);
+
+    if(start == end) {
+        return Tiny_NewConstString("");
+    }
+
+    assert(end <= strlen(s));
+
+    char* sub = malloc(end - start + 1);
+    for(int i = start; i < end; ++i) {
+        sub[i - start] = s[i];
+    }
+
+    sub[end - start] = '\0';
+    
+    // TODO(Apaar): Figure out if there's a way we can just not allocate for this
+    return Tiny_NewString(thread, sub);
+}
+
 static Tiny_Value Lib_Floor(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 1);
@@ -67,6 +104,25 @@ static Tiny_Value Lib_Ceil(Tiny_StateThread* thread, const Tiny_Value* args, int
 {
     assert(count == 1);
 	return Tiny_NewNumber((double)ceil(Tiny_ToNumber(args[0])));
+}
+
+static Tiny_Value Lib_OpenFile(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    assert(count == 1);
+
+	Editor* ed = thread->userdata;
+
+    OpenFile(&ed->buf, Tiny_ToString(args[0]));
+
+    int fileOpened = Tiny_GetFunctionIndex(ed->state, "file_opened");
+
+    if(fileOpened >= 0) {
+        Tiny_CallFunction(thread, fileOpened, args, 1);
+    }
+
+    MoveTo(ed, 0, 0);
+    
+    return Tiny_Null;
 }
 
 static Tiny_Value Lib_SetStatus(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -121,19 +177,26 @@ static Tiny_Value Lib_GetMode(Tiny_StateThread* thread, const Tiny_Value* args, 
 	return Tiny_NewNumber((double)ed->mode);
 }
 
+static void SetMode(Editor* ed, Mode mode)
+{
+	ed->mode = mode;
+
+	if (ed->mode == MODE_VISUAL_LINE) {
+		ed->vStart = ed->cur;
+	} else if(ed->mode == MODE_COMMAND) {
+        ed->cmd[0] = 0;
+    }
+
+	MoveTo(ed, ed->cur.x, ed->cur.y);
+}
+
 static Tiny_Value Lib_SetMode(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	assert(count == 1);
 
     Editor* ed = thread->userdata;
 
-	ed->mode = (int)Tiny_ToNumber(args[0]);
-
-	if (ed->mode == MODE_VISUAL_LINE) {
-		ed->vStart = ed->cur;
-	}
-
-	MoveTo(ed, ed->cur.x, ed->cur.y);
+    SetMode(ed, (int)Tiny_ToNumber(args[0]));
 
 	return Tiny_Null;
 }
@@ -349,15 +412,20 @@ static void BindFunctions(Tiny_State* state)
 	Tiny_BindConstNumber(state, "MODE_INSERT", (double)MODE_INSERT);
 	Tiny_BindConstNumber(state, "MODE_NORMAL", (double)MODE_NORMAL);
 	Tiny_BindConstNumber(state, "MODE_VISUAL_LINE", (double)MODE_VISUAL_LINE);
+	Tiny_BindConstNumber(state, "MODE_COMMAND", (double)MODE_COMMAND);
+
+    Tiny_BindFunction(state, "exit", Lib_Exit);
 
     Tiny_BindFunction(state, "strlen", Lib_Strlen);
     Tiny_BindFunction(state, "strspn", Lib_Strspn);
     Tiny_BindFunction(state, "stridx", Lib_Stridx);
+    Tiny_BindFunction(state, "substr", Lib_Substr);
 
     Tiny_BindFunction(state, "floor", Lib_Floor);
     Tiny_BindFunction(state, "ceil", Lib_Ceil);
 
     Tiny_BindFunction(state, "set_status", Lib_SetStatus);
+    Tiny_BindFunction(state, "open_file", Lib_OpenFile);
 	Tiny_BindFunction(state, "get_vstart_x", Lib_GetVstartX);
 	Tiny_BindFunction(state, "get_vstart_y", Lib_GetVstartY);
     Tiny_BindFunction(state, "get_mode", Lib_GetMode);
@@ -434,20 +502,66 @@ void UpdateEditor(Editor* ed, Tigr* screen)
 
     ed->elapsed += diff;
 
-    if(Status[0]) {
-        StatusTime += diff;
+    if(ed->mode == MODE_COMMAND) {
+        int ch = tigrReadChar(screen);
 
-        if(StatusTime > 3.0f) {
-            Status[0] = 0;
-            StatusTime = 0;
+        if(ch > 0) {
+            if(ch == 10) {
+                // Submit command
+                int handleCommand = Tiny_GetFunctionIndex(ed->state, "handle_command");
+
+                if(handleCommand >= 0) {
+                    const Tiny_Value args[] = {
+                        Tiny_NewConstString(ed->cmd)
+                    };
+
+                    Tiny_CallFunction(&ed->thread, handleCommand, args, 1);
+                }
+				
+				SetMode(ed, MODE_NORMAL);
+			} else if (ch == 8) {
+				// Backspace
+				char* s = ed->cmd;
+				while (*s++);
+
+				if (s > ed->cmd) {
+					s -= 2;
+					*s = 0;
+				}
+			} else if (ch == 27) {
+                ed->cmd[0] = 0;
+                SetMode(ed, MODE_NORMAL);
+            } else {
+                char* s = ed->cmd;
+                while(*s++);
+
+                if(s >= ed->cmd + MAX_COMMAND_LENGTH) {
+                    // Command is too long, just go back to normal mode
+                    SetMode(ed, MODE_NORMAL);
+                    strcpy(Status, "Command was too long.");
+                } else {
+					s -= 1;
+                    *s++ = (char)ch;
+                    *s = 0;
+                }
+            }
         }
-    }
-    
-    int ticks = (int)(ed->elapsed / 0.5f);
-    
-    ed->blink = ticks % 2 == 0;
+    } else {
+        if(Status[0]) {
+            StatusTime += diff;
 
-    Tiny_CallFunction(&ed->thread, ed->updateFunction, NULL, 0);
+            if(StatusTime > 3.0f) {
+                Status[0] = 0;
+                StatusTime = 0;
+            }
+        }
+
+        int ticks = (int)(ed->elapsed / 0.5f);
+
+        ed->blink = ticks % 2 == 0;
+
+        Tiny_CallFunction(&ed->thread, ed->updateFunction, NULL, 0);
+    }
 }
 
 void DestroyEditor(Editor* ed)
