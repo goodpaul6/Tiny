@@ -23,6 +23,8 @@ typedef enum
 	TOK_DEFINITION,
 	TOK_COMMENT,
 	TOK_SPECIAL_COMMENT,
+    TOK_MULTILINE_COMMENT_START,    // Just the /*
+    TOK_MULTILINE_COMMENT_END,       // Just the */
     NUM_TOKEN_TYPES
 } TokenType;
 
@@ -155,7 +157,27 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
 
 			tokens[curTok].lexeme[i] = '\0';
 			curTok += 1;
-		} else {
+		} else if(*line == '/' && line[1] == '*') {
+            tokens[curTok].type = TOK_MULTILINE_COMMENT_START;
+
+            tokens[curTok].lexeme[0] = '/';
+            tokens[curTok].lexeme[1] = '*';
+            tokens[curTok].lexeme[2] = 0;
+
+            line += 2;
+
+            curTok += 1;
+        } else if(*line == '*' && line[1] == '/') {
+            tokens[curTok].type = TOK_MULTILINE_COMMENT_END;
+
+            tokens[curTok].lexeme[0] = '*';
+            tokens[curTok].lexeme[1] = '/';
+            tokens[curTok].lexeme[2] = 0;
+
+            line += 2;
+
+            curTok += 1;
+        } else {
             tokens[curTok].type = TOK_CHAR;
             tokens[curTok].lexeme[0] = *line++;
             tokens[curTok].lexeme[1] = '\0';
@@ -187,6 +209,9 @@ void DrawEditor(Tigr* screen, Editor* ed)
         tigrRGB(20, 80, 20),
         tigrRGB(200, 120, 40)
     };
+
+    // Whether we're inside a multiline comment
+    bool insideComment = false;
 
     for(int i = ed->scrollY; i < buf->numLines; ++i)  {
         if(y >= screen->h) {
@@ -256,6 +281,10 @@ void DrawEditor(Tigr* screen, Editor* ed)
             int len = 0;
             int k = 0;
 
+            if(tokens[j].type == TOK_MULTILINE_COMMENT_START) {
+                insideComment = true;
+            } 
+
             const char* s = tokens[j].lexeme;
 
             static char lexeme[MAX_TOKEN_LENGTH];
@@ -272,7 +301,17 @@ void DrawEditor(Tigr* screen, Editor* ed)
             }
 			lexeme[k] = 0;
 
-            tigrPrint(screen, font, x, y, tokenColors[tokens[j].type], lexeme);
+            TPixel color = tokenColors[tokens[j].type];
+
+            if(insideComment) {
+                color = tokenColors[TOK_COMMENT];
+            }
+
+            tigrPrint(screen, font, x, y, color, lexeme);
+
+			if (tokens[j].type == TOK_MULTILINE_COMMENT_END) {
+				insideComment = false;
+			}
 
             if(ed->blink && i == ed->cur.y && drawCurX <= ed->cur.x && ed->cur.x < drawCurX + len) {
                 char buf[MAX_TOKEN_LENGTH];

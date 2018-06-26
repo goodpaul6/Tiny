@@ -15,6 +15,7 @@ func count_braces_in_line(line_index) {
     len := strlen(line)
 
     inside_quotes := false
+    inside_comment := false
 
     braces := 0
 
@@ -54,6 +55,56 @@ func apply_brace_indent() {
     }
 }
 
+func get_prev_word_x() {
+    i := get_x()
+    s := get_line()
+    
+    if i > 0 {
+        if i - 1 >= 0 and stridx(s, i - 1) == ' ' {
+            i -= 1
+            while stridx(s, i) == ' ' and i >= 0 {
+                i -= 1
+            }
+
+            return i
+        } else {
+            while stridx(s, i) != ' ' and i >= 0 {
+                i -= 1
+            }
+
+            return i + 1
+        }
+    } else {
+        return i
+    }
+}
+
+func get_next_word_x() {
+    i := get_x()
+    s := get_line()
+    len := strlen(s)
+     
+    if i < len - 1 {
+        if stridx(s, i + 1) == ' ' {
+            i += 1
+            
+            while stridx(s, i) == ' ' and i < len {
+                i += 1
+            }
+            
+            return i
+        } else {
+            while stridx(s, i) != ' ' and i < len {
+               i += 1
+           }
+
+           return i - 1
+       }
+    } else {
+        return i
+    }
+}
+
 func update_normal_mode() {
     ch := read_char()
 
@@ -75,6 +126,12 @@ func update_normal_mode() {
     
     if ch == 'i' {
         set_mode(MODE_INSERT)
+        return;
+    }
+
+    if ch == 'I' {
+        set_mode(MODE_INSERT)
+        move_to(strspn(get_line(), " "), get_y())
         return;
     }
 
@@ -106,61 +163,13 @@ func update_normal_mode() {
     }
 
     if ch == 'e' {
-        i := get_x()
-        s := get_line()
-        len := strlen(s)
-
-        while i >= len - 1 or strspn(s, " ") == len {
-            move_to(0, get_y() + 1)
-
-            i = get_x()
-            s = get_line()
-            len = strlen(s)
-        }
-
-        if i < len - 1 {
-            if stridx(s, i + 1) == ' ' {
-                i += 1
-
-                while stridx(s, i) == ' ' and i < len {
-                    i += 1
-                }
-
-                i += 1
-            } else {
-                while stridx(s, i) != ' ' and i < len {
-                    i += 1
-                }
-            }
-
-            move_to(i - 1, get_y())
-        }
-
+        move_to(get_next_word_x(), get_y())
         last_char = ' '
         return;
     }
 
     if ch == 'b' {
-        i := get_x()
-        s := get_line()
-        
-        if i > 0 {
-            if i - 1 >= 0 and stridx(s, i - 1) == ' ' {
-                i -= 1
-                while stridx(s, i) == ' ' and i >= 0 {
-                    i -= 1
-                }
-
-                move_to(i, get_y())
-            } else {
-                while stridx(s, i) != ' ' and i >= 0 {
-                    i -= 1
-                }
-
-                move_to(i + 1, get_y())
-            }
-        }
-
+        move_to(get_prev_word_x(), get_y())
         last_char = ' '
         return;
     }
@@ -202,6 +211,23 @@ func update_normal_mode() {
         return;
     }
 
+    if ch == 'c' {
+        if last_char == 'c' {
+            start_x := strspn(get_line(), " ")
+
+            remove_line()
+            set_mode(MODE_INSERT)
+            insert_empty_line()
+
+            for i := 0; i < start_x; i += 1 {
+                insert_char(' ')
+                move(1, 0)
+            }
+        } else {
+            last_char = 'c'
+        }
+    }
+
     if ch == 'h' {
         move_reset(-1, 0)
     } else if ch == 'j' {
@@ -211,6 +237,15 @@ func update_normal_mode() {
     } else if ch == 'l' {
         move_reset(1, 0)
     } 
+
+    if ch == 127 {
+        start_x := get_prev_word_x()
+
+        while get_x() > start_x {
+            remove_char()
+            move_reset(-1, 0)
+        }
+    }
 
     if ch == 'x' {
         if get_line() != "" {
