@@ -1,3 +1,2 @@
 // Mmmm syntax highlighting
-set_token_color(TOK_COMMENT, 100, 0, 0)
-
+set_token_color(TOK_KEYWORD, 40, 40, 150)

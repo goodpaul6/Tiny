@@ -14,7 +14,7 @@ int main(int argc, char** argv)
 {
     Tigr* screen = tigrWindow(640, 480, "Tiny Notepad", TIGR_FIXED | TIGR_2X);
     
-    tigrSetPostFX(screen, 0, 0, 0.5f, 1.1f);
+    tigrSetPostFX(screen, 0, 0, 0.5f, 1.2f);
     
     static Editor ed;
     
@@ -37,8 +37,9 @@ int main(int argc, char** argv)
     DestroyEditor(&ed);
 
     tigrFree(screen);
-
+    
     return 0;
 }
+
 
 

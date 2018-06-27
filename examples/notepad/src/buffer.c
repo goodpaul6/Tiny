@@ -8,29 +8,32 @@
 
 static void UpdateDefinitions(Buffer* buf)
 {
-	buf->numDefns = 0;
+    buf->numDefns = 2;
+    
+    strcpy(buf->defns[0], "NULL");
+    strcpy(buf->defns[1], "FILE");
 
-	for (int i = 0; i < buf->numLines; ++i) {
-		const char* s = strstr(buf->lines[i], "#define");	
-		if (!s) continue;
+    for (int i = 0; i < buf->numLines; ++i) {
+        const char* s = strstr(buf->lines[i], "#define");    
+        if (!s) continue;
 
-		if (buf->numDefns >= MAX_TRACKED_DEFNS) break;
+        if (buf->numDefns >= MAX_TRACKED_DEFNS) break;
 
-		s += strlen("#define");
-		
-		while (isspace(*s)) {
-			s += 1;
-		}
+        s += strlen("#define");
+        
+        while (isspace(*s)) {
+            s += 1;
+        }
 
-		int i = 0;
+        int i = 0;
 
-		while (!isspace(*s)) {
-			buf->defns[buf->numDefns][i++] = *s++;
-		}
+        while (!isspace(*s)) {
+            buf->defns[buf->numDefns][i++] = *s++;
+        }
 
-		buf->defns[buf->numDefns][i] = '\0';
-		buf->numDefns += 1;
-	}
+        buf->defns[buf->numDefns][i] = '\0';
+        buf->numDefns += 1;
+    }
 }
 
 void InitDefaultBuffer(Buffer* buf)
@@ -52,16 +55,16 @@ bool OpenFile(Buffer* buf, const char* filename)
     }
 
     int last = getc(f);
-	
-	const char* ext = strrchr(filename, '.');
-	if (ext) {
+    
+    const char* ext = strrchr(filename, '.');
+    if (ext) {
         if(strcmp(ext, ".c") == 0 || strcmp(ext, ".cc") == 0 || strcmp(ext, ".h") == 0 || 
                 strcmp(ext, ".hh") == 0 || strcmp(ext, ".hpp") == 0) {
             buf->filetype = FILE_C;
         } else if(strcmp(ext, ".tiny") == 0) {
             buf->filetype = FILE_TINY;
         }
-	} else {
+    } else {
         buf->filetype = FILE_UNKNOWN;
     }
 
@@ -79,32 +82,32 @@ bool OpenFile(Buffer* buf, const char* filename)
 
                 buf->numLines = curLine;
                 fclose(f);
-				return true;
+                return true;
             }
 
             if (curChar >= MAX_LINE_LENGTH - 1) {
                 continue;
             }
 
-			if (last == '\t') {
-				// Translate tabs to 4 spaces
-				for (int i = 0; i < 4; ++i) {
-					buf->lines[curLine][curChar++] = ' ';
-				}
-			} else {
-				buf->lines[curLine][curChar++] = last;
-			}    
+            if (last == '\t') {
+                // Translate tabs to 4 spaces
+                for (int i = 0; i < 4; ++i) {
+                    buf->lines[curLine][curChar++] = ' ';
+                }
+            } else {
+                buf->lines[curLine][curChar++] = last;
+            }    
         }
 
         last = getc(f);
     }
 
     buf->lines[curLine][curChar] = 0;
-	buf->numLines = curLine + 1;
+    buf->numLines = curLine + 1;
 
     fclose(f);
 
-	UpdateDefinitions(buf);
+    UpdateDefinitions(buf);
 
     return true;
 }
@@ -120,7 +123,7 @@ bool WriteFile(Buffer* buf, const char* filename)
     for(int i = 0; i < buf->numLines; ++i) {
         fprintf(f, "%s\n", buf->lines[i]);
     }
-
+      
     fclose(f);
 
     return true;
@@ -147,7 +150,7 @@ void InsertEmptyLine(Buffer* buf, int y)
 
     // Empty line
     buf->lines[y][0] = 0;
-	buf->numLines += 1;
+    buf->numLines += 1;
 }
 
 void RemoveLine(Buffer* buf, int y)
@@ -231,3 +234,5 @@ void TerminateLine(Buffer* buf, int x, int y)
 
     buf->lines[y][x] = '\0';
 }
+
+

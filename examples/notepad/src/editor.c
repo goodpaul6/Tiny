@@ -600,6 +600,71 @@ static Tiny_Value Lib_GetFilename(Tiny_StateThread* thread, const Tiny_Value* ar
     return Tiny_NewConstString(ed->filename);
 }
 
+static int CountBracesOnLine(Editor* ed, int line, bool* insideComments)
+{
+    assert(line >= 0 && line < ed->buf.numLines);
+
+    const char* s = ed->buf.lines[line];
+   
+    bool insideQuotes = false;
+
+    int braces = 0;
+
+    while(*s) {
+        if(*s == '"') {
+			s += 1;
+            insideQuotes = !insideQuotes;
+        } else if(*s == '\\') {
+            s += 1;
+            if(*s == '"') {
+                s += 1;
+            }
+        } else if(*s == '\'') {
+            if(s[1] == '\\') {
+                // Assumes single character lookahead
+                s += 1;
+            }
+
+            s += 2;
+        } else if(*s == '/' && s[1] == '/') {
+            break;
+        } else if(*s == '/' && s[1] == '*') {
+            *insideComments = true;
+			s += 2;
+        } else if(*s == '*' && s[1] == '/') {
+            *insideComments = false;
+			s += 2;
+        } else if(!*insideComments && !insideQuotes) {
+            if(*s == '{')
+				braces += 1;
+            else if(*s == '}') braces -= 1;
+			s += 1;
+		} else {
+			s += 1;
+		}
+    }
+
+    return braces;
+}
+
+static Tiny_Value Lib_CountBracesDown(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    Editor* ed = thread->userdata;
+
+    assert(count == 1);
+
+    int line = (int)Tiny_ToNumber(args[0]);
+
+    bool insideComment = false;
+    int braces = 0;
+
+    for(int i = 0; i < line; ++i) {
+        braces += CountBracesOnLine(ed, i, &insideComment);
+    }
+
+    return Tiny_NewNumber((double)braces);
+}
+
 static void BindFunctions(Tiny_State* state)
 {
     Tiny_BindConstNumber(state, "MODE_INSERT", (double)MODE_INSERT);
@@ -618,6 +683,8 @@ static void BindFunctions(Tiny_State* state)
     Tiny_BindConstNumber(state, "TOK_DEFINITION", (double)TOK_DEFINITION);
     Tiny_BindConstNumber(state, "TOK_COMMENT", (double)TOK_COMMENT);
     Tiny_BindConstNumber(state, "TOK_SPECIAL_COMMENT", (double)TOK_SPECIAL_COMMENT);
+
+    Tiny_BindStandardArray(state);
 
     Tiny_BindFunction(state, "exit", Lib_Exit);
 
@@ -673,12 +740,12 @@ static void BindFunctions(Tiny_State* state)
 
     Tiny_BindFunction(state, "get_filename", Lib_GetFilename);
     Tiny_BindFunction(state, "reload_scripts_next_frame", Lib_ReloadScriptsNextFrame);
+
+    Tiny_BindFunction(state, "count_braces_down", Lib_CountBracesDown);
 }
 
 static void ReloadScripts(Editor* ed)
 {
-	// Copy global variables and heap
-
     if(ed->state) {
         Tiny_DestroyThread(&ed->thread);
         Tiny_DeleteState(ed->state);
