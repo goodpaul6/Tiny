@@ -40,7 +40,7 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
     // TODO(Apaar): Check for buffer overflows
     int curTok = 0;
 
-	const char* start = line;
+    const char* start = line;
 
     while (*line) {
         if (*line == '#') {
@@ -53,17 +53,17 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
 
             tokens[curTok].lexeme[i] = '\0';
             curTok += 1;
-		} else if (isdigit(*line)) {
-			tokens[curTok].type = TOK_NUM;
-			int i = 0;
+        } else if (isdigit(*line)) {
+            tokens[curTok].type = TOK_NUM;
+            int i = 0;
 
-			while (isdigit(*line) || *line == '.' || isxdigit(*line)) {
+            while (isdigit(*line) || *line == '.' || isxdigit(*line)) {
                 tokens[curTok].lexeme[i++] = *line++;
             }
 
             tokens[curTok].lexeme[i] = '\0';
-			curTok += 1;
-		} else if (isalpha(*line)) {
+            curTok += 1;
+        } else if (isalpha(*line)) {
             tokens[curTok].type = TOK_IDENT;
             int i = 0;
 
@@ -72,42 +72,43 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
             }
 
             tokens[curTok].lexeme[i] = '\0';
-			
-			const char* lexeme = tokens[curTok].lexeme;
+            
+            const char* lexeme = tokens[curTok].lexeme;
 
-			if ((strcmp(lexeme, "if") == 0) ||
-				(strcmp(lexeme, "typedef") == 0) ||
-				(strcmp(lexeme, "const") == 0) ||
-				(strcmp(lexeme, "while") == 0) ||
-				(strcmp(lexeme, "for") == 0) ||
-				(strcmp(lexeme, "else") == 0) ||
-				(strcmp(lexeme, "do") == 0) ||
-				(strcmp(lexeme, "switch") == 0) ||
-				(strcmp(lexeme, "struct") == 0) ||
-				(strcmp(lexeme, "enum") == 0) ||
-				(strcmp(lexeme, "char") == 0) ||
-				(strcmp(lexeme, "int") == 0) ||
-				(strcmp(lexeme, "void") == 0) ||
-				(strcmp(lexeme, "unsigned") == 0) ||
-				(strcmp(lexeme, "bool") == 0) ||
-				(strcmp(lexeme, "short") == 0) ||
-				(strcmp(lexeme, "long") == 0) ||
-				(strcmp(lexeme, "float") == 0) ||
-				(strcmp(lexeme, "false") == 0) ||
-				(strcmp(lexeme, "true") == 0) ||
-				(strcmp(lexeme, "static") == 0) ||
-				(strcmp(lexeme, "return") == 0) ||
+            if ((strcmp(lexeme, "if") == 0) ||
+                (strcmp(lexeme, "typedef") == 0) ||
+                (strcmp(lexeme, "const") == 0) ||
+                (strcmp(lexeme, "while") == 0) ||
+                (strcmp(lexeme, "for") == 0) ||
+                (strcmp(lexeme, "else") == 0) ||
+                (strcmp(lexeme, "do") == 0) ||
+                (strcmp(lexeme, "switch") == 0) ||
+                (strcmp(lexeme, "struct") == 0) ||
+                (strcmp(lexeme, "enum") == 0) ||
+                (strcmp(lexeme, "char") == 0) ||
+                (strcmp(lexeme, "int") == 0) ||
+                (strcmp(lexeme, "void") == 0) ||
+                (strcmp(lexeme, "unsigned") == 0) ||
+                (strcmp(lexeme, "bool") == 0) ||
+                (strcmp(lexeme, "short") == 0) ||
+                (strcmp(lexeme, "long") == 0) ||
+                (strcmp(lexeme, "float") == 0) ||
+                (strcmp(lexeme, "false") == 0) ||
+                (strcmp(lexeme, "true") == 0) ||
+                (strcmp(lexeme, "static") == 0) ||
+                (strcmp(lexeme, "return") == 0) ||
                 (strcmp(lexeme, "func") == 0) ||
                 (strcmp(lexeme, "or") == 0) ||
-                (strcmp(lexeme, "and") == 0)) {
-				tokens[curTok].type = TOK_KEYWORD;
-			}
+                (strcmp(lexeme, "and") == 0) ||
+                (strcmp(lexeme, "not") == 0)) {
+                tokens[curTok].type = TOK_KEYWORD;
+            }
 
-			for (int i = 0; i < buf->numDefns; ++i) {
-				if (strcmp(buf->defns[i], lexeme) == 0) {
-					tokens[curTok].type = TOK_DEFINITION;
-				}
-			}
+            for (int i = 0; i < buf->numDefns; ++i) {
+                if (strcmp(buf->defns[i], lexeme) == 0) {
+                    tokens[curTok].type = TOK_DEFINITION;
+                }
+            }
 
             curTok += 1;
         } else if (isspace(*line)) {
@@ -115,7 +116,7 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
             int i = 0;
 
             while (isspace(*line)) {
-				tokens[curTok].lexeme[i++] = *line++;
+                tokens[curTok].lexeme[i++] = *line++;
             }
 
             tokens[curTok].lexeme[i] = '\0';
@@ -131,34 +132,34 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
                 tokens[curTok].lexeme[i++] = *line++;
             }
 
-			if (*line == '"') {
-				tokens[curTok].lexeme[i++] = '"';
-				line += 1;
-			}
+            if (*line == '"') {
+                tokens[curTok].lexeme[i++] = '"';
+                line += 1;
+            }
 
             tokens[curTok].lexeme[i] = '\0';
             curTok += 1;
-		} else if (*line == '/' && line[1] == '/') {
-			line += 2;
+        } else if (*line == '/' && line[1] == '/') {
+            line += 2;
 
-			int i = 0;
+            int i = 0;
 
-			tokens[curTok].type = TOK_COMMENT;
+            tokens[curTok].type = TOK_COMMENT;
 
-			tokens[curTok].lexeme[i++] = '/';
-			tokens[curTok].lexeme[i++] = '/';
+            tokens[curTok].lexeme[i++] = '/';
+            tokens[curTok].lexeme[i++] = '/';
 
-			while (*line) {
+            while (*line) {
                 tokens[curTok].lexeme[i++] = *line++;
-			}
+            }
 
-			if (strstr(tokens[curTok].lexeme, "TODO") || strstr(tokens[curTok].lexeme, "NOTE")) {
-				tokens[curTok].type = TOK_SPECIAL_COMMENT;
-			}
+            if (strstr(tokens[curTok].lexeme, "TODO") || strstr(tokens[curTok].lexeme, "NOTE")) {
+                tokens[curTok].type = TOK_SPECIAL_COMMENT;
+            }
 
-			tokens[curTok].lexeme[i] = '\0';
-			curTok += 1;
-		} else if(*line == '/' && line[1] == '*') {
+            tokens[curTok].lexeme[i] = '\0';
+            curTok += 1;
+        } else if(*line == '/' && line[1] == '*') {
             tokens[curTok].type = TOK_MULTILINE_COMMENT_START;
 
             tokens[curTok].lexeme[0] = '/';
@@ -296,7 +297,7 @@ void DrawEditor(Tigr* screen, Editor* ed)
                 }
                 len += 1;
             }
-			lexeme[k] = 0;
+            lexeme[k] = 0;
 
             TPixel color = tokenColors[tokens[j].type];
 
@@ -306,9 +307,9 @@ void DrawEditor(Tigr* screen, Editor* ed)
 
             tigrPrint(screen, font, x, y, color, lexeme);
 
-			if (tokens[j].type == TOK_MULTILINE_COMMENT_END) {
-				insideComment = false;
-			}
+            if (tokens[j].type == TOK_MULTILINE_COMMENT_END) {
+                insideComment = false;
+            }
 
             if(blink && i == ed->cur.y && drawCurX <= ed->cur.x && ed->cur.x < drawCurX + len) {
                 char buf[MAX_TOKEN_LENGTH];
@@ -339,8 +340,8 @@ void DrawEditor(Tigr* screen, Editor* ed)
         y += tigrTextHeight(font, buf->lines[i]);
     }
 
-	if(Status[0] || ed->mode == MODE_COMMAND || ed->mode == MODE_FORWARD_SEARCH) {
-		// print status/command
+    if(Status[0] || ed->mode == MODE_COMMAND || ed->mode == MODE_FORWARD_SEARCH) {
+        // print status/command
         static char buf[MAX_COMMAND_LENGTH];
         
         if(ed->mode == MODE_COMMAND) {
@@ -351,8 +352,9 @@ void DrawEditor(Tigr* screen, Editor* ed)
             strcpy(buf, Status);
         }
 
-		int h = tigrTextHeight(font, buf);
-		tigrFill(screen, 0, screen->h - h, screen->w, h, tigrRGB(0, 0, 0));
-		tigrPrint(screen, font, 0, screen->h - h, tigrRGB(200, 200, 200), buf);
-	}
+        int h = tigrTextHeight(font, buf);
+        tigrFill(screen, 0, screen->h - h, screen->w, h, tigrRGB(0, 0, 0));
+        tigrPrint(screen, font, 0, screen->h - h, tigrRGB(200, 200, 200), buf);
+    }
 }
+

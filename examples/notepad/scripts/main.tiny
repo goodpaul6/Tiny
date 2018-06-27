@@ -25,10 +25,22 @@ func handle_command(cmd) {
         }
 
         s := substr(cmd, i, -1)
-
+        
+        x := 0
+        y := 0  
+        
+        if s == "" or strspn(s, " ") == strlen(s) {
+            s = get_filename()         
+            x = get_x()
+            y = get_y()
+        }
+          
         if not open_file(s) {
             set_status("Failed to open file %s for writing.", s)
         }
+        
+        move_to(x, y + 10)
+        move_to(x, y)       
     } else if stridx(cmd, 0) == 'w' {
         if not write_file(get_filename()) {
             set_status("Failed to write to file %s.", get_filename())
@@ -234,10 +246,18 @@ func update_normal_mode() {
             move(0, 1)
             s := get_command()
             move_to_first_occurance_of_string(s, false) 
+            
+            // Space it out a bit
+            move(0, 10)
+            move(0, -10)
         } else if ch == 'N' { 
             move(0, -1)
             s := get_command()
             move_to_first_occurance_of_string(s, true)
+            
+            // Space it out a bit
+            move(0, 10)
+            move(0, -10)
         }
     }
 
@@ -251,7 +271,7 @@ func update_normal_mode() {
         return;
     }
     
-    if ch == 'i' {
+    if ch == 'i' {        
         set_mode(MODE_INSERT)
         return;
     }
@@ -359,7 +379,7 @@ func update_normal_mode() {
         last_char = ' '
         return;
     }
-
+    
     if ch == 'b' {
         move_to(get_prev_word_x(), get_y())
         last_char = ' '
@@ -590,7 +610,7 @@ func update_insert_mode() {
         line := get_line()
         start_x := get_prev_word_x()
  
-        if strlen(line) == 0 {
+        if strspn(line, " ") == strlen(line) {
             if get_y() > 0 {
                 remove_line()
                 move(0, -1)
@@ -598,22 +618,24 @@ func update_insert_mode() {
             }
             return;
         }
-
+        
         if start_x == strlen(line) {
             start_x -= 1
-        }
+        }  
 
         while stridx(line, start_x) != ' ' and start_x > 0 {
             start_x -= 1
         }
-        
-        while get_x() > start_x {
+         
+        stop := false
+  
+        while get_x() > start_x and not stop {
             move(-1, 0)
             if get_x() > 0 {
                 remove_char()
             } else {
-                start_x = get_x()
-            }
+                stop = true
+            } 
         }
     } else if ch > 0 {
         if ch == 9 {
@@ -650,12 +672,3 @@ func update() {
     if get_mode() == MODE_INSERT update_insert_mode()
     else if get_mode() == MODE_NORMAL or get_mode() == MODE_VISUAL_LINE update_normal_mode()
 }
-
-
-
-
-
-
-
-
-
