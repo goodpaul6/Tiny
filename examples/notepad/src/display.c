@@ -318,6 +318,15 @@ void DrawEditor(Tigr* screen, Editor* ed)
                 color = tokenColors[TOK_COMMENT];
             }
 
+            int lexw = tigrTextWidth(font, lexeme);
+           
+            if(x + lexw >= screen->w) {
+                // Wrap once
+                // anything longer is obnoxiously long and should be deleted
+                x = 0;
+                y += tigrTextHeight(font, lexeme);
+            }
+
             tigrPrint(screen, font, x, y, color, lexeme);
 
             if (tokens[j].type == TOK_MULTILINE_COMMENT_END) {

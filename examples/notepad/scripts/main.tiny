@@ -200,7 +200,7 @@ func delete_selected_lines(should_store) {
     if failed_to_store {
         set_status("Failed to store some lines in the temporary buffer. Not all lines were deleted.")
     }
-
+    
     move_to(0, a)
 }
 
@@ -724,6 +724,8 @@ func update() {
     if get_mode() == MODE_INSERT update_insert_mode()
     else if get_mode() == MODE_NORMAL or get_mode() == MODE_VISUAL_LINE update_normal_mode()
 }
+
+
 
 
 
