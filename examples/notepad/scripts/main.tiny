@@ -510,7 +510,7 @@ func update_normal_mode() {
     } else if ch == 'l' {
         move_reset(1, 0)
     } 
-
+    
     if ch == 'x' {
         if get_line() != "" {
             remove_char()
@@ -724,5 +724,6 @@ func update() {
     if get_mode() == MODE_INSERT update_insert_mode()
     else if get_mode() == MODE_NORMAL or get_mode() == MODE_VISUAL_LINE update_normal_mode()
 }
+
 
 

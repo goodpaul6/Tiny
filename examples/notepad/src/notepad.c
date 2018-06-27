@@ -50,9 +50,9 @@ int main(int argc, char** argv)
     
         DrawEditor(screen, &GEditor);
         
-        tigrUpdate(screen);
+        tigrUpdate(screen); 
     }
-
+    
     tigrFree(screen);
 
     Done = true;
@@ -63,3 +63,4 @@ int main(int argc, char** argv)
     
     return 0;
 }
+

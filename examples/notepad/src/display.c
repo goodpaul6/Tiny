@@ -53,7 +53,7 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
 
             tokens[curTok].lexeme[i] = '\0';
             curTok += 1;
-        } else if (isdigit(*line)) {
+        } else if (isascii(*line) && isdigit(*line)) {
             tokens[curTok].type = TOK_NUM;
             int i = 0;
 
@@ -63,12 +63,15 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
 
             tokens[curTok].lexeme[i] = '\0';
             curTok += 1;
-        } else if (isalpha(*line)) {
+        } else if (isascii(*line) && isalpha(*line)) {
             tokens[curTok].type = TOK_IDENT;
             int i = 0;
-
+			
             while (isalnum(*line) || *line == '_') {
                 tokens[curTok].lexeme[i++] = *line++;
+				if (!isascii(*line)) {
+					break;
+				}
             }
 
             tokens[curTok].lexeme[i] = '\0';
@@ -111,7 +114,7 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
             }
 
             curTok += 1;
-        } else if (isspace(*line)) {
+        } else if (isascii(*line) && isspace(*line)) {
             tokens[curTok].type = TOK_SPACE;
             int i = 0;
 
@@ -180,6 +183,16 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
 
             curTok += 1;
         } else {
+			if (!isascii(*line)) {
+				tokens[curTok].type = TOK_CHAR;
+				tokens[curTok].lexeme[0] = 223;
+				tokens[curTok].lexeme[1] = '\0';
+				curTok += 1;
+
+				line += 1;
+				continue;
+			}
+
             tokens[curTok].type = TOK_CHAR;
             tokens[curTok].lexeme[0] = *line++;
             tokens[curTok].lexeme[1] = '\0';
