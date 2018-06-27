@@ -8,38 +8,58 @@
 
 #include "tigr.h"
 #include "editor.h"
-#include "display.h"
+#include "tinycthread.h"
+
+static Editor GEditor;
+static Tigr* screen;
+
+static bool Done;
+
+void DrawEditor(Tigr* screen, Editor* editor);
+
+static int EditorThreadFunc(void* arg)
+{
+    while(!Done) {
+        UpdateEditor(&GEditor, screen);
+    }
+
+    return 0;
+}
 
 int main(int argc, char** argv)
 {
-    Tigr* screen = tigrWindow(640, 480, "Tiny Notepad", TIGR_FIXED | TIGR_2X);
+    screen = tigrWindow(640, 480, "Tiny Notepad", TIGR_FIXED | TIGR_2X);
     
     tigrSetPostFX(screen, 0, 0, 0.5f, 1.2f);
-    
-    static Editor ed;
-    
-    InitEditor(&ed);
-      
+
+    InitEditor(&GEditor);
+
+    GEditor.screen = screen;
+
     if(argc > 1) {
-        OpenFile(&ed.buf, argv[1]);
-        FileOpened(&ed, argv[1]);
+        MyOpenFile(&GEditor.buf, argv[1]);
+        FileOpened(&GEditor, argv[1]);
     }
+
+    thrd_t editorThread;
+
+    thrd_create(&editorThread, EditorThreadFunc, NULL);
 
     while(!tigrClosed(screen)) {
         tigrClear(screen, tigrRGB(20, 20, 20));
     
-        UpdateEditor(&ed, screen);
-        DrawEditor(screen, &ed);
+        DrawEditor(screen, &GEditor);
         
         tigrUpdate(screen);
     }
 
-    DestroyEditor(&ed);
-
     tigrFree(screen);
+
+    Done = true;
+
+    thrd_join(editorThread, NULL);
+
+    DestroyEditor(&GEditor);
     
     return 0;
 }
-
-
-

@@ -19,6 +19,9 @@ void ArrayResize(Array* array, int length, const void* newValue);
 void ArrayPush(Array* array, const void* value);
 void ArrayPop(Array* array, void* value);
 
+// Pop from front
+void ArrayShift(Array* array, void* value);
+
 void ArrayInsert(Array* array, int index, const void* value);
 void ArrayRemove(Array* array, int index);
 

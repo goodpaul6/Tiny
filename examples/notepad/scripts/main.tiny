@@ -1,5 +1,51 @@
 last_char := ' '
+
+hop_buffer := array()
+unhop_buffer := array()
+
 spaces_per_tab :: 4
+max_hop_buffer_len :: 32
+
+func push_hop() {
+    if array_len(hop_buffer) >= max_hop_buffer_len {
+        array_shift(hop_buffer)
+    }
+    
+    array_push(hop_buffer, get_y()) 
+    array_clear(unhop_buffer)
+}
+
+func pop_hop() {
+    if array_len(hop_buffer) <= 0 {
+        return;
+    }
+    
+    y := array_pop(hop_buffer)
+    
+    if array_len(unhop_buffer) >= max_hop_buffer_len {
+        array_shift(unhop_buffer)
+    }
+    
+    array_push(unhop_buffer, get_y())
+    
+    move_to(0, y)
+}
+
+func pop_unhop() {
+    if array_len(unhop_buffer) <= 0 {
+        return;
+    }
+    
+    y := array_pop(unhop_buffer) 
+    
+    if array_len(hop_buffer) >= max_hop_buffer_len {
+        array_shift(hop_buffer) 
+    }
+    
+    array_push(hop_buffer, get_y())
+    
+    move_to(0, y)
+}
 
 func move_reset(x, y) {
     last_char = ' '
@@ -446,6 +492,14 @@ func update_normal_mode() {
             last_char = 'c'
         }
     }
+    
+    if ch == 15 {
+        // CTRL + O
+        pop_hop()
+    } else if ch == 9 {
+        // CTRL + I
+        pop_unhop()
+    }
 
     if ch == 'h' {
         move_reset(-1, 0)
@@ -525,12 +579,18 @@ func update_normal_mode() {
     }
     
     if ch == 'G' {
-        move_reset(0, line_count())
+        push_hop()
+        
+        move_to(0, line_count() - 1)
+        last_char = ' '
         set_status("To the bottom!")
     } else if ch == 'g' {
         if last_char == 'g' {
+            push_hop()
+            
             set_status("To the top!")
-            move_reset(0, -line_count())
+            move_to(0, 0)
+            last_char = ' '
         } else {
             last_char = 'g'
         }
@@ -664,4 +724,5 @@ func update() {
     if get_mode() == MODE_INSERT update_insert_mode()
     else if get_mode() == MODE_NORMAL or get_mode() == MODE_VISUAL_LINE update_normal_mode()
 }
+
 

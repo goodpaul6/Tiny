@@ -250,7 +250,7 @@ static Tiny_Value Lib_OpenFile(Tiny_StateThread* thread, const Tiny_Value* args,
 
     Editor* ed = thread->userdata;
 
-    if(OpenFile(&ed->buf, Tiny_ToString(args[0]))) {
+    if(MyOpenFile(&ed->buf, Tiny_ToString(args[0]))) {
         int fileOpened = Tiny_GetFunctionIndex(ed->state, "file_opened");
 
         if(fileOpened >= 0) {
@@ -278,7 +278,7 @@ static Tiny_Value Lib_WriteFile(Tiny_StateThread* thread, const Tiny_Value* args
 
     Editor* ed = thread->userdata;
 
-    if(WriteFile(&ed->buf, Tiny_ToString(args[0]))) {
+    if(MyWriteFile(&ed->buf, Tiny_ToString(args[0]))) {
         int fileWritten = Tiny_GetFunctionIndex(ed->state, "file_written");
 
         if(fileWritten >= 0) {

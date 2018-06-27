@@ -84,6 +84,16 @@ void ArrayPop(Array* array, void* value)
     array->length -= 1;
 }
 
+void ArrayShift(Array* array, void* value)
+{
+    assert(array->length > 0);
+
+    memcpy(value, &array->data[0], array->itemSize);
+
+    memmove(&array->data[0], &array->data[1], array->length - 1);
+    array->length -= 1;
+}
+
 void ArrayInsert(Array* array, int index, const void* value)
 {
     assert(index >= 0 && index < array->length);

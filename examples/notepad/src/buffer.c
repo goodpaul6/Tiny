@@ -46,7 +46,7 @@ void InitDefaultBuffer(Buffer* buf)
     buf->numDefns = 0;
 }
 
-bool OpenFile(Buffer* buf, const char* filename)
+bool MyOpenFile(Buffer* buf, const char* filename)
 {
     FILE* f = fopen(filename, "r");
 
@@ -112,7 +112,7 @@ bool OpenFile(Buffer* buf, const char* filename)
     return true;
 }
 
-bool WriteFile(Buffer* buf, const char* filename)
+bool MyWriteFile(Buffer* buf, const char* filename)
 {
     FILE* f = fopen(filename, "w");
 

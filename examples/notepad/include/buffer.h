@@ -43,8 +43,8 @@ typedef struct
 
 void InitDefaultBuffer(Buffer* buf);
 
-bool OpenFile(Buffer* buf, const char* filename);
-bool WriteFile(const Buffer* buf, const char* filename);
+bool MyOpenFile(Buffer* buf, const char* filename);
+bool MyWriteFile(const Buffer* buf, const char* filename);
 
 const char* GetLine(Buffer* buf, int y);
 void SetLine(Buffer* buf, int y, const char* text);

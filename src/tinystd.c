@@ -244,6 +244,16 @@ static Tiny_Value Lib_ArrayPop(Tiny_StateThread* thread, const Tiny_Value* args,
     return value;
 }
 
+static Tiny_Value Lib_ArrayShift(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+	Array* array = Tiny_ToAddr(args[0]);
+
+    Tiny_Value value;
+    ArrayShift(array, &value);
+
+    return value;
+}
+
 static void DictProtectFromGC(void* p)
 {
 	Dict* d = p;
@@ -570,6 +580,7 @@ void Tiny_BindStandardArray(Tiny_State* state)
 	Tiny_BindFunction(state, "array_len", Lib_ArrayLen);
 	Tiny_BindFunction(state, "array_push", Lib_ArrayPush);
 	Tiny_BindFunction(state, "array_pop", Lib_ArrayPop);
+	Tiny_BindFunction(state, "array_shift", Lib_ArrayShift);
 }
 
 void Tiny_BindStandardDict(Tiny_State* state)
