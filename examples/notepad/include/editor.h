@@ -1,6 +1,7 @@
 #pragma once
 
 #define MAX_COMMAND_LENGTH  512
+#define MAX_FILENAME_LENGTH 256
 #define MAX_TEMP_LINES      1024
 
 #include "tiny.h"
@@ -13,7 +14,8 @@ typedef enum
 	MODE_NORMAL,
 	MODE_INSERT,
 	MODE_VISUAL_LINE,
-    MODE_COMMAND
+    MODE_COMMAND,
+	MODE_FORWARD_SEARCH
 } Mode;
 
 typedef struct
@@ -44,8 +46,11 @@ typedef struct Editor
 
     float elapsed;
 
-    // When we enter command mode, all read characters are put into this buffer
+    // When we enter command/search mode, all read characters are put into this buffer
     char cmd[MAX_COMMAND_LENGTH];
+
+    // Whenever file is opened, this is set and can be retrieved by script
+    char filename[MAX_FILENAME_LENGTH];
 
     // We hold onto this screen for input
     Tigr* screen;
@@ -55,6 +60,9 @@ typedef struct Editor
     Tiny_StateThread thread;
 
     int updateFunction;
+
+    // If this is set, scripts will be reloaded
+    bool shouldReloadScripts;
 } Editor;
 
 void InitEditor(Editor* ed);

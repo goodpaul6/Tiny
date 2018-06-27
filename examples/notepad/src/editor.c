@@ -26,8 +26,8 @@ static void MoveTo(Editor* ed, int x, int y)
         if(ed->cur.x > len) ed->cur.x = len;
     } else {
         if(ed->cur.x >= len) ed->cur.x = len - 1;
-		// 0 is an exception
-		if (ed->cur.x < 0) ed->cur.x = 0;
+        // 0 is an exception
+        if (ed->cur.x < 0) ed->cur.x = 0;
     }
 
     // Make sure the cursor is on the page
@@ -35,11 +35,19 @@ static void MoveTo(Editor* ed, int x, int y)
         ed->scrollY = ed->cur.y;
     }
 
-    if(ed->cur.y >= ed->scrollY + LINES_PER_PAGE) {
-		ed->scrollY = ed->cur.y - LINES_PER_PAGE + 1;
+    if(ed->cur.y >= ed->scrollY + LINES_PER_PAGE - 1) {
+        ed->scrollY = ed->cur.y - LINES_PER_PAGE + 1;
     }
 
     ed->blinkTime = 0;
+}
+
+static Tiny_Value Lib_ReloadScriptsNextFrame(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    Editor* ed = thread->userdata;
+    ed->shouldReloadScripts = true;
+
+    return Tiny_Null;
 }
 
 static Tiny_Value Lib_Exit(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -96,6 +104,91 @@ static Tiny_Value Lib_Substr(Tiny_StateThread* thread, const Tiny_Value* args, i
     return Tiny_NewString(thread, sub);
 }
 
+static Tiny_Value Lib_Strtod(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    assert(count == 1);
+
+    const char* s = Tiny_ToString(args[0]);
+
+    assert(s);
+
+    return Tiny_NewNumber((double)strtod(s, NULL));
+}
+
+static bool MoveToFirstOccuranceOfString(Editor* ed, const char* s, bool searchUp)
+{
+    bool found = false;
+    int y = ed->cur.y;
+
+    while(!found) {
+        int end = ed->buf.numLines;
+        int wrapStart = 0;
+        int move = 1;
+
+        if(searchUp) {
+            end = 0;
+            move = -1;
+            wrapStart = ed->buf.numLines;
+        }
+
+        for(int i = y; i != end; i += move) {
+            const char* line = ed->buf.lines[i];
+
+            if(i == ed->cur.y && y != wrapStart) {
+                line += ed->cur.x;
+            }
+
+            const char* s = strstr(line, ed->cmd);
+            if(s) {
+                MoveTo(ed, s - ed->buf.lines[i], i);
+                return true;
+            }
+        }
+
+        if(y == wrapStart) break;
+        y = wrapStart;
+
+        if(!found) {
+            StatusTime = 0;
+            strcpy(Status, "Search wrapped around.");
+        }
+    }
+
+    return found;
+}
+
+static Tiny_Value Lib_MoveToFirstOccuranceOfString(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    Editor* ed = thread->userdata;
+
+    assert(count == 2);
+
+    const char* s = Tiny_ToString(args[0]);
+
+    assert(s);
+
+    bool searchUp = Tiny_ToBool(args[1]);
+
+    return Tiny_NewBool(MoveToFirstOccuranceOfString(ed, s, searchUp));
+}
+
+static Tiny_Value Lib_SetTokenColor(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    assert(count == 4);
+
+    int tokenType = (int)Tiny_ToNumber(args[0]);
+
+    assert(tokenType >= 0 && tokenType < NUM_TOKEN_TYPES);
+
+    int r = (int)Tiny_ToNumber(args[1]);
+    int g = (int)Tiny_ToNumber(args[2]);
+    int b = (int)Tiny_ToNumber(args[3]);
+
+    SetTokenColor(tokenType, r, g, b);
+
+    return Tiny_Null;
+}
+
 static Tiny_Value Lib_StoreTempLine(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 1);
@@ -142,29 +235,36 @@ static Tiny_Value Lib_GetTempLine(Tiny_StateThread* thread, const Tiny_Value* ar
 static Tiny_Value Lib_Floor(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 1);
-	return Tiny_NewNumber((double)floor(Tiny_ToNumber(args[0])));
+    return Tiny_NewNumber((double)floor(Tiny_ToNumber(args[0])));
 }
 
 static Tiny_Value Lib_Ceil(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 1);
-	return Tiny_NewNumber((double)ceil(Tiny_ToNumber(args[0])));
+    return Tiny_NewNumber((double)ceil(Tiny_ToNumber(args[0])));
 }
 
 static Tiny_Value Lib_OpenFile(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 1);
 
-	Editor* ed = thread->userdata;
+    Editor* ed = thread->userdata;
 
     if(OpenFile(&ed->buf, Tiny_ToString(args[0]))) {
         int fileOpened = Tiny_GetFunctionIndex(ed->state, "file_opened");
 
         if(fileOpened >= 0) {
-            Tiny_CallFunction(thread, fileOpened, args, 1);
+            const char* s = Tiny_ToString(args[0]);
+            
+            const Tiny_Value margs[] = {
+                Tiny_NewString(thread, estrdup(s))
+            };
+
+            Tiny_CallFunction(thread, fileOpened, margs, 1);
         }
 
         MoveTo(ed, 0, 0);
+        strcpy(ed->filename, Tiny_ToString(args[0]));
 
         return Tiny_NewBool(true);
     }
@@ -182,7 +282,13 @@ static Tiny_Value Lib_WriteFile(Tiny_StateThread* thread, const Tiny_Value* args
         int fileWritten = Tiny_GetFunctionIndex(ed->state, "file_written");
 
         if(fileWritten >= 0) {
-            Tiny_CallFunction(thread, fileWritten, args, 1);
+			const char* s = Tiny_ToString(args[0]);
+
+			const Tiny_Value margs[1] = {
+				Tiny_NewString(thread, estrdup(s))
+			};
+
+            Tiny_CallFunction(thread, fileWritten, margs, 1);
         }
 
         return Tiny_NewBool(true);
@@ -191,8 +297,15 @@ static Tiny_Value Lib_WriteFile(Tiny_StateThread* thread, const Tiny_Value* args
     return Tiny_NewBool(false);
 }
 
+static Tiny_Value Lib_GetCmd(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    return Tiny_NewConstString(((Editor*)thread->userdata)->cmd);
+}
+
 static Tiny_Value Lib_SetStatus(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
+    StatusTime = 0; 
+
     const char* fmt = Tiny_ToString(args[0]);
     char* s = Status;
 
@@ -223,48 +336,48 @@ static Tiny_Value Lib_SetStatus(Tiny_StateThread* thread, const Tiny_Value* args
 
 static Tiny_Value Lib_GetVstartX(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	Editor* ed = thread->userdata;
-	assert(ed->mode == MODE_VISUAL_LINE);
+    Editor* ed = thread->userdata;
+    assert(ed->mode == MODE_VISUAL_LINE);
 
-	return Tiny_NewNumber((double)ed->vStart.x);
+    return Tiny_NewNumber((double)ed->vStart.x);
 }
 
 static Tiny_Value Lib_GetVstartY(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	Editor* ed = thread->userdata;
-	assert(ed->mode == MODE_VISUAL_LINE);
+    Editor* ed = thread->userdata;
+    assert(ed->mode == MODE_VISUAL_LINE);
 
-	return Tiny_NewNumber((double)ed->vStart.y);
+    return Tiny_NewNumber((double)ed->vStart.y);
 }
 
 static Tiny_Value Lib_GetMode(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     Editor* ed = thread->userdata;
-	return Tiny_NewNumber((double)ed->mode);
+    return Tiny_NewNumber((double)ed->mode);
 }
 
 static void SetMode(Editor* ed, Mode mode)
 {
-	ed->mode = mode;
+    ed->mode = mode;
 
-	if (ed->mode == MODE_VISUAL_LINE) {
-		ed->vStart = ed->cur;
-	} else if(ed->mode == MODE_COMMAND) {
+    if (ed->mode == MODE_VISUAL_LINE) {
+        ed->vStart = ed->cur;
+    } else if(ed->mode == MODE_COMMAND || ed->mode == MODE_FORWARD_SEARCH) {
         ed->cmd[0] = 0;
     }
 
-	MoveTo(ed, ed->cur.x, ed->cur.y);
+    MoveTo(ed, ed->cur.x, ed->cur.y);
 }
 
 static Tiny_Value Lib_SetMode(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	assert(count == 1);
+    assert(count == 1);
 
     Editor* ed = thread->userdata;
 
     SetMode(ed, (int)Tiny_ToNumber(args[0]));
 
-	return Tiny_Null;
+    return Tiny_Null;
 }
 
 static Tiny_Value Lib_SetChar(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -280,13 +393,13 @@ static Tiny_Value Lib_SetChar(Tiny_StateThread* thread, const Tiny_Value* args, 
 
 static Tiny_Value Lib_RemoveChar(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	Editor* ed = thread->userdata;
+    Editor* ed = thread->userdata;
 
-	assert(count == 0);
+    assert(count == 0);
 
-	RemoveChar(&ed->buf, ed->cur.x, ed->cur.y);
+    RemoveChar(&ed->buf, ed->cur.x, ed->cur.y);
 
-	return Tiny_Null;
+    return Tiny_Null;
 }
 
 static Tiny_Value Lib_InsertChar(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -295,9 +408,9 @@ static Tiny_Value Lib_InsertChar(Tiny_StateThread* thread, const Tiny_Value* arg
 
     assert(count == 1);
 
-	InsertChar(&ed->buf, ed->cur.x, ed->cur.y, (char)Tiny_ToNumber(args[0]));
+    InsertChar(&ed->buf, ed->cur.x, ed->cur.y, (char)Tiny_ToNumber(args[0]));
 
-	return Tiny_Null;
+    return Tiny_Null;
 }
 
 static Tiny_Value Lib_InsertString(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -306,9 +419,9 @@ static Tiny_Value Lib_InsertString(Tiny_StateThread* thread, const Tiny_Value* a
 
     assert(count == 1);
 
-	InsertString(&ed->buf, ed->cur.x, ed->cur.y, Tiny_ToString(args[0]));
+    InsertString(&ed->buf, ed->cur.x, ed->cur.y, Tiny_ToString(args[0]));
 
-	return Tiny_Null;
+    return Tiny_Null;
 }
 
 static Tiny_Value Lib_LineCount(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -417,7 +530,7 @@ static Tiny_Value Lib_InsertEmptyLine(Tiny_StateThread* thread, const Tiny_Value
     } else {
         assert(count == 0);
         InsertEmptyLine(&ed->buf, ed->cur.y);
-		ed->cur.x = 0;
+        ed->cur.x = 0;
     }
 
     return Tiny_Null;
@@ -437,14 +550,14 @@ static Tiny_Value Lib_GetY(Tiny_StateThread* thread, const Tiny_Value* args, int
 
 static Tiny_Value Lib_MoveTo(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	Editor* ed = thread->userdata;
+    Editor* ed = thread->userdata;
 
-	assert(count == 2);
+    assert(count == 2);
 
     int x = (int)Tiny_ToNumber(args[0]);
     int y = (int)Tiny_ToNumber(args[1]);
 
-	MoveTo(ed, x, y);
+    MoveTo(ed, x, y);
 
     return Tiny_Null;
 }
@@ -458,7 +571,7 @@ static Tiny_Value Lib_Move(Tiny_StateThread* thread, const Tiny_Value* args, int
     int x = (int)Tiny_ToNumber(args[0]);
     int y = (int)Tiny_ToNumber(args[1]);
 
-	MoveTo(ed, ed->cur.x + x, ed->cur.y + y);
+    MoveTo(ed, ed->cur.x + x, ed->cur.y + y);
 
     return Tiny_Null;
 }
@@ -473,12 +586,38 @@ static Tiny_Value Lib_ReadChar(Tiny_StateThread* thread, const Tiny_Value* args,
     return Tiny_NewNumber((double)tigrReadChar(ed->screen));
 }
 
+static Tiny_Value Lib_GetCommand(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+	Editor* ed = thread->userdata;
+
+	return Tiny_NewConstString(ed->cmd);
+}
+
+static Tiny_Value Lib_GetFilename(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    Editor* ed = thread->userdata;
+
+    return Tiny_NewConstString(ed->filename);
+}
+
 static void BindFunctions(Tiny_State* state)
 {
-	Tiny_BindConstNumber(state, "MODE_INSERT", (double)MODE_INSERT);
-	Tiny_BindConstNumber(state, "MODE_NORMAL", (double)MODE_NORMAL);
-	Tiny_BindConstNumber(state, "MODE_VISUAL_LINE", (double)MODE_VISUAL_LINE);
-	Tiny_BindConstNumber(state, "MODE_COMMAND", (double)MODE_COMMAND);
+    Tiny_BindConstNumber(state, "MODE_INSERT", (double)MODE_INSERT);
+    Tiny_BindConstNumber(state, "MODE_NORMAL", (double)MODE_NORMAL);
+    Tiny_BindConstNumber(state, "MODE_VISUAL_LINE", (double)MODE_VISUAL_LINE);
+    Tiny_BindConstNumber(state, "MODE_COMMAND", (double)MODE_COMMAND);
+    Tiny_BindConstNumber(state, "MODE_FORWARD_SEARCH", (double)MODE_FORWARD_SEARCH);
+
+    Tiny_BindConstNumber(state, "TOK_DIRECTIVE", (double)TOK_DIRECTIVE);
+    Tiny_BindConstNumber(state, "TOK_IDENT", (double)TOK_IDENT);
+    Tiny_BindConstNumber(state, "TOK_KEYWORD", (double)TOK_KEYWORD);
+    Tiny_BindConstNumber(state, "TOK_SPACE", (double)TOK_SPACE);
+    Tiny_BindConstNumber(state, "TOK_STRING", (double)TOK_STRING);
+    Tiny_BindConstNumber(state, "TOK_CHAR", (double)TOK_CHAR);
+    Tiny_BindConstNumber(state, "TOK_NUM", (double)TOK_NUM);
+    Tiny_BindConstNumber(state, "TOK_DEFINITION", (double)TOK_DEFINITION);
+    Tiny_BindConstNumber(state, "TOK_COMMENT", (double)TOK_COMMENT);
+    Tiny_BindConstNumber(state, "TOK_SPECIAL_COMMENT", (double)TOK_SPECIAL_COMMENT);
 
     Tiny_BindFunction(state, "exit", Lib_Exit);
 
@@ -486,9 +625,12 @@ static void BindFunctions(Tiny_State* state)
     Tiny_BindFunction(state, "strspn", Lib_Strspn);
     Tiny_BindFunction(state, "stridx", Lib_Stridx);
     Tiny_BindFunction(state, "substr", Lib_Substr);
+    Tiny_BindFunction(state, "strtod", Lib_Strtod);
 
     Tiny_BindFunction(state, "floor", Lib_Floor);
     Tiny_BindFunction(state, "ceil", Lib_Ceil);
+
+    Tiny_BindFunction(state, "set_token_color", Lib_SetTokenColor);
 
     Tiny_BindFunction(state, "store_temp_line", Lib_StoreTempLine);
     Tiny_BindFunction(state, "clear_temp_lines", Lib_ClearTempLines);
@@ -499,9 +641,10 @@ static void BindFunctions(Tiny_State* state)
     Tiny_BindFunction(state, "write_file", Lib_WriteFile);
 
     Tiny_BindFunction(state, "set_status", Lib_SetStatus);
+    Tiny_BindFunction(state, "get_command", Lib_GetCommand);
 
-	Tiny_BindFunction(state, "get_vstart_x", Lib_GetVstartX);
-	Tiny_BindFunction(state, "get_vstart_y", Lib_GetVstartY);
+    Tiny_BindFunction(state, "get_vstart_x", Lib_GetVstartX);
+    Tiny_BindFunction(state, "get_vstart_y", Lib_GetVstartY);
 
     Tiny_BindFunction(state, "get_mode", Lib_GetMode);
     Tiny_BindFunction(state, "set_mode", Lib_SetMode);
@@ -523,9 +666,41 @@ static void BindFunctions(Tiny_State* state)
     Tiny_BindFunction(state, "get_y", Lib_GetY);
 
     Tiny_BindFunction(state, "move_to", Lib_MoveTo);
+    Tiny_BindFunction(state, "move_to_first_occurance_of_string", Lib_MoveToFirstOccuranceOfString);
     Tiny_BindFunction(state, "move", Lib_Move);
 
     Tiny_BindFunction(state, "read_char", Lib_ReadChar);
+
+    Tiny_BindFunction(state, "get_filename", Lib_GetFilename);
+    Tiny_BindFunction(state, "reload_scripts_next_frame", Lib_ReloadScriptsNextFrame);
+}
+
+static void ReloadScripts(Editor* ed)
+{
+	// Copy global variables and heap
+
+    if(ed->state) {
+        Tiny_DestroyThread(&ed->thread);
+        Tiny_DeleteState(ed->state);
+    }
+
+    ed->state = Tiny_CreateState();
+
+    BindFunctions(ed->state);
+
+    Tiny_CompileFile(ed->state, "scripts/colors.tiny");
+    Tiny_CompileFile(ed->state, "scripts/main.tiny");
+
+    Tiny_InitThread(&ed->thread, ed->state);
+    Tiny_StartThread(&ed->thread);
+
+    ed->thread.userdata = ed;
+
+    while(Tiny_ExecuteCycle(&ed->thread));
+
+    ed->updateFunction = Tiny_GetFunctionIndex(ed->state, "update");
+
+    assert(ed->updateFunction >= 0);
 }
 
 void InitEditor(Editor* ed)
@@ -543,26 +718,13 @@ void InitEditor(Editor* ed)
     InitDefaultBuffer(&ed->buf);
 
     // Setup script
-    ed->state = Tiny_CreateState();
-
-    BindFunctions(ed->state);
-
-    Tiny_CompileFile(ed->state, "scripts/main.tiny");
-
-    Tiny_InitThread(&ed->thread, ed->state);
-    Tiny_StartThread(&ed->thread);
-
-    ed->thread.userdata = ed;
-
-    while(Tiny_ExecuteCycle(&ed->thread));
-
-    ed->updateFunction = Tiny_GetFunctionIndex(ed->state, "update");
-
-    assert(ed->updateFunction >= 0);
+    ReloadScripts(ed);
 }
 
 void FileOpened(Editor* ed, const char* name)
 {
+    strcpy(ed->filename, name);
+
     int fileOpened = Tiny_GetFunctionIndex(ed->state, "file_opened");
 
     MoveTo(ed, 0, 0);
@@ -578,6 +740,11 @@ void FileOpened(Editor* ed, const char* name)
 
 void UpdateEditor(Editor* ed, Tigr* screen)
 {
+    if(ed->shouldReloadScripts) {
+        ReloadScripts(ed);
+        ed->shouldReloadScripts = false;
+    }
+
     ed->screen = screen;
 
     float diff = tigrTime();
@@ -590,32 +757,42 @@ void UpdateEditor(Editor* ed, Tigr* screen)
     }
 
     if(ed->mode == MODE_COMMAND) {
+        ed->blinkTime = 1.0f;
+    }
+
+    if(ed->mode == MODE_FORWARD_SEARCH) {
+        ed->blinkTime = 0;
+    }
+
+    if(ed->mode == MODE_COMMAND || ed->mode == MODE_FORWARD_SEARCH) {
         int ch = tigrReadChar(screen);
 
         if(ch > 0) {
             if(ch == 10) {
-                // Submit command
-                int handleCommand = Tiny_GetFunctionIndex(ed->state, "handle_command");
+                if(ed->mode == MODE_COMMAND) {
+                    // Submit command
+                    int handleCommand = Tiny_GetFunctionIndex(ed->state, "handle_command");
 
-                if(handleCommand >= 0) {
-                    const Tiny_Value args[] = {
-                        Tiny_NewConstString(ed->cmd)
-                    };
+                    if(handleCommand >= 0) {
+                        const Tiny_Value args[] = {
+                            Tiny_NewConstString(ed->cmd)
+                        };
 
-                    Tiny_CallFunction(&ed->thread, handleCommand, args, 1);
+                        Tiny_CallFunction(&ed->thread, handleCommand, args, 1);
+                    }
                 }
-				
-				SetMode(ed, MODE_NORMAL);
-			} else if (ch == 8) {
-				// Backspace
-				char* s = ed->cmd;
-				while (*s++);
 
-				if (s > ed->cmd) {
-					s -= 2;
-					*s = 0;
-				}
-			} else if (ch == 27) {
+                SetMode(ed, MODE_NORMAL);
+            } else if (ch == 8) {
+                // Backspace
+                char* s = ed->cmd;
+                while (*s++);
+
+                if (s > ed->cmd) {
+                    s -= 2;
+                    *s = 0;
+                }
+            } else if (ch == 27) {
                 ed->cmd[0] = 0;
                 SetMode(ed, MODE_NORMAL);
             } else {
@@ -623,21 +800,27 @@ void UpdateEditor(Editor* ed, Tigr* screen)
                 while(*s++);
 
                 if(s >= ed->cmd + MAX_COMMAND_LENGTH) {
-                    // Command is too long, just go back to normal mode
+                    // It's is too long, just go back to normal mode
                     SetMode(ed, MODE_NORMAL);
-                    strcpy(Status, "Command was too long.");
+
+                    StatusTime = 0;
+                    strcpy(Status, "Text was too long.");
                 } else {
-					s -= 1;
+                    s -= 1;
                     *s++ = (char)ch;
                     *s = 0;
                 }
+            }
+
+            if(ed->mode == MODE_FORWARD_SEARCH) {
+                MoveToFirstOccuranceOfString(ed, ed->cmd, false);
             }
         }
     } else {
         if(Status[0]) {
             StatusTime += diff;
 
-            if(StatusTime > 3.0f) {
+            if(StatusTime > 2.0f) {
                 Status[0] = 0;
                 StatusTime = 0;
             }
@@ -654,3 +837,4 @@ void DestroyEditor(Editor* ed)
     Tiny_DestroyThread(&ed->thread);
     Tiny_DeleteState(ed->state);
 }
+

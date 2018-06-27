@@ -13,13 +13,13 @@
 int main(int argc, char** argv)
 {
     Tigr* screen = tigrWindow(640, 480, "Tiny Notepad", TIGR_FIXED | TIGR_2X);
-
+    
     tigrSetPostFX(screen, 0, 0, 0.5f, 1.1f);
-
+    
     static Editor ed;
-
+    
     InitEditor(&ed);
-
+      
     if(argc > 1) {
         OpenFile(&ed.buf, argv[1]);
         FileOpened(&ed, argv[1]);
@@ -40,5 +40,4 @@ int main(int argc, char** argv)
 
     return 0;
 }
-
 

@@ -79,7 +79,7 @@ bool OpenFile(Buffer* buf, const char* filename)
 
                 buf->numLines = curLine;
                 fclose(f);
-                return;
+				return true;
             }
 
             if (curChar >= MAX_LINE_LENGTH - 1) {
@@ -93,12 +93,13 @@ bool OpenFile(Buffer* buf, const char* filename)
 				}
 			} else {
 				buf->lines[curLine][curChar++] = last;
-			}
+			}    
         }
 
         last = getc(f);
     }
 
+    buf->lines[curLine][curChar] = 0;
 	buf->numLines = curLine + 1;
 
     fclose(f);
@@ -119,6 +120,8 @@ bool WriteFile(Buffer* buf, const char* filename)
     for(int i = 0; i < buf->numLines; ++i) {
         fprintf(f, "%s\n", buf->lines[i]);
     }
+
+    fclose(f);
 
     return true;
 }

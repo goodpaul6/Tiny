@@ -11,23 +11,6 @@
 #define MAX_TOKEN_LENGTH 256
 #define MAX_TOKENS 128
 
-typedef enum
-{
-    TOK_DIRECTIVE,
-    TOK_IDENT,
-    TOK_KEYWORD,
-    TOK_SPACE,
-    TOK_STRING,
-    TOK_CHAR,
-	TOK_NUM,
-	TOK_DEFINITION,
-	TOK_COMMENT,
-	TOK_SPECIAL_COMMENT,
-    TOK_MULTILINE_COMMENT_START,    // Just the /*
-    TOK_MULTILINE_COMMENT_END,       // Just the */
-    NUM_TOKEN_TYPES
-} TokenType;
-
 typedef struct
 {
     TokenType type;
@@ -35,6 +18,21 @@ typedef struct
 } Token;
 
 char Status[MAX_STATUS_LENGTH];
+
+#define RGB(r, g, b) { b, g, r, 255 }
+
+static TPixel TokenColors[NUM_TOKEN_TYPES] = {
+    RGB(60, 60, 60),
+    RGB(200, 200, 200),
+    RGB(40, 40, 150),
+    RGB(0, 0, 0),
+    RGB(40, 150, 40),
+    RGB(130, 130, 130),
+    RGB(150, 150, 40),
+    RGB(150, 30, 150),
+    RGB(20, 80, 20),
+    RGB(200, 120, 40)
+};
 
 // Returns number of tokens extracted
 static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxTokens)
@@ -98,7 +96,10 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
 				(strcmp(lexeme, "false") == 0) ||
 				(strcmp(lexeme, "true") == 0) ||
 				(strcmp(lexeme, "static") == 0) ||
-				(strcmp(lexeme, "return") == 0)) {
+				(strcmp(lexeme, "return") == 0) ||
+                (strcmp(lexeme, "func") == 0) ||
+                (strcmp(lexeme, "or") == 0) ||
+                (strcmp(lexeme, "and") == 0)) {
 				tokens[curTok].type = TOK_KEYWORD;
 			}
 
@@ -189,6 +190,11 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
     return curTok;
 }
 
+void SetTokenColor(TokenType type, int r, int g, int b)
+{
+    TokenColors[type] = tigrRGB(r, g, b);
+}
+
 void DrawEditor(Tigr* screen, Editor* ed)
 {
     int y = 0;
@@ -197,18 +203,7 @@ void DrawEditor(Tigr* screen, Editor* ed)
 
     TigrFont* font = tfont;
 
-    const TPixel tokenColors[NUM_TOKEN_TYPES] = {
-        tigrRGB(60, 60, 60),
-        tigrRGB(200, 200, 200),
-        tigrRGB(40, 40, 150),
-        tigrRGB(0, 0, 0),
-        tigrRGB(40, 150, 40),
-        tigrRGB(130, 130, 130),
-        tigrRGB(150, 150, 40),
-        tigrRGB(150, 30, 150),
-        tigrRGB(20, 80, 20),
-        tigrRGB(200, 120, 40)
-    };
+    const TPixel* tokenColors = TokenColors;
 
     // Whether we're inside a multiline comment
     bool insideComment = false;
@@ -344,12 +339,14 @@ void DrawEditor(Tigr* screen, Editor* ed)
         y += tigrTextHeight(font, buf->lines[i]);
     }
 
-	if(Status[0] || ed->mode == MODE_COMMAND) {
+	if(Status[0] || ed->mode == MODE_COMMAND || ed->mode == MODE_FORWARD_SEARCH) {
 		// print status/command
         static char buf[MAX_COMMAND_LENGTH];
         
         if(ed->mode == MODE_COMMAND) {
             sprintf(buf, ":%s", ed->cmd);
+        } else if(ed->mode == MODE_FORWARD_SEARCH) {
+            sprintf(buf, "/%s", ed->cmd);
         } else {
             strcpy(buf, Status);
         }

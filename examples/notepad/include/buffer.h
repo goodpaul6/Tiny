@@ -4,7 +4,7 @@
 
 #define MAX_NUM_LINES       4096
 #define MAX_LINE_LENGTH     512
-#define MAX_TRACKED_DEFNS	128
+#define MAX_TRACKED_DEFNS    128
 #define MAX_DEFN_LENGTH     256
 
 typedef enum
@@ -13,6 +13,22 @@ typedef enum
     FILE_TINY,
     FILE_UNKNOWN
 } Filetype;
+
+typedef enum
+{
+    EDIT_SET_LINE,
+    EDIT_INSERT_EMPTY_LINE,
+    EDIT_REMOVE_LINE,
+    EDIT_INSERT_CHAR,
+    EDIT_INSERT_STRING,
+    EDIT_TERMINATE_LINE,
+    EDIT_REMOVE_CHAR
+} UndoableEditType;
+
+typedef struct
+{
+    UndoableEditType type;
+} UndoableEdit;
 
 typedef struct
 { 
@@ -43,3 +59,4 @@ void RemoveChar(Buffer* buf, int x, int y);
 
 // Puts a null terminator at pos
 void TerminateLine(Buffer* buf, int x, int y);
+

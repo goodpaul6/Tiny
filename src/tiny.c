@@ -798,13 +798,8 @@ static int ReadInteger(Tiny_StateThread* thread)
 {
     assert(thread->state);
 
-	int val = 0;
-	Word* wp = (Word*)(&val);
-	for(int i = 0; i < 4; ++i)
-	{
-		*wp = thread->state->program[thread->pc++];
-		++wp;
-	}
+	int val = *(int*)(&thread->state->program[thread->pc]);
+	thread->pc += sizeof(int) / sizeof(Word);
 
 	return val;
 }
@@ -1655,7 +1650,7 @@ static void ReportErrorV(FILE* f, const char* fileName, int line, const char* s,
 			}
 		}
 
-        while(last != '\n') {
+        while(last != '\n' && last != EOF) {
 			// Print all lines within 3 lines
 			if (putLine) {
 				fputc(last, stderr);
@@ -2816,6 +2811,8 @@ void Tiny_CompileFile(Tiny_State* state, const char* filename)
     CompileState(state, prog);
 
 	DeleteProgram(prog);
+
+    fclose(file);
 
 	state->curFile = NULL;
 }
