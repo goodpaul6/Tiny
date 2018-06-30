@@ -6,6 +6,7 @@
 #include "tigr.h"
 #include "display.h"
 #include "editor.h"
+#include "tiny_detail.h"
 
 static float StatusTime = 0;
 

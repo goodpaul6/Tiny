@@ -3,7 +3,6 @@
 #include "tiny.h"
 
 #define MAX_TOK_LEN		256
-#define MAX_PROG_LEN	10000
 #define MAX_STACK		256
 #define MAX_INDIR		512
 #define MAX_ARGS		32
@@ -71,19 +70,18 @@ typedef struct sSymbol
 			struct sSymbol** locals;     // array
 		} func;
 
-		struct
-		{
-			Tiny_ForeignFunction callee;
-			int index;
-		} foreignFunc;
+        struct
+        {
+            int index, nargs;
+            Tiny_ForeignFunction callee;
+        } foreignFunc;
 	};
 } Symbol;
 
 typedef struct Tiny_State
 {
 	// Program info
-	Word program[MAX_PROG_LEN];
-	int programLength;
+    Word* program;      // array
     
     int numGlobalVars;
 

@@ -77,6 +77,11 @@ typedef struct Tiny_StateThread
     int indirStack[TINY_THREAD_INDIR_SIZE];
     int indirStackSize;
 
+    // These keep track of what file/line of source code
+    // the instruction at the current PC originated from
+    const char* fileName;
+    int lineNumber;
+
     // Userdata pointer. Set to NULL when InitThread is called. Use it for whatever you want
     void* userdata;
 } Tiny_StateThread;
@@ -126,7 +131,14 @@ const Tiny_NativeProp* Tiny_GetProp(const Tiny_Value value);
 
 Tiny_State* Tiny_CreateState(void);
 
+// If nargs < 0, then the function accepts any number of arguments, otherwise
+// they're checked at compile time
+void Tiny_BindFunctionNargs(Tiny_State* state, const char* name, int nargs, Tiny_ForeignFunction func);
+
+// This calls Tiny_BindFunctionNargs with nargs = -1 (so the function takes any 
+// number of args)
 void Tiny_BindFunction(Tiny_State* state, const char* name, Tiny_ForeignFunction func);
+
 void Tiny_BindConstNumber(Tiny_State* state, const char* name, double value);
 void Tiny_BindConstString(Tiny_State* state, const char* name, const char* value);
 

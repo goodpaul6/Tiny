@@ -17,15 +17,6 @@ static bool Done;
 
 void DrawEditor(Tigr* screen, Editor* editor);
 
-static int EditorThreadFunc(void* arg)
-{
-    while(!Done) {
-        UpdateEditor(&GEditor, screen);
-    }
-
-    return 0;
-}
-
 int main(int argc, char** argv)
 {
     screen = tigrWindow(640, 480, "Tiny Notepad", TIGR_FIXED | TIGR_2X);
@@ -41,13 +32,10 @@ int main(int argc, char** argv)
         FileOpened(&GEditor, argv[1]);
     }
 
-    thrd_t editorThread;
-
-    thrd_create(&editorThread, EditorThreadFunc, NULL);
-
     while(!tigrClosed(screen)) {
         tigrClear(screen, tigrRGB(20, 20, 20));
     
+        UpdateEditor(&GEditor, screen);
         DrawEditor(screen, &GEditor);
         
         tigrUpdate(screen); 
@@ -55,12 +43,7 @@ int main(int argc, char** argv)
     
     tigrFree(screen);
 
-    Done = true;
-
-    thrd_join(editorThread, NULL);
-
     DestroyEditor(&GEditor);
     
     return 0;
 }
-

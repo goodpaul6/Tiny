@@ -15,7 +15,8 @@ typedef enum
 	MODE_INSERT,
 	MODE_VISUAL_LINE,
     MODE_COMMAND,
-	MODE_FORWARD_SEARCH
+	MODE_FORWARD_SEARCH,
+    MODE_DEBUGGER
 } Mode;
 
 typedef struct

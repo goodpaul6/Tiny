@@ -66,12 +66,12 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
         } else if (isascii(*line) && isalpha(*line)) {
             tokens[curTok].type = TOK_IDENT;
             int i = 0;
-			
+            
             while (isalnum(*line) || *line == '_') {
                 tokens[curTok].lexeme[i++] = *line++;
-				if (!isascii(*line)) {
-					break;
-				}
+                if (!isascii(*line)) {
+                    break;
+                }
             }
 
             tokens[curTok].lexeme[i] = '\0';
@@ -103,7 +103,8 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
                 (strcmp(lexeme, "func") == 0) ||
                 (strcmp(lexeme, "or") == 0) ||
                 (strcmp(lexeme, "and") == 0) ||
-                (strcmp(lexeme, "not") == 0)) {
+                (strcmp(lexeme, "not") == 0) ||
+                (strcmp(lexeme, "case") == 0)) {
                 tokens[curTok].type = TOK_KEYWORD;
             }
 
@@ -183,15 +184,15 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
 
             curTok += 1;
         } else {
-			if (!isascii(*line)) {
-				tokens[curTok].type = TOK_CHAR;
-				tokens[curTok].lexeme[0] = 223;
-				tokens[curTok].lexeme[1] = '\0';
-				curTok += 1;
+            if (!isascii(*line)) {
+                tokens[curTok].type = TOK_CHAR;
+                tokens[curTok].lexeme[0] = 223;
+                tokens[curTok].lexeme[1] = '\0';
+                curTok += 1;
 
-				line += 1;
-				continue;
-			}
+                line += 1;
+                continue;
+            }
 
             tokens[curTok].type = TOK_CHAR;
             tokens[curTok].lexeme[0] = *line++;

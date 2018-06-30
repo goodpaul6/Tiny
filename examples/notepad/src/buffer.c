@@ -121,7 +121,11 @@ bool MyWriteFile(Buffer* buf, const char* filename)
     }
 
     for(int i = 0; i < buf->numLines; ++i) {
-        fprintf(f, "%s\n", buf->lines[i]);
+		if (i + 1 == buf->numLines) {
+			fprintf(f, "%s", buf->lines[i]);
+		} else {
+			fprintf(f, "%s\n", buf->lines[i]);
+		}
     }
       
     fclose(f);

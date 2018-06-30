@@ -12,7 +12,6 @@ func push_hop() {
     }
     
     array_push(hop_buffer, get_y()) 
-    array_clear(unhop_buffer)
 }
 
 func pop_hop() {
@@ -37,12 +36,8 @@ func pop_unhop() {
     }
     
     y := array_pop(unhop_buffer) 
-    
-    if array_len(hop_buffer) >= max_hop_buffer_len {
-        array_shift(hop_buffer) 
-    }
-    
-    array_push(hop_buffer, get_y())
+     
+    push_hop()
     
     move_to(0, y)
 }
@@ -97,6 +92,7 @@ func handle_command(cmd) {
         exit(0)
     } else if stridx(cmd, 0) >= '0' and stridx(cmd, 0) <= '9' {
         // Jump to line
+        push_hop()
         move_to(get_x(), strtod(cmd) - 1)
     } else if stridx(cmd, 0) == '.' {
         reload_scripts_next_frame()
@@ -218,6 +214,18 @@ func dedent_line(i) {
             remove_char()
             move(-1, 0) 
         }
+    }
+}
+
+// dir = -1 go up, dir = 1 go down
+func find_line_with_matching_brace(dir)
+{
+    end := 0
+    if dir > 0 {
+        end = line_count()
+    }
+    
+    for i := get_y(); i != end; i += dir {
     }
 }
 
@@ -724,8 +732,3 @@ func update() {
     if get_mode() == MODE_INSERT update_insert_mode()
     else if get_mode() == MODE_NORMAL or get_mode() == MODE_VISUAL_LINE update_normal_mode()
 }
-
-
-
-
-
