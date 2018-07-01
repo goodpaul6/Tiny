@@ -482,6 +482,19 @@ static int RegisterString(const char* string)
     return NumStrings - 1; 
 }
 
+static const Symbol* GetPrimTag(SymbolType type)
+{
+    static Symbol prims[5] = {
+        { SYM_TAG_VOID, (char*)"void", },
+        { SYM_TAG_BOOL, (char*)"bool", },
+        { SYM_TAG_NUM, (char*)"num" },
+        { SYM_TAG_STR, (char*)"str" },
+        { SYM_TAG_ANY, (char*)"any" }
+    };
+
+    return &prims[type - SYM_TAG_VOID];
+}
+
 static Symbol* Symbol_create(SymbolType type, const char* name, const Tiny_State* state)
 {
     Symbol* sym = emalloc(sizeof(Symbol));
@@ -619,9 +632,10 @@ static Symbol* DeclareGlobalVar(Tiny_State* state, const char* name)
 // so the first argument is actually at -nargs position relative to frame pointer
 // We could reverse it, but this works out nicely for Foreign calls since we can just supply
 // a pointer to the initial arg instead of reversing them.
-static Symbol* DeclareArgument(Tiny_State* state, const char* name, int nargs)
+static Symbol* DeclareArgument(Tiny_State* state, const char* name, const Symbol* tag, int nargs)
 {
     assert(state->currFunc);
+    assert(tag);
 
     for(int i = 0; i < sb_count(state->currFunc->func.args); ++i) {
         Symbol* sym = state->currFunc->func.args[i];
@@ -639,6 +653,7 @@ static Symbol* DeclareArgument(Tiny_State* state, const char* name, int nargs)
     newNode->var.scopeEnded = false;
     newNode->var.index = -nargs + sb_count(state->currFunc->func.args);
     newNode->var.scope = 0;                                // These should be accessible anywhere in the function
+    newNode->var.tag = tag;
 
     sb_push(state->currFunc->func.args, newNode);
     
@@ -1599,6 +1614,8 @@ typedef struct sExpr
     const char* fileName;
     int lineNumber;
 
+    const Symbol* tag;
+
     union
     {
         bool boolean;
@@ -1673,6 +1690,8 @@ static Expr* Expr_create(ExprType type, const Tiny_State* state)
     exp->fileName = state->fileName;
     exp->lineNumber = state->lineNumber;
     exp->type = type;
+
+    exp->tag = NULL;
     
     return exp;
 }
@@ -1771,6 +1790,27 @@ static void ExpectToken(Tiny_State* state, int tok, const char* msg)
     }
 }
 
+static const Symbol* ParseType(Tiny_State* state, FILE* in)
+{
+    ExpectToken(state, TOK_IDENT, "Expected identifier for typename.");
+
+    const Symbol* s = NULL;
+
+    if(strcmp(TokenBuffer, "void") == 0) s = GetPrimTag(SYM_TAG_VOID);
+    else if(strcmp(TokenBuffer, "bool") == 0) s = GetPrimTag(SYM_TAG_BOOL);
+    else if(strcmp(TokenBuffer, "num") == 0) s = GetPrimTag(SYM_TAG_NUM);
+	else if(strcmp(TokenBuffer, "str") == 0) s = GetPrimTag(SYM_TAG_STR);
+    else if(strcmp(TokenBuffer, "any") == 0) s = GetPrimTag(SYM_TAG_ANY);
+
+	if (!s) {
+		ReportError(state, "%s doesn't name a type.", TokenBuffer);
+	}
+
+	GetNextToken(state, in);
+
+	return s;
+}
+
 static Expr* ParseIf(Tiny_State* state, FILE* in)
 {
     Expr* exp = Expr_create(EXP_IF, state);
@@ -1843,6 +1883,7 @@ static Expr* ParseFunc(Tiny_State* state, FILE* in)
 
     int nargs = 0;
     char* argNames[MAX_ARGS] = { 0 };
+    const Symbol* argTypes[MAX_ARGS] = { 0 };
 
     while(CurTok != ')')
     {
@@ -1854,6 +1895,14 @@ static Expr* ParseFunc(Tiny_State* state, FILE* in)
         argNames[nargs++] = estrdup(TokenBuffer);
         GetNextToken(state, in);
 
+        if(CurTok != ':') {
+            ReportError(state, "Expected ':' after %s", argNames[nargs - 1]);
+        }
+
+        GetNextToken(state, in);
+
+        argTypes[nargs - 1] = ParseType(state, in);
+
         if (CurTok != ')' && CurTok != ',')
         {
             ReportError(state, "Expected ')' or ',' after parameter name in function parameter list.");
@@ -1863,11 +1912,17 @@ static Expr* ParseFunc(Tiny_State* state, FILE* in)
     }
 
     for (int i = 0; i < nargs; ++i) {
-        DeclareArgument(state, argNames[i], nargs);
+        DeclareArgument(state, argNames[i], argTypes[i], nargs);
         free(argNames[i]);
     }
 
     GetNextToken(state, in);
+
+    ExpectToken(state, ':', "Expected ':' after func prototype.");
+
+    GetNextToken(state, in);
+
+    exp->proc.decl->func.returnTag = ParseType(state, in);
 
     OpenScope(state);
 
@@ -2024,6 +2079,10 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
         
         case TOK_RETURN:
         {
+            if(!state->currFunc) {
+                ReportError(state, "Attempted to return from outside a function. Why? Why would you do that? Why would you do any of that?");
+            }
+
             GetNextToken(state, in);
             Expr* exp = Expr_create(EXP_RETURN, state);
             if(CurTok == ';')
@@ -2031,6 +2090,10 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
                 GetNextToken(state, in);    
                 exp->retExpr = NULL;
                 return exp;
+            }
+
+            if(state->currFunc->func.returnTag->type == SYM_TAG_VOID) {
+                ReportError(state, "Attempted to return value from function which is supposed to return nothing (void).");
             }
 
             exp->retExpr = ParseExpr(state, in);
@@ -2093,8 +2156,7 @@ static Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
 
         // They're trying to declare a variable (we can only know this when we 
         // encounter this token)
-        if (binOp == TOK_DECLARE)
-        {
+        if (binOp == TOK_DECLARE) {
             if (lhs->type != EXP_ID)
             {
                 ReportError(state, "Expected identifier to the left-hand side of ':='.\n");
@@ -2105,6 +2167,16 @@ static Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
                 lhs->id.sym = DeclareLocal(state, lhs->id.name);
             else
                 lhs->id.sym = DeclareGlobalVar(state, lhs->id.name);
+        } else if(binOp == ':') {
+            // They're trying to declare a variable with explicit type
+            if (state->currFunc)
+                lhs->id.sym = DeclareLocal(state, lhs->id.name);
+            else
+                lhs->id.sym = DeclareGlobalVar(state, lhs->id.name);
+
+			GetNextToken(state, in);
+
+			lhs->id.sym->var.tag = ParseType(state, in);
         }
 
         GetNextToken(state, in);
@@ -2167,6 +2239,265 @@ static Expr** ParseProgram(Tiny_State* state, FILE* in)
     }
 
     return NULL;
+}
+
+static const char* GetTagName(const Symbol* tag)
+{
+    assert(tag);
+    return tag->name;
+}
+
+// Checks if types can be narrowed/widened to be equal
+static bool CompareTags(const Symbol* a, const Symbol* b)
+{
+    if(a->type == SYM_TAG_VOID) {
+        return b->type == SYM_TAG_VOID;
+    }
+    
+    if(a->type == SYM_TAG_ANY || b->type == SYM_TAG_ANY) {
+        return true;
+    }
+
+    return a->type == b->type;
+}
+
+static void ResolveTypes(Tiny_State* state, Expr* exp)
+{
+    if(exp->tag) return;
+
+    switch(exp->type)
+    {
+        case EXP_NULL: exp->tag = GetPrimTag(SYM_TAG_ANY); break;
+        case EXP_BOOL: exp->tag = GetPrimTag(SYM_TAG_BOOL); break;
+        case EXP_NUM: exp->tag = GetPrimTag(SYM_TAG_NUM); break;
+        case EXP_STRING: exp->tag = GetPrimTag(SYM_TAG_STR); break;
+        
+        case EXP_ID: {
+            if(!exp->id.sym) {
+                ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name);
+            }
+
+            assert(exp->id.sym->type == SYM_GLOBAL ||
+                   exp->id.sym->type == SYM_LOCAL ||
+                   exp->id.sym->type == SYM_CONST);
+
+            if(exp->id.sym->type != SYM_CONST) {
+                assert(exp->id.sym->var.tag);
+
+                exp->tag = exp->id.sym->var.tag;
+            } else {
+                exp->tag = exp->id.sym->constant.isString ? GetPrimTag(SYM_TAG_STR) : GetPrimTag(SYM_TAG_NUM);    
+            }
+        } break;
+        
+        case EXP_CALL: {
+            Symbol* func = ReferenceFunction(state, exp->call.calleeName);
+
+            if(!func) {
+                ReportErrorE(state, exp, "Calling undeclared function '%s'.\n", exp->call.calleeName);
+            }
+
+			if (func->type == SYM_FOREIGN_FUNCTION) {
+				exp->tag = GetPrimTag(SYM_TAG_ANY);
+			} else {
+				for (int i = 0; i < sb_count(exp->call.args); ++i) {
+					ResolveTypes(state, exp->call.args[i]);
+
+					const Symbol* argSym = func->func.args[i];
+
+					if (!CompareTags(exp->call.args[i]->tag, argSym->var.tag)) {
+						ReportErrorE(state, exp->call.args[i],
+							"Argument %i is supposed to be a %s but you supplied a %s\n",
+							i + 1, GetTagName(exp->call.args[i]->tag),
+							GetTagName(argSym->var.tag));
+					}
+				}
+
+				exp->tag = func->func.returnTag;
+			}
+        } break;
+
+        case EXP_PAREN: {
+            ResolveTypes(state, exp->paren);
+
+            exp->tag = exp->paren->tag;
+        } break;
+        
+        case EXP_BINARY: {
+            switch(exp->binary.op) {
+                case '+': case '-': case '*': case '/': case '%': {
+                    ResolveTypes(state, exp->binary.lhs);
+                    ResolveTypes(state, exp->binary.rhs);
+
+                    if(!CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_NUM)) ||
+                       !CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_NUM))) {
+                        ReportErrorE(state, exp, "Left and right hand side of binary '%c' must be numbers, but they're %s and %s",
+                                GetTagName(exp->binary.lhs->tag),
+                                GetTagName(exp->binary.rhs->tag));
+                    }
+                    
+                    exp->tag = GetPrimTag(SYM_TAG_NUM);
+                } break;
+
+                case TOK_AND: case TOK_OR: {
+                    ResolveTypes(state, exp->binary.lhs);
+                    ResolveTypes(state, exp->binary.rhs);
+
+                    if(!CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_BOOL)) ||
+                       !CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_BOOL))) {
+                        ReportErrorE(state, exp, "Left and right hand side of binary and/or must be bools, but they're %s and %s",
+                                GetTagName(exp->binary.lhs->tag),
+                                GetTagName(exp->binary.rhs->tag));
+                    }
+
+                    exp->tag = GetPrimTag(SYM_TAG_BOOL);
+                } break;
+
+				case '>': case '<': case TOK_LTE: case TOK_GTE: {                    
+                    ResolveTypes(state, exp->binary.lhs);
+                    ResolveTypes(state, exp->binary.rhs);
+
+                    if(!CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_NUM)) ||
+                       !CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_NUM))) {
+                        ReportErrorE(state, exp, "Left and right hand side of binary comparison must be numbers, but they're %s and %s",
+                                GetTagName(exp->binary.lhs->tag),
+                                GetTagName(exp->binary.rhs->tag));
+                    }
+
+                    exp->tag = GetPrimTag(SYM_TAG_BOOL);
+                } break;
+
+				case TOK_EQUALS: case TOK_NOTEQUALS: {
+                    ResolveTypes(state, exp->binary.lhs);
+                    ResolveTypes(state, exp->binary.rhs);
+
+					if (exp->binary.lhs->tag->type == SYM_TAG_VOID ||
+						exp->binary.rhs->tag->type == SYM_TAG_VOID) {
+						ReportErrorE(state, exp, "Attempted to check for equality with void. This is not allowed.");
+					}
+
+					exp->tag = GetPrimTag(SYM_TAG_BOOL);
+				} break;
+
+                case TOK_DECLARE: {
+                    assert(exp->binary.lhs->type == EXP_ID);
+
+                    assert(exp->binary.lhs->id.sym);
+
+                    ResolveTypes(state, exp->binary.rhs);
+
+                    if(exp->binary.rhs->tag->type == SYM_TAG_VOID) {
+                        ReportErrorE(state, exp, "Attempted to initialize variable with void expression. Don't do that.");
+                    }
+
+                    exp->binary.lhs->id.sym->var.tag = exp->binary.rhs->tag;
+
+                    exp->tag = GetPrimTag(SYM_TAG_VOID);
+                } break;
+
+				case '=': {
+                    ResolveTypes(state, exp->binary.lhs);
+                    ResolveTypes(state, exp->binary.rhs);
+
+					if (!CompareTags(exp->binary.lhs->tag, exp->binary.rhs->tag)) {
+						ReportErrorE(state, exp, "Attempted to assign a %s to a %s", GetTagName(exp->binary.lhs->tag), GetTagName(exp->binary.rhs->tag));
+					}
+
+					exp->tag = GetPrimTag(SYM_TAG_VOID);
+				} break;
+
+                default: exp->tag = GetPrimTag(SYM_TAG_VOID); break;
+            }
+        } break;
+
+        case EXP_UNARY: {
+            ResolveTypes(state, exp->unary.exp);
+
+            switch(exp->unary.op) {
+                case '-': {
+                    if(!CompareTags(exp->unary.exp->tag, GetPrimTag(SYM_TAG_NUM))) {
+                        ReportErrorE(state, exp, "Attempted to apply unary '-' to a %s.", GetTagName(exp->unary.exp->tag));
+                    }
+
+                    exp->tag = GetPrimTag(SYM_TAG_NUM);
+                } break;
+
+                case TOK_NOT: {
+                    if(!CompareTags(exp->unary.exp->tag, GetPrimTag(SYM_TAG_BOOL))) {
+                        ReportErrorE(state, exp, "Attempted to apply unary 'not' to a %s.", GetTagName(exp->unary.exp->tag));
+                    }
+
+                    exp->tag = GetPrimTag(SYM_TAG_BOOL);
+                } break;
+
+				default: assert(0); break;
+            }
+        } break;
+           
+        case EXP_BLOCK: {
+            for(int i = 0; i < sb_count(exp->block); ++i) {
+                ResolveTypes(state, exp->block[i]);
+            }
+
+            exp->tag = GetPrimTag(SYM_TAG_VOID);
+        } break;
+        
+        case EXP_PROC: {
+            ResolveTypes(state, exp->proc.body);
+
+            exp->tag = GetPrimTag(SYM_TAG_VOID);
+        } break;
+
+        case EXP_IF: {
+            ResolveTypes(state, exp->ifx.cond);
+
+            if(!CompareTags(exp->ifx.cond->tag, GetPrimTag(SYM_TAG_BOOL))) {
+                ReportErrorE(state, exp, "If condition is supposed to be a bool but its a %s", GetTagName(exp->ifx.cond->tag));
+            }
+
+            ResolveTypes(state, exp->ifx.body);
+
+            if(exp->ifx.alt) {
+                ResolveTypes(state, exp->ifx.alt);
+            }
+
+            exp->tag = GetPrimTag(SYM_TAG_VOID);
+        } break;
+
+        case EXP_RETURN: {
+            if(exp->retExpr) {
+                ResolveTypes(state, exp->retExpr);
+            }
+
+            exp->tag = GetPrimTag(SYM_TAG_VOID);
+        } break;
+
+        case EXP_WHILE: {
+            ResolveTypes(state, exp->whilex.cond);
+
+            if(!CompareTags(exp->whilex.cond->tag, GetPrimTag(SYM_TAG_BOOL))) {
+                ReportErrorE(state, exp, "While condition is supposed to be a bool but its a %s", GetTagName(exp->whilex.cond->tag));
+            }
+
+            ResolveTypes(state, exp->whilex.body);
+
+            exp->tag = GetPrimTag(SYM_TAG_VOID);
+        } break;
+
+        case EXP_FOR: {
+            ResolveTypes(state, exp->forx.init);
+            ResolveTypes(state, exp->forx.cond);
+
+            if(!CompareTags(exp->forx.cond->tag, GetPrimTag(SYM_TAG_BOOL))) {
+                ReportErrorE(state, exp, "For condition is supposed to be a bool but its a %s", GetTagName(exp->forx.cond->tag));
+            }
+
+            ResolveTypes(state, exp->forx.step);
+            ResolveTypes(state, exp->forx.body);
+
+            exp->tag = GetPrimTag(SYM_TAG_VOID);
+        } break;
+    }
 }
 
 static void CompileProgram(Tiny_State* state, Expr** program);
@@ -2800,6 +3131,10 @@ static void CompileState(Tiny_State* state, Expr** prog)
     assert(state->numFunctions == 0 || state->functionPcs);
 
     BuildForeignFunctions(state);
+
+    for(int i = 0; i < sb_count(prog); ++i) {
+        ResolveTypes(state, prog[i]);
+    }
 
     CompileProgram(state, prog);
     GenerateCode(state, OP_HALT);

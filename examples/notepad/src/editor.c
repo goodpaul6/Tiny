@@ -6,7 +6,6 @@
 #include "tigr.h"
 #include "display.h"
 #include "editor.h"
-#include "tiny_detail.h"
 
 static float StatusTime = 0;
 
@@ -881,7 +880,15 @@ void UpdateEditor(Editor* ed, Tigr* screen)
             }
 
             if(ed->mode == MODE_FORWARD_SEARCH) {
-                MoveToFirstOccuranceOfString(ed, ed->cmd, false);
+                int handleSearch = Tiny_GetFunctionIndex(ed->state, "handle_search");
+
+                if(handleSearch >= 0) {
+                    Tiny_Value args[1] = {
+                        Tiny_NewConstString(ed->cmd)
+                    };
+
+                    Tiny_CallFunction(&ed->thread, handleSearch, args, 1);
+                }
             }
         }
     } else {

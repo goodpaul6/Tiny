@@ -6,7 +6,13 @@ unhop_buffer := array()
 spaces_per_tab :: 4
 max_hop_buffer_len :: 32
 
-func push_hop() {
+func push_hop(): void {
+    if array_len(hop_buffer) > 0 {
+        if get_y() == array_get(hop_buffer, array_len(hop_buffer) - 1) {
+            return;
+        }
+    }
+
     if array_len(hop_buffer) >= max_hop_buffer_len {
         array_shift(hop_buffer)
     }
@@ -14,7 +20,7 @@ func push_hop() {
     array_push(hop_buffer, get_y()) 
 }
 
-func pop_hop() {
+func pop_hop(): void {
     if array_len(hop_buffer) <= 0 {
         return;
     }
@@ -30,7 +36,7 @@ func pop_hop() {
     move_to(0, y)
 }
 
-func pop_unhop() {
+func pop_unhop(): void {
     if array_len(unhop_buffer) <= 0 {
         return;
     }
@@ -42,20 +48,25 @@ func pop_unhop() {
     move_to(0, y)
 }
 
-func move_reset(x, y) {
+func move_reset(x: num, y: num): void {
     last_char = ' '
     move(x, y)
 }
 
-func file_opened(name) {
+func file_opened(name: str): void {
     set_status("Opened file %s", name)
 }
 
-func file_written(name) {
+func file_written(name: str): void {
     set_status("Wrote to file %s", name)
 }
 
-func handle_command(cmd) {
+func handle_search(cmd: str): void {
+    push_hop()
+    move_to_first_occurance_of_string(cmd, false)
+}
+
+func handle_command(cmd: str): void {
     if strlen(cmd) == 0 return;
 
     if stridx(cmd, 0) == 'e' {
@@ -99,7 +110,7 @@ func handle_command(cmd) {
     }
 }
 
-func apply_brace_indent() {
+func apply_brace_indent(): void {
     spaces := count_braces_down(get_y()) * spaces_per_tab
 
     move_to(0, get_y())
@@ -110,7 +121,7 @@ func apply_brace_indent() {
     }
 }
 
-func get_prev_word_x() {
+func get_prev_word_x(): num {
     i := get_x()
     s := get_line()
     
@@ -134,7 +145,7 @@ func get_prev_word_x() {
     }
 }
 
-func get_next_word_x() {
+func get_next_word_x(): num {
     i := get_x()
     s := get_line()
     len := strlen(s)
@@ -166,7 +177,7 @@ func get_next_word_x() {
     }
 }
 
-func delete_selected_lines(should_store) {
+func delete_selected_lines(should_store: bool): void {
     // TODO(Apaar): Implement asserts so that we can make sure we're in visual mode here 
     a := get_vstart_y()
     b := get_y()
@@ -200,7 +211,7 @@ func delete_selected_lines(should_store) {
     move_to(0, a)
 }
 
-func dedent_line(i) {
+func dedent_line(i: num): void {
     line := get_line(i)
     move_to(strspn(line, " ") - 1, i) 
                     
@@ -218,18 +229,19 @@ func dedent_line(i) {
 }
 
 // dir = -1 go up, dir = 1 go down
-func find_line_with_matching_brace(dir)
+func find_line_with_matching_brace(dir: num): void
 {
     end := 0
     if dir > 0 {
         end = line_count()
     }
-    
+      
     for i := get_y(); i != end; i += dir {
+        
     }
 }
 
-func indent_line(i) {    
+func indent_line(i: num): void {
     // Move to the start of the line
     move_to(strspn(get_line(i), " "), i)
 
@@ -239,7 +251,7 @@ func indent_line(i) {
     }
 }
 
-func update_normal_mode() {
+func update_normal_mode(): void {
     ch := read_char()
 
     if last_char == 'r' and ch > 0 {
@@ -257,6 +269,8 @@ func update_normal_mode() {
         if ch == 'n' {
             move(0, 1)
             s := get_command()
+            
+            push_hop()
             move_to_first_occurance_of_string(s, false) 
             
             // Space it out a bit
@@ -265,6 +279,8 @@ func update_normal_mode() {
         } else if ch == 'N' { 
             move(0, -1)
             s := get_command()
+            
+            push_hop()
             move_to_first_occurance_of_string(s, true)
             
             // Space it out a bit
@@ -613,7 +629,7 @@ func update_normal_mode() {
     }
 }
 
-func update_insert_mode() {
+func update_insert_mode(): void {
     ch := read_char()
 
     if ch == 27 {
@@ -728,7 +744,7 @@ func update_insert_mode() {
     }
 }
 
-func update() {
+func update(): void {
     if get_mode() == MODE_INSERT update_insert_mode()
     else if get_mode() == MODE_NORMAL or get_mode() == MODE_VISUAL_LINE update_normal_mode()
 }

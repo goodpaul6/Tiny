@@ -1,11 +1,11 @@
-func clamp(v, min, max) {
+func clamp(v: num, min: num, max: num): num {
     if v < min return min
     if v > max return max
     
     return v
 }
 
-func update() {
+func update(): void {
     player := get_player()
 
     accel_towards(player, 0.5)

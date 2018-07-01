@@ -1,7 +1,7 @@
 v :: 2
 frames_since_last_bullet := 10
 
-func update() {
+func update() : void {
     ang := 0  
 
     if is_key_down('W') {

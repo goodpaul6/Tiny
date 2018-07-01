@@ -1,6 +1,6 @@
 frames_since_last_spawn := (rand() % 10) * 40
 
-func update() {
+func update(): void {
     frames_since_last_spawn += 1
 
     if frames_since_last_spawn >= 400 {

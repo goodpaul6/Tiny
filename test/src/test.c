@@ -285,7 +285,7 @@ static void test_StateCompile(void)
 
     Tiny_BindFunction(state, "lequal", Lib_Lequal);
 
-    Tiny_CompileString(state, "test_compile", "func fact(n) { if n <= 1 return 1 return n * fact(n - 1) } lequal(fact(5), 120)");
+    Tiny_CompileString(state, "test_compile", "func fact(n: num): num { if n <= 1 return 1 return n * fact(n - 1) } lequal(fact(5), 120)");
 
 	static Tiny_StateThread threads[1000];
 
@@ -325,8 +325,8 @@ static void test_MultiCompileString(void)
 {
 	Tiny_State* state = Tiny_CreateState();
 
-	Tiny_CompileString(state, "test_compile_1", "func add(x, y) { return x + y }");
-	Tiny_CompileString(state, "test_compile_2", "func sub(x, y) { return x - y }");
+	Tiny_CompileString(state, "test_compile_1", "func add(x: num, y: num): num { return x + y }");
+	Tiny_CompileString(state, "test_compile_2", "func sub(x: num, y: num): num { return x - y }");
 
 	Tiny_StateThread thread;
 
@@ -353,7 +353,7 @@ static void test_TinyStateCallFunction(void)
 {
     Tiny_State* state = Tiny_CreateState();
 
-    Tiny_CompileString(state, "test_compile", "func fact(n) { if n <= 1 return 1 return n * fact(n - 1) }");
+    Tiny_CompileString(state, "test_compile", "func fact(n : num) : num { if n <= 1 return 1 return n * fact(n - 1) }");
 
 	Tiny_StateThread thread;
 
@@ -389,7 +389,7 @@ static void test_TinyStateCallMidRun(void)
 
 	Tiny_BindFunction(state, "call_func", CallFunc);
 
-	Tiny_CompileString(state, "test_compile", "func fact(n) { if n <= 1 return 1 return n * fact(n - 1) } call_func(\"fact\", 5)");
+	Tiny_CompileString(state, "test_compile", "func fact(n : num) : num { if n <= 1 return 1 return n * fact(n - 1) } call_func(\"fact\", 5)");
 
 	Tiny_StateThread thread;
 

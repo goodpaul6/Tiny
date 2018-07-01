@@ -36,7 +36,13 @@ typedef enum
 	SYM_LOCAL,
     SYM_CONST,
 	SYM_FUNCTION,
-	SYM_FOREIGN_FUNCTION
+	SYM_FOREIGN_FUNCTION,
+
+    SYM_TAG_VOID,
+    SYM_TAG_BOOL,
+    SYM_TAG_NUM,
+    SYM_TAG_STR,
+    SYM_TAG_ANY
 } SymbolType;
 
 typedef struct sSymbol
@@ -54,6 +60,8 @@ typedef struct sSymbol
 			bool initialized;	// Has the variable been assigned to?
 			bool scopeEnded;	// If true, then this variable cannot be accessed anymore
 			int scope, index;
+
+            const struct sSymbol* tag;
 		} var; // Used for both local and global
 
 		struct
@@ -68,6 +76,8 @@ typedef struct sSymbol
 
 			struct sSymbol** args;       // array
 			struct sSymbol** locals;     // array
+
+            const struct sSymbol* returnTag;
 		} func;
 
         struct

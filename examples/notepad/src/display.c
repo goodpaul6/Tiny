@@ -104,7 +104,10 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
                 (strcmp(lexeme, "or") == 0) ||
                 (strcmp(lexeme, "and") == 0) ||
                 (strcmp(lexeme, "not") == 0) ||
-                (strcmp(lexeme, "case") == 0)) {
+                (strcmp(lexeme, "case") == 0) ||
+                (strcmp(lexeme, "str") == 0) ||
+                (strcmp(lexeme, "num") == 0) ||
+                (strcmp(lexeme, "any") == 0)) {
                 tokens[curTok].type = TOK_KEYWORD;
             }
 
