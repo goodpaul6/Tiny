@@ -685,13 +685,19 @@ func update_insert_mode(): void {
         // Ctrl + backspace 
         line := get_line()
         start_x := get_prev_word_x()
- 
+      
         if strspn(line, " ") == strlen(line) {
-            if get_y() > 0 {
+            if strlen(line) == 0 {
                 remove_line()
                 move(0, -1)
                 move_to(strlen(get_line()), get_y())
+            } else {
+                while strlen(line) > 0 {
+                    move(-1, 0)
+                    remove_char()
+                }
             }
+            
             return;
         }
         

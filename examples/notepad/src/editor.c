@@ -282,11 +282,11 @@ static Tiny_Value Lib_WriteFile(Tiny_StateThread* thread, const Tiny_Value* args
         int fileWritten = Tiny_GetFunctionIndex(ed->state, "file_written");
 
         if(fileWritten >= 0) {
-			const char* s = Tiny_ToString(args[0]);
+            const char* s = Tiny_ToString(args[0]);
 
-			const Tiny_Value margs[1] = {
-				Tiny_NewString(thread, estrdup(s))
-			};
+            const Tiny_Value margs[1] = {
+                Tiny_NewString(thread, estrdup(s))
+            };
 
             Tiny_CallFunction(thread, fileWritten, margs, 1);
         }
@@ -588,9 +588,9 @@ static Tiny_Value Lib_ReadChar(Tiny_StateThread* thread, const Tiny_Value* args,
 
 static Tiny_Value Lib_GetCommand(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	Editor* ed = thread->userdata;
+    Editor* ed = thread->userdata;
 
-	return Tiny_NewConstString(ed->cmd);
+    return Tiny_NewConstString(ed->cmd);
 }
 
 static Tiny_Value Lib_GetFilename(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -612,7 +612,7 @@ static int CountBracesOnLine(Editor* ed, int line, bool* insideComments)
 
     while(*s) {
         if(*s == '"') {
-			s += 1;
+            s += 1;
             insideQuotes = !insideQuotes;
         } else if(*s == '\\') {
             s += 1;
@@ -630,18 +630,18 @@ static int CountBracesOnLine(Editor* ed, int line, bool* insideComments)
             break;
         } else if(*s == '/' && s[1] == '*') {
             *insideComments = true;
-			s += 2;
+            s += 2;
         } else if(*s == '*' && s[1] == '/') {
             *insideComments = false;
-			s += 2;
+            s += 2;
         } else if(!*insideComments && !insideQuotes) {
             if(*s == '{')
-				braces += 1;
+                braces += 1;
             else if(*s == '}') braces -= 1;
-			s += 1;
-		} else {
-			s += 1;
-		}
+            s += 1;
+        } else {
+            s += 1;
+        }
     }
 
     return braces;
