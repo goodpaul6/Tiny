@@ -42,7 +42,8 @@ typedef enum
     SYM_TAG_BOOL,
     SYM_TAG_NUM,
     SYM_TAG_STR,
-    SYM_TAG_ANY
+    SYM_TAG_ANY,
+    SYM_TAG_FOREIGN
 } SymbolType;
 
 typedef struct sSymbol

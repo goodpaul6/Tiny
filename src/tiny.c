@@ -788,6 +788,20 @@ static void ScanUntilDelim(const char** ps, char* buf)
 
 static Symbol* GetTagFromName(Tiny_State* state, const char* name);
 
+void Tiny_RegisterType(Tiny_State* state, const char* name)
+{
+    Symbol* s = GetTagFromName(state, name);
+
+    if(s) {
+        fprintf(stderr, "Type %s is already registered.", name);
+        exit(1);
+    }
+
+    s = Symbol_create(SYM_TAG_FOREIGN, name, state);
+
+    sb_push(state->globalSymbols, s);
+}
+
 void Tiny_BindFunction(Tiny_State* state, const char* sig, Tiny_ForeignFunction func)
 {
     char name[MAX_TOK_LEN];
@@ -1875,6 +1889,15 @@ static Symbol* GetTagFromName(Tiny_State* state, const char* name)
     else if(strcmp(name, "num") == 0) return GetPrimTag(SYM_TAG_NUM);
 	else if(strcmp(name, "str") == 0) return GetPrimTag(SYM_TAG_STR);
     else if(strcmp(name, "any") == 0) return GetPrimTag(SYM_TAG_ANY);
+    else {
+        for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
+            Symbol* s = state->globalSymbols[i];
+
+            if(s->type == SYM_TAG_FOREIGN && strcmp(s->name, name) == 0) {
+                return s;
+            }
+        }
+    }
 
     return NULL;
 }
@@ -2341,7 +2364,16 @@ static bool CompareTags(const Symbol* a, const Symbol* b)
         return true;
     }
 
-    return a->type == b->type;
+    if(a->type == b->type) {
+        if(a->type == SYM_TAG_FOREIGN) {
+            // Foreign tags are singletons
+            return a == b;
+        }
+
+        return true;
+    }
+
+    return false;
 }
 
 static void ResolveTypes(Tiny_State* state, Expr* exp)
