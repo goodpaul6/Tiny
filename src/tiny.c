@@ -23,24 +23,6 @@ static char Strings[MAX_STRINGS][MAX_TOK_LEN] = { 0 };
 #define emalloc(size) malloc(size)
 #define erealloc(mem, size) realloc(mem, size)
 
-#if 0
-
-void* emalloc(size_t size)
-{
-    void* data = malloc(size);
-    assert(data && "Out of memory!");
-    return data;
-}
-
-void* erealloc(void* mem, size_t newSize)
-{
-    void* newMem = realloc(mem, newSize);
-    assert(newMem && "Out of memory!");
-    return newMem;
-}
-
-#endif
-
 char* estrdup(const char* string)
 {
     char* dupString = emalloc(strlen(string) + 1);
