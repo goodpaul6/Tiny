@@ -950,25 +950,11 @@ static int ReadInteger(Tiny_StateThread* thread)
 
 static void DoPush(Tiny_StateThread* thread, Tiny_Value value)
 {
-    if(thread->sp >= MAX_STACK) 
-    {
-        fprintf(stderr, "Stack Overflow at PC: %i! (Stack size: %i)", thread->pc, thread->sp);
-        exit(1);
-    }
-
     thread->stack[thread->sp++] = value;
 }
 
 inline Tiny_Value DoPop(Tiny_StateThread* thread)
-{
-    assert(thread->state);
-
-    if(thread->sp <= 0) 
-    {
-        fprintf(stderr, "Stack Underflow at PC: %i (Inst %i)!", thread->pc, thread->state->program[thread->pc]);
-        exit(1);
-    }
-    
+{	    
     return thread->stack[--thread->sp];
 }
 
@@ -1070,9 +1056,10 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 		{
             ++thread->pc;
             
-            int i = ReadInteger(thread);
-
-            DoPush(thread, Tiny_NewInt(i));
+			thread->stack[thread->sp].type = TINY_VAL_INT;
+			thread->stack[thread->sp].i = *(int*)(&thread->state->program[thread->pc]);
+			thread->pc += 4;
+			thread->sp += 1;
 		} break;
 
 		case OP_PUSH_FLOAT:
