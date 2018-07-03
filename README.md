@@ -2,26 +2,39 @@
 Tiny is a small statically-typed language with an embeddable compiler and bytecode interpreter; it is designed to be easy to embed
 and does its best to avoid doing allocations/garbage collection.
 
-## Examples
 ```
 // Reverse polish notation calculator
-stack := array()
-op = ""
 
-while op != "quit" {
+stack := array()
+
+// The type of the 'stack' variable is inferred to be 'array'
+// I can also explicitly specify it by doing
+// stack: array = array(), but that's no fun
+
+op := ""
+
+// Constants
+plus_op     :: '+'
+minus_op    :: '-'
+mul_op      :: '*'
+div_op      :: '/'
+print_op    :: "="
+quit_op     :: "quit"
+
+while op != quit_op {
     op = input()
 
-    if strchar(op, 0) == '+' { 
+    if strchar(op, 0) == plus_op { 
         array_push(stack, array_pop(stack) + array_pop(stack))
-    } else if strchar(op, 0) == '-' {
+    } else if strchar(op, 0) == minus_op {
         array_push(stack, array_pop(stack) - array_pop(stack))
-    } else if strchar(op, 0) == '*' {
+    } else if strchar(op, 0) == mul_op {
         array_push(stack, array_pop(stack) * array_pop(stack))
-    } else if strchar(op, 0) == '/' {
+    } else if strchar(op, 0) == div_op {
         array_push(stack, array_pop(stack) / array_pop(stack))
-    } else if op == "=" {
+    } else if op == print_op {
         print(array_pop(stack))
-    } else if op != "quit" {
+    } else if op != quit_op {
         array_push(stack, ston(op))
     }
 }
@@ -31,9 +44,8 @@ while op != "quit" {
 You can use CMake to build a static library which you can integrate into your project
 like any other. Alternatively, you can just copy the few files inside `include` and `src` into your project.
 
-## Embedding
-The entire API available to the host application is supplied in `include/tiny.h`.
-Here is few examples of how you could use Tiny in your program.
+## Examples
+Here are a few examples of how Tiny can be used.
 
 ### Game Example
 
@@ -49,4 +61,3 @@ Notice how every entity in the game has a `Tiny_StateThread` encapsulating its e
 
 I got carried away and wrote a vim-like text editor using this language. 
 I wrote all the buffer manipulation and graphics code in C and then exposed an interface for the editor logic. Have a look at `examples/notepad`.
-
