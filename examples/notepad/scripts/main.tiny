@@ -336,6 +336,29 @@ func update_normal_mode(): void {
         apply_brace_indent()
         return;
     }
+   
+    if ch == '$' {
+        if last_char == 'd' or last_char == 'c' {
+            i := strlen(get_line()) - get_x()
+            
+            while i > 0 {
+                remove_char()
+                i -= 1
+            }
+            
+            if last_char == 'c' {
+                set_mode(MODE_INSERT)
+            } else {
+                move(-1, 0)
+            }
+            
+            last_char = ' '
+        } else {
+            move(strlen(get_line()), 0)
+        }
+            
+        return;
+    }
 
     if ch == '>' {
         if get_mode() != MODE_VISUAL_LINE {

@@ -572,61 +572,67 @@ static Tiny_Value Lib_Sleep(Tiny_StateThread* thread, const Tiny_Value* args, in
 
 void Tiny_BindStandardArray(Tiny_State* state)
 {
-	Tiny_BindFunction(state, "array", CreateArray);
-	Tiny_BindFunction(state, "array_clear", Lib_ArrayClear);
-	Tiny_BindFunction(state, "array_resize", Lib_ArrayResize);
-	Tiny_BindFunction(state, "array_get", Lib_ArrayGet);
-	Tiny_BindFunction(state, "array_set", Lib_ArraySet);
-	Tiny_BindFunction(state, "array_len", Lib_ArrayLen);
-	Tiny_BindFunction(state, "array_push", Lib_ArrayPush);
-	Tiny_BindFunction(state, "array_pop", Lib_ArrayPop);
-	Tiny_BindFunction(state, "array_shift", Lib_ArrayShift);
+    Tiny_RegisterType(state, "array");
+
+	Tiny_BindFunction(state, "array(...): array", CreateArray);
+	Tiny_BindFunction(state, "array_clear(array): void", Lib_ArrayClear);
+	Tiny_BindFunction(state, "array_resize(array, num): void", Lib_ArrayResize);
+	Tiny_BindFunction(state, "array_get(array, num): any", Lib_ArrayGet);
+	Tiny_BindFunction(state, "array_set(array, num, any): void", Lib_ArraySet);
+	Tiny_BindFunction(state, "array_len(array): num", Lib_ArrayLen);
+	Tiny_BindFunction(state, "array_push(array, any): void", Lib_ArrayPush);
+	Tiny_BindFunction(state, "array_pop(array): any", Lib_ArrayPop);
+	Tiny_BindFunction(state, "array_shift(array): any", Lib_ArrayShift);
 }
 
 void Tiny_BindStandardDict(Tiny_State* state)
 {
-	Tiny_BindFunction(state, "dict", CreateDict);
-	Tiny_BindFunction(state, "dict_put", Lib_DictPut);
-	Tiny_BindFunction(state, "dict_exists", Lib_DictExists);
-	Tiny_BindFunction(state, "dict_get", Lib_DictGet);
-	Tiny_BindFunction(state, "dict_remove", Lib_DictRemove);
-	Tiny_BindFunction(state, "dict_keys", Lib_DictKeys);
-	Tiny_BindFunction(state, "dict_clear", Lib_DictClear);
+    Tiny_RegisterType(state, "dict");
+
+	Tiny_BindFunction(state, "dict(...): dict", CreateDict);
+	Tiny_BindFunction(state, "dict_put(dict, str, any): void", Lib_DictPut);
+	Tiny_BindFunction(state, "dict_exists(dict, str): bool", Lib_DictExists);
+	Tiny_BindFunction(state, "dict_get(dict, str): any", Lib_DictGet);
+	Tiny_BindFunction(state, "dict_remove(dict, str): void", Lib_DictRemove);
+	Tiny_BindFunction(state, "dict_keys(dict): array", Lib_DictKeys);
+	Tiny_BindFunction(state, "dict_clear(dict): void", Lib_DictClear);
 }
 
 void Tiny_BindStandardIO(Tiny_State* state)
 {
-	Tiny_BindFunction(state, "fopen", Lib_Fopen);
-	Tiny_BindFunction(state, "fclose", Lib_Fclose);
-	Tiny_BindFunction(state, "fread", Lib_Fread);
-	Tiny_BindFunction(state, "fwrite", Lib_Fwrite);
-	Tiny_BindFunction(state, "fseek", Lib_Fseek);
-	Tiny_BindFunction(state, "fsize", Lib_Fsize);
+    Tiny_RegisterType(state, "file");
 
-	Tiny_BindFunction(state, "input", Lib_Input);
-	Tiny_BindFunction(state, "print", Lib_Print);
-	Tiny_BindFunction(state, "printf", Lib_Printf);
+	Tiny_BindFunction(state, "fopen(str, str): file", Lib_Fopen);
+	Tiny_BindFunction(state, "fclose(file): void", Lib_Fclose);
+	Tiny_BindFunction(state, "fread(file, num): void", Lib_Fread);
+	Tiny_BindFunction(state, "fwrite(file, str, ...): void", Lib_Fwrite);
+	Tiny_BindFunction(state, "fseek(file, num): void", Lib_Fseek);
+	Tiny_BindFunction(state, "fsize(file): num", Lib_Fsize);
+
+	Tiny_BindFunction(state, "input(...): void", Lib_Input);
+	Tiny_BindFunction(state, "print(...): void", Lib_Print);
+	Tiny_BindFunction(state, "printf(str, ...): void", Lib_Printf);
 }
 
 void Tiny_BindStandardLib(Tiny_State* state)
 {
-	Tiny_BindFunction(state, "strlen", Strlen);
-	Tiny_BindFunction(state, "strchar", Strchar);
+	Tiny_BindFunction(state, "strlen(str): num", Strlen);
+	Tiny_BindFunction(state, "strchar(str, num): num", Strchar);
 
-	Tiny_BindFunction(state, "strcat", Strcat);
-	Tiny_BindFunction(state, "ston", Lib_Ston);
-	Tiny_BindFunction(state, "ntos", Lib_Ntos);
+	Tiny_BindFunction(state, "strcat(str, str): str", Strcat);
+	Tiny_BindFunction(state, "ston(str): num", Lib_Ston);
+	Tiny_BindFunction(state, "ntos(num): str", Lib_Ntos);
 	
-	Tiny_BindFunction(state, "time", Lib_Time);
-	Tiny_BindFunction(state, "srand", SeedRand);
-	Tiny_BindFunction(state, "rand", Rand);
+	Tiny_BindFunction(state, "time(): num", Lib_Time);
+	Tiny_BindFunction(state, "srand(num): void", SeedRand);
+	Tiny_BindFunction(state, "rand(): num", Rand);
 
-	Tiny_BindFunction(state, "floor", Lib_Floor);
-	Tiny_BindFunction(state, "ceil", Lib_Ceil);
+	Tiny_BindFunction(state, "floor(num): num", Lib_Floor);
+	Tiny_BindFunction(state, "ceil(num): num", Lib_Ceil);
 
-	Tiny_BindFunction(state, "perf_count", Lib_PerfCount);
-	Tiny_BindFunction(state, "perf_freq", Lib_PerfFreq);
-	Tiny_BindFunction(state, "sleep", Lib_Sleep);
+	Tiny_BindFunction(state, "perf_count(): num", Lib_PerfCount);
+	Tiny_BindFunction(state, "perf_freq(): num", Lib_PerfFreq);
+	Tiny_BindFunction(state, "sleep(num): void", Lib_Sleep);
 
-	Tiny_BindFunction(state, "exit", Exit);
+	Tiny_BindFunction(state, "exit(num): void", Exit);
 }
