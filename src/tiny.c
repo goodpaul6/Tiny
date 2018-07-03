@@ -2243,7 +2243,7 @@ static int GetTokenPrec()
         case TOK_PLUSEQUAL: case TOK_MINUSEQUAL: case TOK_MULEQUAL: case TOK_DIVEQUAL:
         case TOK_MODEQUAL: case TOK_ANDEQUAL: case TOK_OREQUAL:
         case TOK_DECLARECONST:
-        case TOK_DECLARE: case '=':                        prec = 1; break;
+        case TOK_DECLARE: case ':': case '=':                        prec = 1; break;
     }
     
     return prec;
@@ -2283,6 +2283,8 @@ static Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
 			GetNextToken(state, in);
 
 			lhs->id.sym->var.tag = ParseType(state, in);
+
+            binOp = '=';
         }
 
         GetNextToken(state, in);

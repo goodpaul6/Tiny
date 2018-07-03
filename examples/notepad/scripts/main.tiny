@@ -3,7 +3,7 @@ last_char := ' '
 spaces_per_tab :: 4
 max_hop_buffer_len :: 32
 
-hop_buffer := array()
+hop_buffer = array()
 unhop_buffer := array()
 
 func push_hop(): void {
