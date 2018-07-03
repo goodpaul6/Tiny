@@ -1,4 +1,4 @@
-func clamp(v: num, min: num, max: num): num {
+func clamp(v: float, min: float, max: float): float {
     if v < min return min
     if v > max return max
     

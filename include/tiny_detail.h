@@ -1,8 +1,8 @@
 #pragma once
 
 #include "tiny.h"
+#include "tiny_lexer.h"
 
-#define MAX_TOK_LEN		256
 #define MAX_STACK		256
 #define MAX_INDIR		512
 #define MAX_ARGS		32
@@ -40,7 +40,8 @@ typedef enum
 
     SYM_TAG_VOID,
     SYM_TAG_BOOL,
-    SYM_TAG_NUM,
+    SYM_TAG_INT,
+    SYM_TAG_FLOAT,
     SYM_TAG_STR,
     SYM_TAG_ANY,
     SYM_TAG_FOREIGN
@@ -51,8 +52,7 @@ typedef struct sSymbol
 	SymbolType type;
 	char* name;
 
-    const char* fileName;
-    int lineNumber;
+    Tiny_TokenPos pos;
 
 	union
 	{
@@ -62,13 +62,20 @@ typedef struct sSymbol
 			bool scopeEnded;	// If true, then this variable cannot be accessed anymore
 			int scope, index;
 
-            const struct sSymbol* tag;
+            struct sSymbol* tag;
 		} var; // Used for both local and global
 
 		struct
 		{
-            bool isString;  // true if it's a string, false if it's a number
-			int index;
+            struct sSymbol* tag;
+
+            union
+            {
+                bool bValue;    // for bool
+                int iValue;     // for char/int
+				int fIndex;		// for float
+			    int sIndex;     // for string
+            };
 		} constant;
 
 		struct
@@ -78,7 +85,7 @@ typedef struct sSymbol
 			struct sSymbol** args;       // array
 			struct sSymbol** locals;     // array
 
-            const struct sSymbol* returnTag;
+            struct sSymbol* returnTag;
 		} func;
 
         struct
@@ -89,7 +96,7 @@ typedef struct sSymbol
             struct sSymbol** argTags;     // array
             bool varargs;
 
-            const struct sSymbol* returnTag;
+            struct sSymbol* returnTag;
 
             Tiny_ForeignFunction callee;
         } foreignFunc;
@@ -115,8 +122,5 @@ typedef struct Tiny_State
 
 	Symbol** globalSymbols;  // array
 
-	const char* fileName;
-	int lineNumber;
-
-    FILE* curFile;
+    Tiny_Lexer l;
 } Tiny_State;

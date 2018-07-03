@@ -39,8 +39,4 @@ void* _tiny_realloc(void* mem, size_t size, const char* file, int line);
 void _tiny_free(void* mem, const char* file, int line);
 #define tiny_free(mem) _tiny_free((mem), __FILE__, __LINE__)
 
-#define malloc(size) tiny_alloc(size)
-#define realloc(mem, size) tiny_realloc(mem, size)
-#define free(mem) tiny_free(mem)
-
 void tiny_destroy_mem(void);

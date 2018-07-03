@@ -1,8 +1,8 @@
-v :: 2
+v :: 2.0
 frames_since_last_bullet := 10
 
 func update() : void {
-    ang := 0  
+    ang := 0.0
 
     if is_key_down('W') {
         ang -= 90

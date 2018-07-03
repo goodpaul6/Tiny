@@ -162,10 +162,10 @@ static Tiny_Value GetX(Tiny_StateThread* thread, const Tiny_Value* args, int cou
 {
     if(count == 1) {
         // Another entity's x pos
-        return Tiny_NewNumber(((Entity*)Tiny_ToAddr(args[0]))->x);
+        return Tiny_NewFloat(((Entity*)Tiny_ToAddr(args[0]))->x);
     } else {
         // My x
-		return Tiny_NewNumber(((Entity*)thread->userdata)->x);
+		return Tiny_NewFloat(((Entity*)thread->userdata)->x);
     }
 }
 
@@ -173,10 +173,10 @@ static Tiny_Value GetY(Tiny_StateThread* thread, const Tiny_Value* args, int cou
 {
     if(count == 1) {
         // Another entity's y pos
-        return Tiny_NewNumber(((Entity*)Tiny_ToAddr(args[0]))->y);
+        return Tiny_NewFloat(((Entity*)Tiny_ToAddr(args[0]))->y);
     } else {
         // My x
-		return Tiny_NewNumber(((Entity*)thread->userdata)->y);
+		return Tiny_NewFloat(((Entity*)thread->userdata)->y);
     }
 }
 
@@ -200,7 +200,7 @@ static Tiny_Value LibRand(Tiny_StateThread* thread, const Tiny_Value* args, int 
 {
     assert(count == 0);
 
-    return Tiny_NewNumber((double)rand());
+    return Tiny_NewInt(rand());
 }
 
 static Tiny_Value DrawRect(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -212,9 +212,9 @@ static Tiny_Value DrawRect(Tiny_StateThread* thread, const Tiny_Value* args, int
             (int)Tiny_ToNumber(args[1]),
             (int)Tiny_ToNumber(args[2]),
             (int)Tiny_ToNumber(args[3]),
-            tigrRGB((int)Tiny_ToNumber(args[4]),
-                    (int)Tiny_ToNumber(args[5]),
-                    (int)Tiny_ToNumber(args[6])));
+            tigrRGB(Tiny_ToInt(args[4]),
+                    Tiny_ToInt(args[5]),
+                    Tiny_ToInt(args[6])));
 
     return Tiny_Null;
 }
@@ -264,7 +264,7 @@ static Tiny_Value GetPlayerKills(Tiny_StateThread* thread, const Tiny_Value* arg
 {
     assert(count == 0);
 
-    return Tiny_NewNumber((double)PlayerKills);
+    return Tiny_NewInt(PlayerKills);
 }
 
 int main(int argc, char** argv)
@@ -286,26 +286,26 @@ int main(int argc, char** argv)
     for(int i = 0; i < NUM_ENTITY_TYPES; ++i) {
         EntityStates[i] = Tiny_CreateState();
 
-        Tiny_BindConstNumber(EntityStates[i], "ENT_PLAYER", ENT_PLAYER);
-        Tiny_BindConstNumber(EntityStates[i], "ENT_CHASER", ENT_CHASER);
-        Tiny_BindConstNumber(EntityStates[i], "ENT_BULLET", ENT_BULLET);
-        Tiny_BindConstNumber(EntityStates[i], "ENT_SPAWNER", ENT_BULLET);
+        Tiny_BindConstInt(EntityStates[i], "ENT_PLAYER", ENT_PLAYER);
+        Tiny_BindConstInt(EntityStates[i], "ENT_CHASER", ENT_CHASER);
+        Tiny_BindConstInt(EntityStates[i], "ENT_BULLET", ENT_BULLET);
+        Tiny_BindConstInt(EntityStates[i], "ENT_SPAWNER", ENT_BULLET);
 
-        Tiny_BindConstNumber(EntityStates[i], "KEY_LEFT", TK_LEFT);
-        Tiny_BindConstNumber(EntityStates[i], "KEY_RIGHT", TK_RIGHT);
-        Tiny_BindConstNumber(EntityStates[i], "KEY_UP", TK_UP);
-        Tiny_BindConstNumber(EntityStates[i], "KEY_DOWN", TK_DOWN);
+        Tiny_BindConstInt(EntityStates[i], "KEY_LEFT", TK_LEFT);
+        Tiny_BindConstInt(EntityStates[i], "KEY_RIGHT", TK_RIGHT);
+        Tiny_BindConstInt(EntityStates[i], "KEY_UP", TK_UP);
+        Tiny_BindConstInt(EntityStates[i], "KEY_DOWN", TK_DOWN);
 
 		Tiny_RegisterType(EntityStates[i], "Ent");
 
-        Tiny_BindFunction(EntityStates[i], "get_player_kills(): num", GetPlayerKills);
+        Tiny_BindFunction(EntityStates[i], "get_player_kills(): int", GetPlayerKills);
 
         Tiny_BindFunction(EntityStates[i], "get_player(): Ent", GetPlayer);
         Tiny_BindFunction(EntityStates[i], "add_ent", LibAddEnt);
         Tiny_BindFunction(EntityStates[i], "add_bullet", AddBullet);
         Tiny_BindFunction(EntityStates[i], "is_key_down", IsKeyDown);
-        Tiny_BindFunction(EntityStates[i], "accel(num, num): void", Accel);
-        Tiny_BindFunction(EntityStates[i], "accel_angle(num, num): void", AccelAngle);
+        Tiny_BindFunction(EntityStates[i], "accel(float, float): void", Accel);
+        Tiny_BindFunction(EntityStates[i], "accel_angle(float, float): void", AccelAngle);
         Tiny_BindFunction(EntityStates[i], "accel_towards", AccelTowards);
         Tiny_BindFunction(EntityStates[i], "get_x", GetX);
         Tiny_BindFunction(EntityStates[i], "get_y", GetY);

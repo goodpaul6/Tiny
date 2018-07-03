@@ -7,6 +7,8 @@ set(SOURCES
     src/array.c
     src/dict.c
     src/tinystd.c
+    src/tiny_lexer.c
+    src/tiny_util.c
     src/t_mem.c)
 
 add_library(tiny STATIC ${SOURCES})

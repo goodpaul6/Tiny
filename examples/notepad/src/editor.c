@@ -58,19 +58,19 @@ static Tiny_Value Lib_Exit(Tiny_StateThread* thread, const Tiny_Value* args, int
 static Tiny_Value Lib_Strlen(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 1);
-    return Tiny_NewNumber((double)strlen(Tiny_ToString(args[0])));
+    return Tiny_NewInt(strlen(Tiny_ToString(args[0])));
 }
 
 static Tiny_Value Lib_Strspn(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 2);
-    return Tiny_NewNumber((double)strspn(Tiny_ToString(args[0]), Tiny_ToString(args[1])));
+    return Tiny_NewInt(strspn(Tiny_ToString(args[0]), Tiny_ToString(args[1])));
 }
 
 static Tiny_Value Lib_Stridx(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 2);
-    return Tiny_NewNumber((double)Tiny_ToString(args[0])[(int)Tiny_ToNumber(args[1])]);
+    return Tiny_NewInt(Tiny_ToString(args[0])[(int)Tiny_ToNumber(args[1])]);
 }
 
 static Tiny_Value Lib_Substr(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -112,7 +112,7 @@ static Tiny_Value Lib_Strtod(Tiny_StateThread* thread, const Tiny_Value* args, i
 
     assert(s);
 
-    return Tiny_NewNumber((double)strtod(s, NULL));
+    return Tiny_NewFloat(strtof(s, NULL));
 }
 
 static bool MoveToFirstOccuranceOfString(Editor* ed, const char* s, bool searchUp)
@@ -216,7 +216,7 @@ static Tiny_Value Lib_TempLineCount(Tiny_StateThread* thread, const Tiny_Value* 
 {
     Editor* ed = thread->userdata;
 
-    return Tiny_NewNumber((int)ed->numTempLines);
+    return Tiny_NewFloat((int)ed->numTempLines);
 }
 
 static Tiny_Value Lib_GetTempLine(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -235,13 +235,13 @@ static Tiny_Value Lib_GetTempLine(Tiny_StateThread* thread, const Tiny_Value* ar
 static Tiny_Value Lib_Floor(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 1);
-    return Tiny_NewNumber((double)floor(Tiny_ToNumber(args[0])));
+    return Tiny_NewFloat(floorf(Tiny_ToNumber(args[0])));
 }
 
 static Tiny_Value Lib_Ceil(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     assert(count == 1);
-    return Tiny_NewNumber((double)ceil(Tiny_ToNumber(args[0])));
+    return Tiny_NewFloat(ceilf(Tiny_ToNumber(args[0])));
 }
 
 static Tiny_Value Lib_OpenFile(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -339,7 +339,7 @@ static Tiny_Value Lib_GetVstartX(Tiny_StateThread* thread, const Tiny_Value* arg
     Editor* ed = thread->userdata;
     assert(ed->mode == MODE_VISUAL_LINE);
 
-    return Tiny_NewNumber((double)ed->vStart.x);
+    return Tiny_NewInt(ed->vStart.x);
 }
 
 static Tiny_Value Lib_GetVstartY(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -347,13 +347,13 @@ static Tiny_Value Lib_GetVstartY(Tiny_StateThread* thread, const Tiny_Value* arg
     Editor* ed = thread->userdata;
     assert(ed->mode == MODE_VISUAL_LINE);
 
-    return Tiny_NewNumber((double)ed->vStart.y);
+    return Tiny_NewInt(ed->vStart.y);
 }
 
 static Tiny_Value Lib_GetMode(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     Editor* ed = thread->userdata;
-    return Tiny_NewNumber((double)ed->mode);
+    return Tiny_NewInt(ed->mode);
 }
 
 static void SetMode(Editor* ed, Mode mode)
@@ -428,7 +428,7 @@ static Tiny_Value Lib_LineCount(Tiny_StateThread* thread, const Tiny_Value* args
 {
     Editor* ed = thread->userdata;
 
-    return Tiny_NewNumber((double)ed->buf.numLines);
+    return Tiny_NewInt(ed->buf.numLines);
 }
 
 static Tiny_Value Lib_GetLine(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -539,13 +539,13 @@ static Tiny_Value Lib_InsertEmptyLine(Tiny_StateThread* thread, const Tiny_Value
 static Tiny_Value Lib_GetX(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     Editor* ed = thread->userdata;
-    return Tiny_NewNumber((double)ed->cur.x);
+    return Tiny_NewInt(ed->cur.x);
 }
 
 static Tiny_Value Lib_GetY(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     Editor* ed = thread->userdata;
-    return Tiny_NewNumber((double)ed->cur.y);
+    return Tiny_NewInt(ed->cur.y);
 }
 
 static Tiny_Value Lib_MoveTo(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -583,7 +583,7 @@ static Tiny_Value Lib_ReadChar(Tiny_StateThread* thread, const Tiny_Value* args,
     assert(count == 0);
     assert(ed->screen);
 
-    return Tiny_NewNumber((double)tigrReadChar(ed->screen));
+    return Tiny_NewInt(tigrReadChar(ed->screen));
 }
 
 static Tiny_Value Lib_GetCommand(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -662,47 +662,47 @@ static Tiny_Value Lib_CountBracesDown(Tiny_StateThread* thread, const Tiny_Value
         braces += CountBracesOnLine(ed, i, &insideComment);
     }
 
-    return Tiny_NewNumber((double)braces);
+    return Tiny_NewInt(braces);
 }
 
 static void BindFunctions(Tiny_State* state)
 {
-    Tiny_BindConstNumber(state, "MODE_INSERT", (double)MODE_INSERT);
-    Tiny_BindConstNumber(state, "MODE_NORMAL", (double)MODE_NORMAL);
-    Tiny_BindConstNumber(state, "MODE_VISUAL_LINE", (double)MODE_VISUAL_LINE);
-    Tiny_BindConstNumber(state, "MODE_COMMAND", (double)MODE_COMMAND);
-    Tiny_BindConstNumber(state, "MODE_FORWARD_SEARCH", (double)MODE_FORWARD_SEARCH);
+    Tiny_BindConstInt(state, "MODE_INSERT", MODE_INSERT);
+    Tiny_BindConstInt(state, "MODE_NORMAL", MODE_NORMAL);
+    Tiny_BindConstInt(state, "MODE_VISUAL_LINE", MODE_VISUAL_LINE);
+    Tiny_BindConstInt(state, "MODE_COMMAND", MODE_COMMAND);
+    Tiny_BindConstInt(state, "MODE_FORWARD_SEARCH", MODE_FORWARD_SEARCH);
 
-    Tiny_BindConstNumber(state, "TOK_DIRECTIVE", (double)TOK_DIRECTIVE);
-    Tiny_BindConstNumber(state, "TOK_IDENT", (double)TOK_IDENT);
-    Tiny_BindConstNumber(state, "TOK_KEYWORD", (double)TOK_KEYWORD);
-    Tiny_BindConstNumber(state, "TOK_SPACE", (double)TOK_SPACE);
-    Tiny_BindConstNumber(state, "TOK_STRING", (double)TOK_STRING);
-    Tiny_BindConstNumber(state, "TOK_CHAR", (double)TOK_CHAR);
-    Tiny_BindConstNumber(state, "TOK_NUM", (double)TOK_NUM);
-    Tiny_BindConstNumber(state, "TOK_DEFINITION", (double)TOK_DEFINITION);
-    Tiny_BindConstNumber(state, "TOK_COMMENT", (double)TOK_COMMENT);
-    Tiny_BindConstNumber(state, "TOK_SPECIAL_COMMENT", (double)TOK_SPECIAL_COMMENT);
+    Tiny_BindConstInt(state, "TOK_DIRECTIVE", TOK_DIRECTIVE);
+    Tiny_BindConstInt(state, "TOK_IDENT", TOK_IDENT);
+    Tiny_BindConstInt(state, "TOK_KEYWORD", TOK_KEYWORD);
+    Tiny_BindConstInt(state, "TOK_SPACE", TOK_SPACE);
+    Tiny_BindConstInt(state, "TOK_STRING", TOK_STRING);
+    Tiny_BindConstInt(state, "TOK_CHAR", TOK_CHAR);
+    Tiny_BindConstInt(state, "TOK_NUM", TOK_NUM);
+    Tiny_BindConstInt(state, "TOK_DEFINITION", TOK_DEFINITION);
+    Tiny_BindConstInt(state, "TOK_COMMENT", TOK_COMMENT);
+    Tiny_BindConstInt(state, "TOK_SPECIAL_COMMENT", TOK_SPECIAL_COMMENT);
 
     Tiny_BindStandardArray(state);
 
-    Tiny_BindFunction(state, "exit(num): void", Lib_Exit);
+    Tiny_BindFunction(state, "exit(int): void", Lib_Exit);
 
-    Tiny_BindFunction(state, "strlen(str): num", Lib_Strlen);
-    Tiny_BindFunction(state, "strspn(str, str): num", Lib_Strspn);
-    Tiny_BindFunction(state, "stridx(str, num): num", Lib_Stridx);
-    Tiny_BindFunction(state, "substr(str, num, num): str", Lib_Substr);
-    Tiny_BindFunction(state, "strtod(str): num", Lib_Strtod);
+    Tiny_BindFunction(state, "strlen(str): int", Lib_Strlen);
+    Tiny_BindFunction(state, "strspn(str, str): int", Lib_Strspn);
+    Tiny_BindFunction(state, "stridx(str, int): int", Lib_Stridx);
+    Tiny_BindFunction(state, "substr(str, int, int): str", Lib_Substr);
+    Tiny_BindFunction(state, "strtod(str): float", Lib_Strtod);
 
-    Tiny_BindFunction(state, "floor(num): num", Lib_Floor);
-    Tiny_BindFunction(state, "ceil(num): num", Lib_Ceil);
+    Tiny_BindFunction(state, "floor(float): float", Lib_Floor);
+    Tiny_BindFunction(state, "ceil(float): float", Lib_Ceil);
 
     Tiny_BindFunction(state, "set_token_color", Lib_SetTokenColor);
 
     Tiny_BindFunction(state, "store_temp_line(str): bool", Lib_StoreTempLine);
     Tiny_BindFunction(state, "clear_temp_lines(): void", Lib_ClearTempLines);
-    Tiny_BindFunction(state, "temp_line_count(): num", Lib_TempLineCount);
-    Tiny_BindFunction(state, "get_temp_line(num): str", Lib_GetTempLine);
+    Tiny_BindFunction(state, "temp_line_count(): int", Lib_TempLineCount);
+    Tiny_BindFunction(state, "get_temp_line(int): str", Lib_GetTempLine);
 
     Tiny_BindFunction(state, "open_file(str): bool", Lib_OpenFile);
     Tiny_BindFunction(state, "write_file(str): bool", Lib_WriteFile);
@@ -710,18 +710,18 @@ static void BindFunctions(Tiny_State* state)
     Tiny_BindFunction(state, "set_status(str, ...): void", Lib_SetStatus);
     Tiny_BindFunction(state, "get_command(): str", Lib_GetCommand);
 
-    Tiny_BindFunction(state, "get_vstart_x(): num", Lib_GetVstartX);
-    Tiny_BindFunction(state, "get_vstart_y(): num", Lib_GetVstartY);
+    Tiny_BindFunction(state, "get_vstart_x(): int", Lib_GetVstartX);
+    Tiny_BindFunction(state, "get_vstart_y(): int", Lib_GetVstartY);
 
-    Tiny_BindFunction(state, "get_mode(): num", Lib_GetMode);
-    Tiny_BindFunction(state, "set_mode(num): void", Lib_SetMode);
+    Tiny_BindFunction(state, "get_mode(): int", Lib_GetMode);
+    Tiny_BindFunction(state, "set_mode(int): void", Lib_SetMode);
 
-    Tiny_BindFunction(state, "set_char(num): void", Lib_SetChar);
+    Tiny_BindFunction(state, "set_char(int): void", Lib_SetChar);
     Tiny_BindFunction(state, "remove_char(): void", Lib_RemoveChar);
-    Tiny_BindFunction(state, "insert_char(num): void", Lib_InsertChar);
+    Tiny_BindFunction(state, "insert_char(int): void", Lib_InsertChar);
     Tiny_BindFunction(state, "insert_string(str): void", Lib_InsertString);
 
-    Tiny_BindFunction(state, "line_count(): num", Lib_LineCount);
+    Tiny_BindFunction(state, "line_count(): int", Lib_LineCount);
     Tiny_BindFunction(state, "get_line(...): str", Lib_GetLine);
     Tiny_BindFunction(state, "get_line_from", Lib_GetLineFrom);
     Tiny_BindFunction(state, "set_line(...): void", Lib_SetLine);
@@ -729,19 +729,19 @@ static void BindFunctions(Tiny_State* state)
     Tiny_BindFunction(state, "insert_empty_line(...): void", Lib_InsertEmptyLine);
     Tiny_BindFunction(state, "terminate_line(...): void", Lib_TerminateLine);
 
-    Tiny_BindFunction(state, "get_x(): num", Lib_GetX);
-    Tiny_BindFunction(state, "get_y(): num", Lib_GetY);
+    Tiny_BindFunction(state, "get_x(): int", Lib_GetX);
+    Tiny_BindFunction(state, "get_y(): int", Lib_GetY);
 
-    Tiny_BindFunction(state, "move_to(num, num): void", Lib_MoveTo);
+    Tiny_BindFunction(state, "move_to(int, int): void", Lib_MoveTo);
     Tiny_BindFunction(state, "move_to_first_occurance_of_string(str, bool): void", Lib_MoveToFirstOccuranceOfString);
-    Tiny_BindFunction(state, "move(num, num): void", Lib_Move);
+    Tiny_BindFunction(state, "move(int, int): void", Lib_Move);
 
-    Tiny_BindFunction(state, "read_char(): num", Lib_ReadChar);
+    Tiny_BindFunction(state, "read_char(): int", Lib_ReadChar);
 
     Tiny_BindFunction(state, "get_filename(): str", Lib_GetFilename);
     Tiny_BindFunction(state, "reload_scripts_next_frame(): void", Lib_ReloadScriptsNextFrame);
 
-    Tiny_BindFunction(state, "count_braces_down(num): num", Lib_CountBracesDown);
+    Tiny_BindFunction(state, "count_braces_down(int): int", Lib_CountBracesDown);
 }
 
 static void ReloadScripts(Editor* ed)

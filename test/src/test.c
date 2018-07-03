@@ -259,7 +259,8 @@ static Tiny_Value Lib_Print(Tiny_StateThread* thread, const Tiny_Value* args, in
     {
         case TINY_VAL_NULL: puts("null\n"); break;
         case TINY_VAL_BOOL: puts(val.boolean ? "true\n" : "false\n"); break;
-        case TINY_VAL_NUM: printf("%g\n", val.number); break;
+        case TINY_VAL_INT: printf("%d\n", val.i); break;
+        case TINY_VAL_FLOAT: printf("%f\n", val.f); break;
         case TINY_VAL_STRING: printf("%s\n", Tiny_ToString(val)); break;
         case TINY_VAL_NATIVE: printf("native <%s at %p>\n", Tiny_GetProp(val)->name, Tiny_ToAddr(val)); break;
     }
@@ -274,7 +275,7 @@ static Tiny_Value Lib_Lequal(Tiny_StateThread* thread, const Tiny_Value* args, i
     Tiny_Value val = args[0];
     Tiny_Value cmp = args[1];
 
-    lequal((int)val.number, (int)cmp.number);
+    lequal((int)val.i, (int)cmp.i);
     
     return Tiny_Null;
 }
@@ -285,7 +286,7 @@ static void test_StateCompile(void)
 
     Tiny_BindFunction(state, "lequal", Lib_Lequal);
 
-    Tiny_CompileString(state, "test_compile", "func fact(n: num): num { if n <= 1 return 1 return n * fact(n - 1) } lequal(fact(5), 120)");
+    Tiny_CompileString(state, "test_compile", "func fact(n: int): int { if n <= 1 return 1 return n * fact(n - 1) } lequal(fact(5), 120)");
 
 	static Tiny_StateThread threads[1000];
 
@@ -325,24 +326,24 @@ static void test_MultiCompileString(void)
 {
 	Tiny_State* state = Tiny_CreateState();
 
-	Tiny_CompileString(state, "test_compile_1", "func add(x: num, y: num): num { return x + y }");
-	Tiny_CompileString(state, "test_compile_2", "func sub(x: num, y: num): num { return x - y }");
+	Tiny_CompileString(state, "test_compile_1", "func add(x: int, y: int): int { return x + y }");
+	Tiny_CompileString(state, "test_compile_2", "func sub(x: int, y: int): int { return x - y }");
 
 	Tiny_StateThread thread;
 
 	Tiny_InitThread(&thread, state);
 	
-	Tiny_Value args[] = { Tiny_NewNumber(10), Tiny_NewNumber(20) };
+	Tiny_Value args[] = { Tiny_NewInt(10), Tiny_NewInt(20) };
 
 	Tiny_Value ret = Tiny_CallFunction(&thread, Tiny_GetFunctionIndex(state, "add"), args, 2);
 
-	lok(ret.type == TINY_VAL_NUM);
-	lequal((int)ret.number, 30);
+	lok(ret.type == TINY_VAL_INT);
+	lequal(ret.i, 30);
 
 	ret = Tiny_CallFunction(&thread, Tiny_GetFunctionIndex(state, "sub"), args, 2);
 
-	lok(ret.type == TINY_VAL_NUM);
-	lequal((int)ret.number, -10);
+	lok(ret.type == TINY_VAL_INT);
+	lequal(ret.i, -10);
 
 	Tiny_DestroyThread(&thread);
 
@@ -353,7 +354,7 @@ static void test_TinyStateCallFunction(void)
 {
     Tiny_State* state = Tiny_CreateState();
 
-    Tiny_CompileString(state, "test_compile", "func fact(n : num) : num { if n <= 1 return 1 return n * fact(n - 1) }");
+    Tiny_CompileString(state, "test_compile", "func fact(n : int) : int { if n <= 1 return 1 return n * fact(n - 1) }");
 
 	Tiny_StateThread thread;
 
@@ -361,14 +362,14 @@ static void test_TinyStateCallFunction(void)
 
 	int fact = Tiny_GetFunctionIndex(state, "fact");
 
-	Tiny_Value arg = Tiny_NewNumber(5);
+	Tiny_Value arg = Tiny_NewInt(5);
 
 	Tiny_Value ret = Tiny_CallFunction(&thread, fact, &arg, 1);
 
-	lok(ret.type == TINY_VAL_NUM);
+	lok(ret.type == TINY_VAL_INT);
 	lok(Tiny_IsThreadDone(&thread));
 
-	lequal((int)ret.number, 120);
+	lequal(ret.i, 120);
 
 	Tiny_DestroyThread(&thread);
 
@@ -379,17 +380,17 @@ static Tiny_Value CallFunc(Tiny_StateThread* thread, const Tiny_Value* args, int
 {
 	Tiny_Value ret = Tiny_CallFunction(thread, Tiny_GetFunctionIndex(thread->state, Tiny_ToString(args[0])), &args[1], count - 1);
 
-	lok(ret.type == TINY_VAL_NUM);
-	lequal((int)ret.number, 120);
+	lok(ret.type == TINY_VAL_INT);
+	lequal(ret.i, 120);
 }
 
 static void test_TinyStateCallMidRun(void)
 {
 	Tiny_State* state = Tiny_CreateState();
 
-	Tiny_BindFunction(state, "call_func", CallFunc);
+	Tiny_BindFunction(state, "call_func(str, ...): any", CallFunc);
 
-	Tiny_CompileString(state, "test_compile", "func fact(n : num) : num { if n <= 1 return 1 return n * fact(n - 1) } call_func(\"fact\", 5)");
+	Tiny_CompileString(state, "test_compile", "func fact(n : int) : int { if n <= 1 return 1 return n * fact(n - 1) } call_func(\"fact\", 5)");
 
 	Tiny_StateThread thread;
 
@@ -545,8 +546,9 @@ static void test_RevPolishCalc(void)
 
     Tiny_Value num = ArrayGetValue(a, 0, Tiny_Value);
 
-    lok(num.type == TINY_VAL_NUM);
-    lequal((int)Tiny_ToNumber(num), 0);
+	// Float because ston produces float
+	lok(num.type == TINY_VAL_FLOAT);
+    lfequal(num.f, 0);
 
 	Tiny_DestroyThread(&thread);
 

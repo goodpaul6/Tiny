@@ -34,7 +34,8 @@ typedef enum
 {
     TINY_VAL_NULL,
     TINY_VAL_BOOL,
-    TINY_VAL_NUM,
+    TINY_VAL_INT,
+    TINY_VAL_FLOAT,
     TINY_VAL_STRING,
     TINY_VAL_CONST_STRING,
     TINY_VAL_NATIVE,
@@ -48,7 +49,8 @@ typedef struct Tiny_Value
     union
     {
         bool boolean;
-        double number;
+        int i;
+        float f;
         const char* cstr;   // for TINY_VAL_CONST_STRING
         void* addr;         // for TINY_VAL_LIGHT_NATIVE
         Tiny_Object* obj;
@@ -77,10 +79,10 @@ typedef struct Tiny_StateThread
     int indirStack[TINY_THREAD_INDIR_SIZE];
     int indirStackSize;
 
-    // These keep track of what file/line of source code
+    // These keep track of what file/pos of source code
     // the instruction at the current PC originated from
     const char* fileName;
-    int lineNumber;
+	int filePos;
 
     // Userdata pointer. Set to NULL when InitThread is called. Use it for whatever you want
     void* userdata;
@@ -97,7 +99,8 @@ char* estrdup(const char* string);
 void Tiny_ProtectFromGC(Tiny_Value value);
 
 Tiny_Value Tiny_NewBool(bool value);
-Tiny_Value Tiny_NewNumber(double value);
+Tiny_Value Tiny_NewInt(int i);
+Tiny_Value Tiny_NewFloat(float f);
 Tiny_Value Tiny_NewConstString(const char* string);
 Tiny_Value Tiny_NewLightNative(void* ptr);
 Tiny_Value Tiny_NewString(Tiny_StateThread* thread, char* string);
@@ -111,10 +114,24 @@ inline bool Tiny_ToBool(const Tiny_Value value)
     return value.boolean;
 }
 
-inline double Tiny_ToNumber(const Tiny_Value value)
+inline int Tiny_ToInt(const Tiny_Value value)
 {
-    if(value.type != TINY_VAL_NUM) return 0;
-    return value.number;
+    if(value.type != TINY_VAL_INT) return 0;
+    return value.i;
+}
+
+inline float Tiny_ToFloat(const Tiny_Value value)
+{
+    if(value.type != TINY_VAL_FLOAT) return 0;
+    return value.f;
+}
+
+inline float Tiny_ToNumber(const Tiny_Value value)
+{
+	if (value.type == TINY_VAL_FLOAT) return value.f;
+	if (value.type != TINY_VAL_INT) return 0;
+
+	return (float)value.i;
 }
 
 // Returns NULL if the value isn't a string/const string
@@ -132,11 +149,14 @@ const Tiny_NativeProp* Tiny_GetProp(const Tiny_Value value);
 Tiny_State* Tiny_CreateState(void);
 
 // Exposes an opaque type of the given name.
+// The same typename can be registered multiple times, but it will only be defined once.
 void Tiny_RegisterType(Tiny_State* state, const char* name);
 
 void Tiny_BindFunction(Tiny_State* state, const char* sig, Tiny_ForeignFunction func);
 
-void Tiny_BindConstNumber(Tiny_State* state, const char* name, double value);
+void Tiny_BindConstBool(Tiny_State* state, const char* name, bool b);
+void Tiny_BindConstInt(Tiny_State* state, const char* name, int i);
+void Tiny_BindConstFloat(Tiny_State* state, const char* name, float f);
 void Tiny_BindConstString(Tiny_State* state, const char* name, const char* value);
 
 void Tiny_CompileString(Tiny_State* state, const char* name, const char* string);

@@ -10,15 +10,17 @@
 #include "tiny.h"
 #include "tiny_detail.h"
 #include "stretchy_buffer.h"
+#include "tiny_lexer.h"
 #include "t_mem.h"
+#include "tiny_util.h"
 
 const Tiny_Value Tiny_Null = { TINY_VAL_NULL };
 
 static int NumNumbers = 0;
-static double Numbers[MAX_NUMBERS];
+static float Numbers[MAX_NUMBERS];
 
 static int NumStrings = 0;
-static char Strings[MAX_STRINGS][MAX_TOK_LEN] = { 0 };
+static char* Strings[MAX_STRINGS] = { 0 };
 
 #define emalloc(size) malloc(size)
 #define erealloc(mem, size) realloc(mem, size)
@@ -172,12 +174,22 @@ Tiny_Value Tiny_NewBool(bool value)
     return val;
 }
 
-Tiny_Value Tiny_NewNumber(double value)
+Tiny_Value Tiny_NewInt(int i)
 {
     Tiny_Value val;
 
-    val.type = TINY_VAL_NUM;
-    val.number = value;
+    val.type = TINY_VAL_INT;
+    val.i = i;
+
+    return val;
+}
+
+Tiny_Value Tiny_NewFloat(float f)
+{
+    Tiny_Value val;
+
+    val.type = TINY_VAL_FLOAT;
+    val.f = f;
 
     return val;
 }
@@ -211,6 +223,16 @@ Tiny_Value Tiny_NewString(Tiny_StateThread* thread, char* string)
 
 static void Symbol_destroy(Symbol* sym);
 
+static Tiny_Value Lib_ToInt(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+	return Tiny_NewInt(Tiny_ToFloat(args[0]));
+}
+
+static Tiny_Value Lib_ToFloat(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+	return Tiny_NewFloat(Tiny_ToInt(args[0]));
+}
+
 Tiny_State* Tiny_CreateState(void)
 {
     Tiny_State* state = emalloc(sizeof(Tiny_State));
@@ -228,8 +250,8 @@ Tiny_State* Tiny_CreateState(void)
     state->currFunc = NULL;
     state->globalSymbols = NULL;
 
-    state->fileName = NULL;
-    state->lineNumber = 0;
+	Tiny_BindFunction(state, "int(float): int", Lib_ToInt);
+	Tiny_BindFunction(state, "float(int): float", Lib_ToFloat);
 
     return state;
 }
@@ -271,7 +293,7 @@ void Tiny_InitThread(Tiny_StateThread* thread, const Tiny_State* state)
     thread->indirStackSize = 0;
 
     thread->fileName = NULL;
-    thread->lineNumber = -1;
+    thread->filePos = -1;
 
     thread->userdata = NULL;
 }
@@ -349,7 +371,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
     int pc, fp, sp, indirStackSize;
 
     const char* fileName = thread->fileName;
-    int lineNumber = thread->lineNumber;
+	int filePos = thread->filePos;
 
     pc = thread->pc;
     fp = thread->fp;
@@ -378,7 +400,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
     thread->indirStackSize = indirStackSize;
 
     thread->fileName = fileName;
-    thread->lineNumber = lineNumber;
+    thread->filePos = filePos;
 
     return retVal;
 }
@@ -436,7 +458,7 @@ static void GenerateIntAt(Tiny_State* state, int value, int pc)
         state->program[pc + i] = *wp++;
 }
 
-static int RegisterNumber(double value)
+static int RegisterNumber(float value)
 {
     for(int i = 0; i < NumNumbers; ++i)
     {
@@ -459,17 +481,18 @@ static int RegisterString(const char* string)
     }
 
     assert(NumStrings < MAX_STRINGS);
-    strcpy(Strings[NumStrings++], string);
+	Strings[NumStrings++] = Tiny_Strdup(string);
 
     return NumStrings - 1; 
 }
 
 static Symbol* GetPrimTag(SymbolType type)
 {
-    static Symbol prims[5] = {
+    static Symbol prims[] = {
         { SYM_TAG_VOID, (char*)"void", },
         { SYM_TAG_BOOL, (char*)"bool", },
-        { SYM_TAG_NUM, (char*)"num" },
+        { SYM_TAG_INT, (char*)"int" },
+        { SYM_TAG_FLOAT, (char*)"float" },
         { SYM_TAG_STR, (char*)"str" },
         { SYM_TAG_ANY, (char*)"any" }
     };
@@ -483,9 +506,7 @@ static Symbol* Symbol_create(SymbolType type, const char* name, const Tiny_State
 
     sym->name = estrdup(name);
     sym->type = type;
-
-    sym->fileName = state->fileName;
-    sym->lineNumber = state->lineNumber;
+	sym->pos = state->l.pos;
 
     return sym;
 }
@@ -618,7 +639,7 @@ static Symbol* DeclareGlobalVar(Tiny_State* state, const char* name)
 // so the first argument is actually at -nargs position relative to frame pointer
 // We could reverse it, but this works out nicely for Foreign calls since we can just supply
 // a pointer to the initial arg instead of reversing them.
-static Symbol* DeclareArgument(Tiny_State* state, const char* name, const Symbol* tag, int nargs)
+static Symbol* DeclareArgument(Tiny_State* state, const char* name, Symbol* tag, int nargs)
 {
     assert(state->currFunc);
     assert(tag);
@@ -672,7 +693,7 @@ static Symbol* DeclareLocal(Tiny_State* state, const char* name)
     return newNode;
 }
 
-static Symbol* DeclareConst(Tiny_State* state, const char* name, bool isString, int index)
+static Symbol* DeclareConst(Tiny_State* state, const char* name, Symbol* tag)
 {
     Symbol* sym = ReferenceVariable(state, name);
 
@@ -685,8 +706,7 @@ static Symbol* DeclareConst(Tiny_State* state, const char* name, bool isString, 
     
     Symbol* newNode = Symbol_create(SYM_CONST, name, state);
 
-    newNode->constant.index = index;
-    newNode->constant.isString = isString;
+    newNode->constant.tag = tag;
 
     sb_push(state->globalSymbols, newNode);
 
@@ -721,7 +741,7 @@ static Symbol* ReferenceFunction(Tiny_State* state, const char* name)
     return NULL;
 }
 
-static void BindFunction(Tiny_State* state, const char* name, Symbol** argTags, bool varargs, const Symbol* returnTag, Tiny_ForeignFunction func)
+static void BindFunction(Tiny_State* state, const char* name, Symbol** argTags, bool varargs, Symbol* returnTag, Tiny_ForeignFunction func)
 {
     for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
         Symbol* node = state->globalSymbols[i];
@@ -749,10 +769,22 @@ static void BindFunction(Tiny_State* state, const char* name, Symbol** argTags, 
     state->numForeignFunctions += 1;
 }
 
-static void ScanUntilDelim(const char** ps, char* buf)
+static Symbol* GetTagFromName(Tiny_State* state, const char* name);
+
+void Tiny_RegisterType(Tiny_State* state, const char* name)
+{
+    Symbol* s = GetTagFromName(state, name);
+
+	if (s) return;
+
+    s = Symbol_create(SYM_TAG_FOREIGN, name, state);
+
+    sb_push(state->globalSymbols, s);
+}
+
+static void ScanUntilDelim(const char** ps, char** buf)
 {
     const char* s = *ps;
-    int i = 0;
 
     while(*s && *s != '(' && *s != ')' && *s != ',') {
         if(isspace(*s)) {
@@ -760,35 +792,19 @@ static void ScanUntilDelim(const char** ps, char* buf)
             continue;
         }
 
-        buf[i++] = *s++;
+		sb_push(*buf, *s++);
     }
 
-    buf[i] = 0;
+	sb_push(*buf, 0);
 
     *ps = s;
 }
 
-static Symbol* GetTagFromName(Tiny_State* state, const char* name);
-
-void Tiny_RegisterType(Tiny_State* state, const char* name)
-{
-    Symbol* s = GetTagFromName(state, name);
-
-    if(s) {
-        fprintf(stderr, "Type %s is already registered.", name);
-        exit(1);
-    }
-
-    s = Symbol_create(SYM_TAG_FOREIGN, name, state);
-
-    sb_push(state->globalSymbols, s);
-}
-
 void Tiny_BindFunction(Tiny_State* state, const char* sig, Tiny_ForeignFunction func)
 {
-    char name[MAX_TOK_LEN];
+	char* name = NULL;
 
-    ScanUntilDelim(&sig, name);
+    ScanUntilDelim(&sig, &name);
 
     if(!sig[0]) {
         // Just the name
@@ -800,13 +816,16 @@ void Tiny_BindFunction(Tiny_State* state, const char* sig, Tiny_ForeignFunction 
 
     Symbol** argTags = NULL;
     bool varargs = false;
-    char buf[MAX_TOK_LEN];
+	char* buf = NULL;
 
     while(*sig != ')' && !varargs) {
-        ScanUntilDelim(&sig, buf);
+        ScanUntilDelim(&sig, &buf);
 
         if(strcmp(buf, "...") == 0) {
             varargs = true;
+
+			sb_free(buf);
+			buf = NULL;
             break;
         } else {
             Symbol* s = GetTagFromName(state, buf);
@@ -814,6 +833,9 @@ void Tiny_BindFunction(Tiny_State* state, const char* sig, Tiny_ForeignFunction 
             assert(s);
 
             sb_push(argTags, s);
+
+			sb_free(buf);
+			buf = NULL;
         }
 		
 		if (*sig == ',') ++sig;
@@ -823,28 +845,40 @@ void Tiny_BindFunction(Tiny_State* state, const char* sig, Tiny_ForeignFunction 
 
     sig += 1;
 
-    const Symbol* returnTag = GetPrimTag(SYM_TAG_ANY);
+    Symbol* returnTag = GetPrimTag(SYM_TAG_ANY);
 
     if(*sig == ':') {
         sig += 1;
 
-        ScanUntilDelim(&sig, buf);
+        ScanUntilDelim(&sig, &buf);
 
         returnTag = GetTagFromName(state, buf);
         assert(returnTag);
+
+		sb_free(buf);
     }
 
     BindFunction(state, name, argTags, varargs, returnTag, func);
 }
 
-void Tiny_BindConstNumber(Tiny_State* state, const char* name, double number)
+void Tiny_BindConstBool(Tiny_State* state, const char* name, bool b)
 {
-    DeclareConst(state, name, false, RegisterNumber(number));
+	DeclareConst(state, name, GetPrimTag(SYM_TAG_BOOL))->constant.bValue = b;
+}
+
+void Tiny_BindConstInt(Tiny_State* state, const char* name, int i)
+{
+	DeclareConst(state, name, GetPrimTag(SYM_TAG_INT))->constant.iValue = i;
+}
+
+void Tiny_BindConstFloat(Tiny_State* state, const char* name, float f)
+{
+	DeclareConst(state, name, GetPrimTag(SYM_TAG_FLOAT))->constant.fIndex = RegisterNumber(f);
 }
 
 void Tiny_BindConstString(Tiny_State* state, const char* name, const char* string)
 {
-    DeclareConst(state, name, true, RegisterString(string));
+	DeclareConst(state, name, GetPrimTag(SYM_TAG_STR))->constant.sIndex = RegisterString(string);
 }
 
 enum
@@ -853,11 +887,12 @@ enum
     OP_PUSH_TRUE,
     OP_PUSH_FALSE,
 
-    OP_PUSH_NUMBER,
+	OP_PUSH_INT,
+	OP_PUSH_FLOAT,
     OP_PUSH_STRING,
 
     OP_POP,
-    
+
     OP_ADD,
     OP_SUB,
     OP_MUL,
@@ -869,6 +904,7 @@ enum
     OP_LTE,
     OP_GT,
     OP_GTE,
+
     OP_EQU,
 
     OP_LOG_NOT,
@@ -899,7 +935,7 @@ enum
     OP_HALT,
 
     OP_FILE,
-    OP_LINE,
+    OP_POS,
 };
 
 static int ReadInteger(Tiny_StateThread* thread)
@@ -1030,14 +1066,23 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             DoPush(thread, Tiny_NewBool(false));
         } break;
 
-        case OP_PUSH_NUMBER:
-        {
+		case OP_PUSH_INT:
+		{
             ++thread->pc;
             
-            int numberIndex = ReadInteger(thread);
+            int i = ReadInteger(thread);
 
-            DoPush(thread, Tiny_NewNumber(Numbers[numberIndex]));
-        } break;
+            DoPush(thread, Tiny_NewInt(i));
+		} break;
+
+		case OP_PUSH_FLOAT:
+		{
+            ++thread->pc;
+            
+            int fIndex = ReadInteger(thread);
+
+            DoPush(thread, Tiny_NewFloat(Numbers[fIndex]));
+		} break;
 
         case OP_PUSH_STRING:
         {
@@ -1052,42 +1097,43 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
         {
             DoPop(thread);
             ++thread->pc;
-        } break;
-        
-        #define BIN_OP(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(thread); Tiny_Value val1 = DoPop(thread); DoPush(thread, Tiny_NewNumber(val1.number operator val2.number)); ++thread->pc; } break;
-        #define BIN_OP_INT(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(thread); Tiny_Value val1 = DoPop(thread); DoPush(thread, Tiny_NewNumber((int)val1.number operator (int)val2.number)); ++thread->pc; } break;
+		} break;
 
-        #define REL_OP(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(thread); Tiny_Value val1 = DoPop(thread); DoPush(thread, Tiny_NewBool(val1.number operator val2.number)); ++thread->pc; } break;
+#define BIN_OP(OP, operator) case OP_##OP: { \
+			Tiny_Value val2 = DoPop(thread); \
+			Tiny_Value val1 = DoPop(thread); \
+			if(val1.type == TINY_VAL_FLOAT && val2.type == TINY_VAL_INT) DoPush(thread, Tiny_NewFloat(val1.f operator (float)val2.i)); \
+			else if(val1.type == TINY_VAL_INT && val2.type == TINY_VAL_FLOAT) DoPush(thread, Tiny_NewFloat((float)val1.i operator val2.f)); \
+			else if(val1.type == TINY_VAL_FLOAT && val2.type == TINY_VAL_FLOAT) DoPush(thread, Tiny_NewFloat(val1.f operator val2.f)); \
+			else DoPush(thread, Tiny_NewInt(val1.i operator val2.i)); \
+			++thread->pc; \
+		} break;
 
-        case OP_MUL:
-        {
-            Tiny_Value val2 = DoPop(thread);
-            Tiny_Value val1 = DoPop(thread);
+#define BIN_OP_INT(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(thread); Tiny_Value val1 = DoPop(thread); DoPush(thread, Tiny_NewInt((int)val1.i operator (int)val2.i)); ++thread->pc; } break;
 
-            DoPush(thread, Tiny_NewNumber(val1.number * val2.number));
-
-            ++thread->pc;
-        } break;
+#define REL_OP(OP, operator) case OP_##OP: { \
+			Tiny_Value val2 = DoPop(thread); \
+			Tiny_Value val1 = DoPop(thread); \
+			if(val1.type == TINY_VAL_FLOAT && val2.type == TINY_VAL_INT) DoPush(thread, Tiny_NewBool(val1.f operator (float)val2.i)); \
+			else if(val1.type == TINY_VAL_INT && val2.type == TINY_VAL_FLOAT) DoPush(thread, Tiny_NewBool((float)val1.i operator val2.f)); \
+			else if(val1.type == TINY_VAL_FLOAT && val2.type == TINY_VAL_FLOAT) DoPush(thread, Tiny_NewBool(val1.f operator val2.f)); \
+			else DoPush(thread, Tiny_NewBool(val1.i operator val2.i)); \
+			++thread->pc; \
+		} break;
 
         BIN_OP(ADD, +)
         BIN_OP(SUB, -)
+        BIN_OP(MUL, *)
         BIN_OP(DIV, /)
         BIN_OP_INT(MOD, %)
         BIN_OP_INT(OR, |)
         BIN_OP_INT(AND, &)
         
-        case OP_LT: 
-        { 
-            Tiny_Value val2 = DoPop(thread); 
-            Tiny_Value val1 = DoPop(thread); 
-            DoPush(thread, Tiny_NewBool(val1.number < val2.number)); 
-            ++thread->pc; 
-        } break;
-        
+		REL_OP(LT, <)
         REL_OP(LTE, <=)
         REL_OP(GT, >)
         REL_OP(GTE, >=)
-
+		
         #undef BIN_OP
         #undef BIN_OP_INT
         #undef REL_OP
@@ -1105,12 +1151,14 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
                 DoPush(thread, Tiny_NewBool(false));
             else
             {
-                if (a.type == TINY_VAL_NULL)
-                    DoPush(thread, Tiny_NewBool(true));
-                else if (a.type == TINY_VAL_BOOL)
-                    DoPush(thread, Tiny_NewBool(a.boolean == b.boolean));
-                else if (a.type == TINY_VAL_NUM)
-                    DoPush(thread, Tiny_NewBool(a.number == b.number));
+				if (a.type == TINY_VAL_NULL)
+					DoPush(thread, Tiny_NewBool(true));
+				else if (a.type == TINY_VAL_BOOL)
+					DoPush(thread, Tiny_NewBool(a.boolean == b.boolean));
+				else if (a.type == TINY_VAL_INT)
+					DoPush(thread, Tiny_NewBool(a.i == b.i));
+				else if (a.type == TINY_VAL_FLOAT)
+					DoPush(thread, Tiny_NewBool(a.f == b.f));
                 else if (a.type == TINY_VAL_STRING) 
                     DoPush(thread, Tiny_NewBool(strcmp(a.obj->string, Tiny_ToString(b)) == 0));
                 else if (a.type == TINY_VAL_CONST_STRING) 
@@ -1154,7 +1202,8 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
         case OP_PRINT:
         {
             Tiny_Value val = DoPop(thread);
-            if(val.type == TINY_VAL_NUM) printf("%g\n", val.number);
+            if(val.type == TINY_VAL_INT) printf("%d\n", val.i);
+            else if(val.type == TINY_VAL_FLOAT) printf("%f\n", val.f);
             else if (val.obj->type == TINY_VAL_STRING) printf("%s\n", val.obj->string);
             else if (val.obj->type == TINY_VAL_CONST_STRING) printf("%s\n", val.cstr);
             else if (val.obj->type == TINY_VAL_NATIVE) printf("<native at %p>\n", val.obj->nat.addr);
@@ -1263,7 +1312,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
         case OP_HALT:
         {
             thread->fileName = NULL;
-            thread->lineNumber = -1;
+            thread->filePos = -1;
 
             thread->pc = -1;
         } break;
@@ -1276,12 +1325,12 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             thread->fileName = Strings[stringIndex];
         } break;
 
-        case OP_LINE:
+		case OP_POS:
         {
             ++thread->pc;
             int line = ReadInteger(thread);
 
-            thread->lineNumber = line;
+            thread->filePos = line;
         } break;
     }
 
@@ -1292,383 +1341,15 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
     return true;
 }
 
-enum
-{
-    TOK_BEGIN = -1,
-    TOK_END = -2,
-    TOK_IDENT = -3,
-    TOK_DECLARE = -4,        // :=
-    TOK_DECLARECONST = -5,    // ::
-    TOK_PLUSEQUAL = -6,        // +=
-    TOK_MINUSEQUAL = -7,    // -=
-    TOK_MULEQUAL = -8,        // *=
-    TOK_DIVEQUAL = -9,        // /=
-    TOK_MODEQUAL = -10,        // %=
-    TOK_OREQUAL    = -11,        // |=
-    TOK_ANDEQUAL = -12,        // &=
-    TOK_NUMBER = -13,
-    TOK_STRING = -14,
-    TOK_PROC = -15,
-    TOK_IF = -16,
-    TOK_EQUALS = -17,
-    TOK_NOTEQUALS = -18,
-    TOK_LTE = -19,
-    TOK_GTE = -20,
-    TOK_RETURN = -21,
-    TOK_WHILE = -22,
-    TOK_FOR = -23,
-    TOK_DO = -24,
-    TOK_THEN = -25,
-    TOK_ELSE = -26,
-    TOK_EOF = -27,
-    TOK_NOT = -28,
-    TOK_AND = -29,
-    TOK_OR = -30,
-    TOK_NULL = -31,
-    TOK_TRUE = -32,
-    TOK_FALSE = -33,
-    TOK_FOREIGN = -34
-};
-
-char TokenBuffer[MAX_TOK_LEN];
-double TokenNumber;
-
-static int Peek(FILE* in)
-{
-    int c = getc(in);
-    ungetc(c, in);
-    return c;
-}
-
-// HACK(Apaar): This is used to reset
-// the GetToken's last char after
-// we've hit the EOF of a file. Otherwise
-// it thinks it's EOFd right away.
-static bool ResetGetToken = false;
-
-static int GetToken(Tiny_State* state, FILE* in)
-{
-    static int last = ' ';
-
-    if (ResetGetToken)
-    {
-        last = ' ';
-        ResetGetToken = false;
-    }
-
-    while (isspace(last))
-    {
-        if (last == '\n')
-            ++state->lineNumber;
-
-        last = getc(in);
-    }
-
-    if(isalpha(last))
-    {
-        int i = 0;
-        while(isalnum(last) || last == '_')
-        {
-            assert(i < MAX_TOK_LEN - 1 && "Token was too long!");
-            TokenBuffer[i++] = last;
-            last = getc(in);
-        }
-        TokenBuffer[i] = '\0';
-        
-        if (strcmp(TokenBuffer, "func") == 0) return TOK_PROC;
-        if (strcmp(TokenBuffer, "if") == 0) return TOK_IF;
-        if (strcmp(TokenBuffer, "return") == 0) return TOK_RETURN;
-        if (strcmp(TokenBuffer, "while") == 0) return TOK_WHILE;
-        if (strcmp(TokenBuffer, "for") == 0) return TOK_FOR;
-        if (strcmp(TokenBuffer, "else") == 0) return TOK_ELSE;
-        if (strcmp(TokenBuffer, "not") == 0) return TOK_NOT;
-        if (strcmp(TokenBuffer, "and") == 0) return TOK_AND;
-        if (strcmp(TokenBuffer, "or") == 0) return TOK_OR;
-        if (strcmp(TokenBuffer, "null") == 0) return TOK_NULL;
-        if (strcmp(TokenBuffer, "true") == 0) return TOK_TRUE;
-        if (strcmp(TokenBuffer, "false") == 0) return TOK_FALSE;
-        
-        return TOK_IDENT;
-    }
-    
-    if(isdigit(last))
-    {
-        int i = 0;
-        while(isdigit(last) || last == '.')
-        {
-            assert(i < MAX_TOK_LEN - 1 && "Number was too long!");
-            TokenBuffer[i++] = last;
-            last = getc(in);
-        }
-        TokenBuffer[i] = '\0';
-        
-        TokenNumber = strtod(TokenBuffer, NULL);
-        return TOK_NUMBER;
-    }
-
-    if (last == '\'')
-    {
-        last = getc(in);    
-        
-        if(last == '\\') {
-            last = getc(in);
-            switch(last) {
-                case '\'': last = '\''; break;
-                case 'n': last = '\n'; break;
-                case 'r': last = '\r'; break;
-                case 't': last = '\t'; break;
-                case 'b': last = '\b'; break;
-                case 'a': last = '\a'; break;
-                case 'v': last = '\v'; break;
-                case 'f': last = '\f'; break;
-                case '\\': last = '\\'; break;
-                case '"': last = '"'; break;
-            }
-        }
-
-        TokenNumber = (double)last;    
-        last = getc(in);
-
-        if (last != '\'')
-        {
-            ReportError(state, "Expected ' to follow previous '.");
-        }
-        last = getc(in);
-
-        return TOK_NUMBER;
-    }
-    
-    if(last == '"')
-    {
-        last = getc(in);
-        int i = 0;
-        while(last != '"')
-        {
-            if (last == '\\')
-            {
-                last = getc(in);
-
-                switch (last)
-                {
-                    case 'n': last = '\n'; break;
-                    case 'r': last = '\r'; break;
-                    case 't': last = '\t'; break;
-                    case 'b': last = '\b'; break;
-                    case 'a': last = '\a'; break;
-                    case 'v': last = '\v'; break;
-                    case 'f': last = '\f'; break;
-                    case '\\': last = '\\'; break;
-                    case '"': last = '"'; break;
-                    default:
-                        if (isdigit(last)) // Octal number
-                        {
-                            int n1 = last - '0';
-                            last = getc(in);
-
-                            if (!isdigit(last))
-                            {
-                                fprintf(stderr, "Expected three digits in octal escape sequence but only got one.\n");
-                                exit(1);
-                            }
-
-                            int n2 = last - '0';
-                            last = getc(in);
-
-                            if (!isdigit(last))
-                            {
-                                fprintf(stderr, "Expected three digits in octal escape sequence but only got two.\n");
-                                exit(1);
-                            }
-
-                            int n3 = last - '0';
-                            last = n3 + n2 * 8 + n1 * 8 * 8;
-                        }
-                        else
-                        {
-                            fprintf(stderr, "Unsupported escape sequence '\\%c'.\n", last);
-                            exit(1);
-                        }
-                        break;
-                }
-            }
-
-            TokenBuffer[i++] = last;
-            last = getc(in);
-        }
-        TokenBuffer[i] = '\0';
-        
-        last = getc(in);
-        return TOK_STRING;
-    }
-
-    if(last == '#') {
-        last = getc(in);
-
-        int i = 0;
-
-        while(isalpha(last) || last == '_') {
-            assert(i < MAX_TOK_LEN - 1 && "Token was too long!");
-
-            TokenBuffer[i++] = last;
-            last = getc(in);
-        }
-
-        TokenBuffer[i] = '\0';
-
-        if(strcmp(TokenBuffer, "foreign") == 0) return TOK_FOREIGN;
-
-        ReportError(state, "Invalid directive '#%s'.\n", TokenBuffer);
-    }
-    
-    if(last == EOF)
-        return TOK_EOF;
-
-    if(last == '=')
-    {
-        if(Peek(in) == '=')
-        {
-            last = getc(in);
-            last = getc(in);
-            return TOK_EQUALS;
-        }
-    }
-    
-    if(last == '!')
-    {
-        if(Peek(in) == '=')
-        {
-            last = getc(in);
-            last = getc(in);
-            return TOK_NOTEQUALS;
-        }
-    }
-    
-    if(last == '<')
-    {
-        if(Peek(in) == '=')
-        {
-            last = getc(in);
-            last = getc(in);
-            return TOK_LTE;
-        }
-    }
-    
-    if(last == '>')
-    {
-        if(Peek(in) == '=')
-        {
-            last = getc(in);
-            last = getc(in);
-            return TOK_GTE;
-        }
-    }
-
-    if (last == ':')
-    {
-        if (Peek(in) == '=')
-        {
-            getc(in);
-            last = getc(in);
-            return TOK_DECLARE;
-        }
-        else if (Peek(in) == ':')
-        {
-            getc(in);
-            last = getc(in);
-            return TOK_DECLARECONST;
-        }
-    }
-
-    if (last == '+')
-    {
-        if (Peek(in) == '=')
-        {
-            getc(in);
-            last = getc(in);
-            return TOK_PLUSEQUAL;
-        }
-    }
-    
-    if (last == '-')
-    {
-        if (Peek(in) == '=')
-        {
-            getc(in);
-            last = getc(in);
-            return TOK_MINUSEQUAL;
-        }
-    }
-
-    if (last == '*')
-    {
-        if (Peek(in) == '=')
-        {
-            getc(in);
-            last = getc(in);
-            return TOK_MULEQUAL;
-        }
-    }
-    
-    if (last == '/')
-    {
-        if (Peek(in) == '=')
-        {
-            getc(in);
-            last = getc(in);
-            return TOK_DIVEQUAL;
-        }
-        else if(Peek(in) == '/')
-        {
-            getc(in);
-            last = getc(in);
-
-            while(last != '\n' && last != EOF) last = getc(in);
-            return GetToken(state, in);
-        }
-    }
-
-    if (last == '%')
-    {
-        if (Peek(in) == '=')
-        {
-            getc(in);
-            last = getc(in);
-            return TOK_MODEQUAL;
-        }
-    }
-
-    if (last == '&')
-    {
-        if (Peek(in) == '=')
-        {
-            getc(in);
-            last = getc(in);
-            return TOK_ANDEQUAL;
-        }
-    }
-
-    if (last == '|')
-    {
-        if (Peek(in) == '=')
-        {
-            getc(in);
-            last = getc(in);
-            return TOK_OREQUAL;
-        }
-    }
-
-    int lastChar = last;
-    last = getc(in);
-    return lastChar;
-}
-
 typedef enum
 {
     EXP_ID,
     EXP_CALL,
     EXP_NULL,
     EXP_BOOL,
-    EXP_NUM,
+    EXP_CHAR,
+    EXP_INT,
+    EXP_FLOAT,
     EXP_STRING,
     EXP_BINARY,
     EXP_PAREN,
@@ -1684,18 +1365,17 @@ typedef enum
 typedef struct sExpr
 {
     ExprType type;
+    Tiny_TokenPos pos;
 
-    const char* fileName;
-    int lineNumber;
-
-    const Symbol* tag;
+    Symbol* tag;
 
     union
     {
         bool boolean;
 
-        int number;
-        int string;
+        int iValue;
+        int fIndex;
+        int sIndex;
 
         struct
         {
@@ -1761,8 +1441,7 @@ static Expr* Expr_create(ExprType type, const Tiny_State* state)
 {
     Expr* exp = emalloc(sizeof(Expr));
 
-    exp->fileName = state->fileName;
-    exp->lineNumber = state->lineNumber;
+    exp->pos = state->l.pos;
     exp->type = type;
 
     exp->tag = NULL;
@@ -1772,63 +1451,20 @@ static Expr* Expr_create(ExprType type, const Tiny_State* state)
 
 int CurTok;
 
-static int GetNextToken(Tiny_State* state, FILE* in)
+static int GetNextToken(Tiny_State* state)
 {
-    CurTok = GetToken(state, in);
+    CurTok = Tiny_GetToken(&state->l);
     return CurTok;
 }
 
-static Expr* ParseExpr(Tiny_State* state, FILE* in);
-
-static void ReportErrorV(FILE* f, const char* fileName, int line, const char* s, va_list args)
-{
-    rewind(f);
-
-    int last;
-    
-    fputc('\n', stderr);
-
-    for(int i = 0; i < line + 4; ++i) {
-        last = getc(f);
-        
-        bool putLine = abs(line - (i + 1)) < 3;
-        
-        if (putLine) {
-            if (i == line - 1) {
-                fprintf(stderr, "%d ->\t", i + 1);
-            } else {
-                fprintf(stderr, "%d\t", i + 1);
-            }
-        }
-
-        while(last != '\n' && last != EOF) {
-            // Print all lines within 3 lines
-            if (putLine) {
-                fputc(last, stderr);
-            }
-
-            last = getc(f);
-        }
-
-        if (putLine) {
-            fputc('\n', stderr);
-        }
-    }
-
-    fputc('\n', stderr);
-
-    fprintf(stderr, "%s(%i): ", fileName, line);
-
-    vfprintf(stderr, s, args);
-    fputc('\n', stderr); 
-}
+static Expr* ParseExpr(Tiny_State* state);
 
 static void ReportError(Tiny_State* state, const char* s, ...)
 {
     va_list args;
     va_start(args, s);
 
-    ReportErrorV(state->curFile, state->fileName, state->lineNumber, s, args);
+    Tiny_ReportErrorV(state->l.fileName, state->l.src, state->l.pos, s, args);
 
     va_end(args);
     exit(1);
@@ -1839,7 +1475,7 @@ static void ReportErrorE(Tiny_State* state, const Expr* exp, const char* s, ...)
     va_list args;
     va_start(args, s);
 
-    ReportErrorV(state->curFile, exp->fileName, exp->lineNumber, s, args);
+    Tiny_ReportErrorV(state->l.fileName, state->l.src, exp->pos, s, args);
 
     va_end(args);
     exit(1);
@@ -1850,7 +1486,7 @@ static void ReportErrorS(Tiny_State* state, const Symbol* sym, const char* s, ..
     va_list args;
     va_start(args, s);
 
-    ReportErrorV(state->curFile, sym->fileName, sym->lineNumber, s, args);
+    Tiny_ReportErrorV(state->l.fileName, state->l.src, sym->pos, s, args);
 
     va_end(args);
     exit(1);
@@ -1858,17 +1494,15 @@ static void ReportErrorS(Tiny_State* state, const Symbol* sym, const char* s, ..
 
 static void ExpectToken(Tiny_State* state, int tok, const char* msg)
 {
-    if (CurTok != tok)
-    {
-        ReportError(state, msg);
-    }
+    if (CurTok != tok) ReportError(state, msg);
 }
 
 static Symbol* GetTagFromName(Tiny_State* state, const char* name)
 {
     if(strcmp(name, "void") == 0) return GetPrimTag(SYM_TAG_VOID);
     else if(strcmp(name, "bool") == 0) return GetPrimTag(SYM_TAG_BOOL);
-    else if(strcmp(name, "num") == 0) return GetPrimTag(SYM_TAG_NUM);
+	else if(strcmp(name, "int") == 0) return GetPrimTag(SYM_TAG_INT);
+	else if(strcmp(name, "float") == 0) return GetPrimTag(SYM_TAG_FLOAT);
 	else if(strcmp(name, "str") == 0) return GetPrimTag(SYM_TAG_STR);
     else if(strcmp(name, "any") == 0) return GetPrimTag(SYM_TAG_ANY);
     else {
@@ -1884,34 +1518,34 @@ static Symbol* GetTagFromName(Tiny_State* state, const char* name)
     return NULL;
 }
 
-static const Symbol* ParseType(Tiny_State* state, FILE* in)
+static Symbol* ParseType(Tiny_State* state)
 {
-    ExpectToken(state, TOK_IDENT, "Expected identifier for typename.");
+    ExpectToken(state, TINY_TOK_IDENT, "Expected identifier for typename.");
 
-    const Symbol* s = GetTagFromName(state, TokenBuffer);
+	Symbol* s = GetTagFromName(state, state->l.lexeme);
 
 	if (!s) {
-		ReportError(state, "%s doesn't name a type.", TokenBuffer);
+		ReportError(state, "%s doesn't name a type.", state->l.lexeme);
 	}
 
-	GetNextToken(state, in);
+	GetNextToken(state);
 
 	return s;
 }
 
-static Expr* ParseIf(Tiny_State* state, FILE* in)
+static Expr* ParseIf(Tiny_State* state)
 {
     Expr* exp = Expr_create(EXP_IF, state);
 
-    GetNextToken(state, in);
+    GetNextToken(state);
 
-    exp->ifx.cond = ParseExpr(state, in);
-    exp->ifx.body = ParseExpr(state, in);
+    exp->ifx.cond = ParseExpr(state);
+    exp->ifx.body = ParseExpr(state);
 
-    if (CurTok == TOK_ELSE)
+    if (CurTok == TINY_TOK_ELSE)
     {
-        GetNextToken(state, in);
-        exp->ifx.alt = ParseExpr(state, in);
+        GetNextToken(state);
+        exp->ifx.alt = ParseExpr(state);
     }
     else
         exp->ifx.alt = NULL;
@@ -1919,36 +1553,36 @@ static Expr* ParseIf(Tiny_State* state, FILE* in)
     return exp;
 }
 
-static Expr* ParseBlock(Tiny_State* state, FILE* in)
+static Expr* ParseBlock(Tiny_State* state)
 {
-    assert(CurTok == '{');
+    assert(CurTok == TINY_TOK_OPENCURLY);
 
     Expr* exp = Expr_create(EXP_BLOCK, state);
 
     exp->block = NULL;
 
-    GetNextToken(state, in);
+    GetNextToken(state);
 
     OpenScope(state);
 
-    while (CurTok != '}')
+    while (CurTok != TINY_TOK_CLOSECURLY)
     {
-        Expr* e = ParseExpr(state, in);
+        Expr* e = ParseExpr(state);
         assert(e);
         
         sb_push(exp->block, e);
     }
 
-    GetNextToken(state, in);
+    GetNextToken(state);
 
     CloseScope(state);
 
     return exp;
 }
 
-static Expr* ParseFunc(Tiny_State* state, FILE* in)
+static Expr* ParseFunc(Tiny_State* state)
 {
-    assert(CurTok == TOK_PROC);
+    assert(CurTok == TINY_TOK_FUNC);
 
     if(state->currFunc)
     {
@@ -1957,64 +1591,71 @@ static Expr* ParseFunc(Tiny_State* state, FILE* in)
 
     Expr* exp = Expr_create(EXP_PROC, state);
 
-    GetNextToken(state, in);
+    GetNextToken(state);
 
-    ExpectToken(state, TOK_IDENT, "Function name must be identifier!");
+    ExpectToken(state, TINY_TOK_IDENT, "Function name must be identifier!");
 
-    exp->proc.decl = DeclareFunction(state, TokenBuffer);
+	exp->proc.decl = DeclareFunction(state, state->l.lexeme);
     state->currFunc = exp->proc.decl;
 
-    GetNextToken(state, in);
+    GetNextToken(state);
 
-    ExpectToken(state, '(', "Expected '(' after function name");
-    GetNextToken(state, in);
+    ExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after function name");
+    GetNextToken(state);
 
-    int nargs = 0;
-    char* argNames[MAX_ARGS] = { 0 };
-    const Symbol* argTypes[MAX_ARGS] = { 0 };
+	typedef struct
+	{
+		char* name;
+		Symbol* tag;
+	} Arg;
 
-    while(CurTok != ')')
+	Arg* args = NULL; // array
+
+    while(CurTok != TINY_TOK_CLOSEPAREN)
     {
-        ExpectToken(state, TOK_IDENT, "Expected identifier in function parameter list");
-        if (nargs >= MAX_ARGS) {
-            ReportError(state, "Function '%s' takes in too many args.", exp->proc.decl->name);
+        ExpectToken(state, TINY_TOK_IDENT, "Expected identifier in function parameter list");
+
+		Arg arg;
+
+        arg.name = Tiny_Strdup(state->l.lexeme);
+        GetNextToken(state);
+
+        if(CurTok != TINY_TOK_COLON) {
+            ReportError(state, "Expected ':' after %s", arg.name);
         }
 
-        argNames[nargs++] = estrdup(TokenBuffer);
-        GetNextToken(state, in);
+        GetNextToken(state);
 
-        if(CurTok != ':') {
-            ReportError(state, "Expected ':' after %s", argNames[nargs - 1]);
-        }
+		arg.tag = ParseType(state);
 
-        GetNextToken(state, in);
+		sb_push(args, arg);
 
-        argTypes[nargs - 1] = ParseType(state, in);
-
-        if (CurTok != ')' && CurTok != ',')
+        if (CurTok != TINY_TOK_CLOSEPAREN && CurTok != TINY_TOK_COMMA)
         {
             ReportError(state, "Expected ')' or ',' after parameter name in function parameter list.");
         }
 
-        if(CurTok == ',') GetNextToken(state, in);
+        if(CurTok == TINY_TOK_COMMA) GetNextToken(state);
     }
 
-    for (int i = 0; i < nargs; ++i) {
-        DeclareArgument(state, argNames[i], argTypes[i], nargs);
-        free(argNames[i]);
+    for (int i = 0; i < sb_count(args); ++i) {
+        DeclareArgument(state, args[i].name, args[i].tag, sb_count(args));
+		free(args[i].name);
     }
 
-    GetNextToken(state, in);
+	sb_free(args);
 
-    ExpectToken(state, ':', "Expected ':' after func prototype.");
+    GetNextToken(state);
 
-    GetNextToken(state, in);
+    ExpectToken(state, TINY_TOK_COLON, "Expected ':' after func prototype.");
 
-    exp->proc.decl->func.returnTag = ParseType(state, in);
+    GetNextToken(state);
+
+    exp->proc.decl->func.returnTag = ParseType(state);
 
     OpenScope(state);
 
-    exp->proc.body = ParseExpr(state, in);
+    exp->proc.body = ParseExpr(state);
 
     CloseScope(state);
 
@@ -2023,38 +1664,38 @@ static Expr* ParseFunc(Tiny_State* state, FILE* in)
     return exp;
 }
 
-static Expr* ParseFactor(Tiny_State* state, FILE* in)
+static Expr* ParseFactor(Tiny_State* state)
 {
     switch(CurTok)
     {
-        case TOK_NULL:
+        case TINY_TOK_NULL:
         {
             Expr* exp = Expr_create(EXP_NULL, state);
 
-            GetNextToken(state, in);
+            GetNextToken(state);
 
             return exp;
         } break;
 
-        case TOK_TRUE:
-        case TOK_FALSE:
+		case TINY_TOK_BOOL:
         {
             Expr* exp = Expr_create(EXP_BOOL, state);
 
-            exp->boolean = CurTok == TOK_TRUE;
+            exp->boolean = state->l.bValue;
 
-            GetNextToken(state, in);
+            GetNextToken(state);
 
             return exp;
         } break;
 
-        case '{': return ParseBlock(state, in);
+        case TINY_TOK_OPENCURLY: return ParseBlock(state);
 
-        case TOK_IDENT:
+        case TINY_TOK_IDENT:
         {
-            char* ident = estrdup(TokenBuffer);
-            GetNextToken(state, in);
-            if(CurTok != '(')
+            char* ident = Tiny_Strdup(state->l.lexeme);
+            GetNextToken(state);
+
+            if(CurTok != TINY_TOK_OPENPAREN)
             {
                 Expr* exp;
                 
@@ -2070,14 +1711,14 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 
             exp->call.args = NULL;
             
-            GetNextToken(state, in);
+            GetNextToken(state);
             
-            while(CurTok != ')')
+            while(CurTok != TINY_TOK_CLOSEPAREN)
             {
-                sb_push(exp->call.args, ParseExpr(state, in));
+                sb_push(exp->call.args, ParseExpr(state));
 
-                if(CurTok == ',') GetNextToken(state, in);
-                else if(CurTok != ')')
+                if(CurTok == TINY_TOK_COMMA) GetNextToken(state);
+                else if(CurTok != TINY_TOK_CLOSEPAREN)
                 {
                     ReportError(state, "Expected ')' after call.");
                 }
@@ -2085,97 +1726,113 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
 
             exp->call.calleeName = ident;
 
-            GetNextToken(state, in);
+            GetNextToken(state);
             return exp;
         } break;
         
-        case '-': case '+': case TOK_NOT:
+		case TINY_TOK_MINUS: case TINY_TOK_BANG:
         {
             int op = CurTok;
-            GetNextToken(state, in);
+            GetNextToken(state);
             Expr* exp = Expr_create(EXP_UNARY, state);
             exp->unary.op = op;
-            exp->unary.exp = ParseFactor(state, in);
+            exp->unary.exp = ParseFactor(state);
 
             return exp;
         } break;
         
-        case TOK_NUMBER:
+		case TINY_TOK_CHAR:
         {
-            Expr* exp = Expr_create(EXP_NUM, state);
-            exp->number = RegisterNumber(TokenNumber);
-            GetNextToken(state, in);
+            Expr* exp = Expr_create(EXP_CHAR, state);
+            exp->iValue = state->l.iValue;
+            GetNextToken(state);
             return exp;
         } break;
 
-        case TOK_STRING:
+		case TINY_TOK_INT:
+		{
+            Expr* exp = Expr_create(EXP_INT, state);
+            exp->iValue = state->l.iValue;
+            GetNextToken(state);
+            return exp;
+		} break;
+
+		case TINY_TOK_FLOAT:
+		{
+            Expr* exp = Expr_create(EXP_FLOAT, state);
+			exp->fIndex = RegisterNumber(state->l.fValue);
+            GetNextToken(state);
+            return exp;
+		} break;
+
+        case TINY_TOK_STRING:
         {
             Expr* exp = Expr_create(EXP_STRING, state);
-            exp->string = RegisterString(TokenBuffer);
-            GetNextToken(state, in);
+            exp->sIndex = RegisterString(state->l.lexeme);
+            GetNextToken(state);
             return exp;
         } break;
         
-        case TOK_PROC: return ParseFunc(state, in);
+        case TINY_TOK_FUNC: return ParseFunc(state);
         
-        case TOK_IF: return ParseIf(state, in);
+        case TINY_TOK_IF: return ParseIf(state);
         
-        case TOK_WHILE:
+        case TINY_TOK_WHILE:
         {
-            GetNextToken(state, in);
+            GetNextToken(state);
             Expr* exp = Expr_create(EXP_WHILE, state);
 
-            exp->whilex.cond = ParseExpr(state, in);
+            exp->whilex.cond = ParseExpr(state);
 
             OpenScope(state);
             
-            exp->whilex.body = ParseExpr(state, in);
+            exp->whilex.body = ParseExpr(state);
             
             CloseScope(state);
 
             return exp;
         } break;
 
-        case TOK_FOR:
+        case TINY_TOK_FOR:
         {
-            GetNextToken(state, in);
+            GetNextToken(state);
             Expr* exp = Expr_create(EXP_FOR, state);
             
             // Every local declared after this is scoped to the for
             OpenScope(state);
 
-            exp->forx.init = ParseExpr(state, in);
+            exp->forx.init = ParseExpr(state);
 
-            ExpectToken(state, ';', "Expected ';' after for initializer.");
+            ExpectToken(state, TINY_TOK_SEMI, "Expected ';' after for initializer.");
 
-            GetNextToken(state, in);
+            GetNextToken(state);
 
-            exp->forx.cond = ParseExpr(state, in);
+            exp->forx.cond = ParseExpr(state);
 
-            ExpectToken(state, ';', "Expected ';' after for condition.");
+            ExpectToken(state, TINY_TOK_SEMI, "Expected ';' after for condition.");
 
-            GetNextToken(state, in);
+            GetNextToken(state);
 
-            exp->forx.step = ParseExpr(state, in);
+            exp->forx.step = ParseExpr(state);
 
-            exp->forx.body = ParseExpr(state, in);
+            exp->forx.body = ParseExpr(state);
 
             CloseScope(state);
 
             return exp;
         } break;
         
-        case TOK_RETURN:
+        case TINY_TOK_RETURN:
         {
             if(!state->currFunc) {
                 ReportError(state, "Attempted to return from outside a function. Why? Why would you do that? Why would you do any of that?");
             }
 
-            GetNextToken(state, in);
+            GetNextToken(state);
             Expr* exp = Expr_create(EXP_RETURN, state);
-            if(CurTok == ';')
+            if(CurTok == TINY_TOK_SEMI)
             {
-                GetNextToken(state, in);    
+                GetNextToken(state);    
                 exp->retExpr = NULL;
                 return exp;
             }
@@ -2184,16 +1841,17 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
                 ReportError(state, "Attempted to return value from function which is supposed to return nothing (void).");
             }
 
-            exp->retExpr = ParseExpr(state, in);
+            exp->retExpr = ParseExpr(state);
             return exp;
         } break;
 
-        case '(':
+        case TINY_TOK_OPENPAREN:
         {
-            GetNextToken(state, in);
-            Expr* inner = ParseExpr(state, in);
-            assert(CurTok == ')' && "Expected matching ')' after previous '('");
-            GetNextToken(state, in);
+            GetNextToken(state);
+            Expr* inner = ParseExpr(state);
+
+			ExpectToken(state, TINY_TOK_CLOSEPAREN, "Expected matching ')' after previous '('");
+            GetNextToken(state);
             
             Expr* exp = Expr_create(EXP_PAREN, state);
             exp->paren = inner;
@@ -2203,7 +1861,7 @@ static Expr* ParseFactor(Tiny_State* state, FILE* in)
         default: break;
     }
 
-    ReportError(state, "Unexpected token %i (%c)\n", CurTok, CurTok);
+    ReportError(state, "Unexpected token '%s'\n", state->l.lexeme);
     return NULL;
 }
 
@@ -2212,26 +1870,26 @@ static int GetTokenPrec()
     int prec = -1;
     switch(CurTok)
     {
-        case '*': case '/': case '%': case '&': case '|': prec = 5; break;
+        case TINY_TOK_STAR: case TINY_TOK_SLASH: case TINY_TOK_PERCENT: case TINY_TOK_AND: case TINY_TOK_OR: prec = 5; break;
         
-        case '+': case '-':                prec = 4; break;
+        case TINY_TOK_PLUS: case TINY_TOK_MINUS:                prec = 4; break;
         
-        case TOK_LTE: case TOK_GTE:
-        case TOK_EQUALS: case TOK_NOTEQUALS:
-        case '<': case '>':                prec = 3; break;
+        case TINY_TOK_LTE: case TINY_TOK_GTE:
+        case TINY_TOK_EQUALS: case TINY_TOK_NOTEQUALS:
+        case TINY_TOK_LT: case TINY_TOK_GT:                prec = 3; break;
         
-        case TOK_AND: case TOK_OR:        prec = 2; break;
+        case TINY_TOK_LOG_AND: case TINY_TOK_LOG_OR:        prec = 2; break;
 
-        case TOK_PLUSEQUAL: case TOK_MINUSEQUAL: case TOK_MULEQUAL: case TOK_DIVEQUAL:
-        case TOK_MODEQUAL: case TOK_ANDEQUAL: case TOK_OREQUAL:
-        case TOK_DECLARECONST:
-        case TOK_DECLARE: case ':': case '=':                        prec = 1; break;
+        case TINY_TOK_PLUSEQUAL: case TINY_TOK_MINUSEQUAL: case TINY_TOK_STAREQUAL: case TINY_TOK_SLASHEQUAL:
+        case TINY_TOK_PERCENTEQUAL: case TINY_TOK_ANDEQUAL: case TINY_TOK_OREQUAL:
+        case TINY_TOK_DECLARECONST:
+        case TINY_TOK_DECLARE: case TINY_TOK_COLON: case TINY_TOK_EQUAL:                        prec = 1; break;
     }
     
     return prec;
 }
 
-static Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
+static Expr* ParseBinRhs(Tiny_State* state, int exprPrec, Expr* lhs)
 {
     while(1)
     {
@@ -2244,7 +1902,7 @@ static Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
 
         // They're trying to declare a variable (we can only know this when we 
         // encounter this token)
-        if (binOp == TOK_DECLARE) {
+        if (binOp == TINY_TOK_DECLARE) {
             if (lhs->type != EXP_ID)
             {
                 ReportError(state, "Expected identifier to the left-hand side of ':='.\n");
@@ -2255,41 +1913,46 @@ static Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
                 lhs->id.sym = DeclareLocal(state, lhs->id.name);
             else
                 lhs->id.sym = DeclareGlobalVar(state, lhs->id.name);
-        } else if(binOp == ':') {
+        } else if(binOp == TINY_TOK_COLON) {
             // They're trying to declare a variable with explicit type
             if (state->currFunc)
                 lhs->id.sym = DeclareLocal(state, lhs->id.name);
             else
                 lhs->id.sym = DeclareGlobalVar(state, lhs->id.name);
 
-			GetNextToken(state, in);
+			GetNextToken(state);
 
-			lhs->id.sym->var.tag = ParseType(state, in);
+			lhs->id.sym->var.tag = ParseType(state);
 
-            binOp = '=';
+			binOp = TINY_TOK_EQUAL;
         }
 
-        GetNextToken(state, in);
+        GetNextToken(state);
 
-        Expr* rhs = ParseFactor(state, in);
+        Expr* rhs = ParseFactor(state);
         int nextPrec = GetTokenPrec();
         
         if(prec < nextPrec)
-            rhs = ParseBinRhs(state, in, prec + 1, rhs);
+            rhs = ParseBinRhs(state, prec + 1, rhs);
 
-        if (binOp == TOK_DECLARECONST)
+        if (binOp == TINY_TOK_DECLARECONST)
         {
             if (lhs->type != EXP_ID)
             {
                 ReportError(state, "Expected identifier to the left-hand side of '::'.\n");
             }
 
-            if (rhs->type == EXP_NUM)
-                DeclareConst(state, lhs->id.name, false, rhs->number);
-            else if (rhs->type == EXP_STRING)
-                DeclareConst(state, lhs->id.name, true, rhs->string);
-            else
-            {
+			if (rhs->type == EXP_BOOL) {
+				DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_BOOL))->constant.bValue = rhs->boolean;
+			} else if (rhs->type == EXP_CHAR) {
+				DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_INT))->constant.iValue = rhs->iValue;
+			} else if (rhs->type == EXP_INT) {
+				DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_INT))->constant.iValue = rhs->iValue;
+			} else if(rhs->type == EXP_FLOAT) {
+				DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_FLOAT))->constant.fIndex = rhs->fIndex;
+			} else if (rhs->type == EXP_STRING) {
+				DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_STR))->constant.sIndex = rhs->sIndex;
+			} else {
                 ReportError(state, "Expected number or string to be bound to constant '%s'.\n", lhs->id.name);
             }
         }
@@ -2304,24 +1967,23 @@ static Expr* ParseBinRhs(Tiny_State* state, FILE* in, int exprPrec, Expr* lhs)
     }
 }
 
-static Expr* ParseExpr(Tiny_State* state, FILE* in)
+static Expr* ParseExpr(Tiny_State* state)
 {
-    Expr* factor = ParseFactor(state, in);
-    return ParseBinRhs(state, in, 0, factor);
+    Expr* factor = ParseFactor(state);
+    return ParseBinRhs(state, 0, factor);
 }
 
-static Expr** ParseProgram(Tiny_State* state, FILE* in)
+static Expr** ParseProgram(Tiny_State* state)
 {
-    ResetGetToken = true;
-    GetNextToken(state, in);
+    GetNextToken(state);
         
-    if(CurTok != TOK_EOF)
+    if(CurTok != TINY_TOK_EOF)
     {    
         Expr** arr = NULL;
 
-        while(CurTok != TOK_EOF)
+        while(CurTok != TINY_TOK_EOF)
         {
-            Expr* stmt = ParseExpr(state, in);
+            Expr* stmt = ParseExpr(state);
             sb_push(arr, stmt);
         }
 
@@ -2368,7 +2030,9 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
     {
         case EXP_NULL: exp->tag = GetPrimTag(SYM_TAG_ANY); break;
         case EXP_BOOL: exp->tag = GetPrimTag(SYM_TAG_BOOL); break;
-        case EXP_NUM: exp->tag = GetPrimTag(SYM_TAG_NUM); break;
+        case EXP_CHAR: exp->tag = GetPrimTag(SYM_TAG_INT); break;
+        case EXP_INT: exp->tag = GetPrimTag(SYM_TAG_INT); break;
+        case EXP_FLOAT: exp->tag = GetPrimTag(SYM_TAG_FLOAT); break;
         case EXP_STRING: exp->tag = GetPrimTag(SYM_TAG_STR); break;
         
         case EXP_ID: {
@@ -2385,7 +2049,7 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
 
                 exp->tag = exp->id.sym->var.tag;
             } else {
-                exp->tag = exp->id.sym->constant.isString ? GetPrimTag(SYM_TAG_STR) : GetPrimTag(SYM_TAG_NUM);    
+                exp->tag = exp->id.sym->constant.tag;    
             }
         } break;
         
@@ -2450,21 +2114,42 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
         
         case EXP_BINARY: {
             switch(exp->binary.op) {
-                case '+': case '-': case '*': case '/': case '%': {
+				case TINY_TOK_PLUS: case TINY_TOK_MINUS: case TINY_TOK_STAR: case TINY_TOK_SLASH: {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    if(!CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_NUM)) ||
-                       !CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_NUM))) {
-                        ReportErrorE(state, exp, "Left and right hand side of binary '%c' must be numbers, but they're %s and %s",
+					bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_INT));
+					bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_INT));
+
+					bool fLhs = !iLhs && CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_FLOAT));
+					bool fRhs = !iRhs && CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_FLOAT));
+
+					if((!iLhs && !fLhs) || (!iRhs && !fRhs)) {
+                        ReportErrorE(state, exp, "Left and right hand side of binary op must be ints or floats, but they're %s and %s",
                                 GetTagName(exp->binary.lhs->tag),
                                 GetTagName(exp->binary.rhs->tag));
                     }
                     
-                    exp->tag = GetPrimTag(SYM_TAG_NUM);
+					exp->tag = GetPrimTag((iLhs && iRhs) ? SYM_TAG_INT : SYM_TAG_FLOAT);
                 } break;
 
-                case TOK_AND: case TOK_OR: {
+				case TINY_TOK_AND: case TINY_TOK_OR: case TINY_TOK_PERCENT: {
+                    ResolveTypes(state, exp->binary.lhs);
+                    ResolveTypes(state, exp->binary.rhs);
+
+					bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_INT));
+					bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_INT));
+
+					if (!(iLhs && iRhs)) {
+						ReportErrorE(state, exp, "Both sides of binary op must be ints, but they're %s and %s\n",
+							GetTagName(exp->binary.lhs->tag),
+							GetTagName(exp->binary.rhs->tag));
+					}
+
+					exp->tag = GetPrimTag(SYM_TAG_INT);
+				} break;
+
+                case TINY_TOK_LOG_AND: case TINY_TOK_LOG_OR: {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
@@ -2478,13 +2163,18 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
                     exp->tag = GetPrimTag(SYM_TAG_BOOL);
                 } break;
 
-				case '>': case '<': case TOK_LTE: case TOK_GTE: {                    
+				case TINY_TOK_GT: case TINY_TOK_LT: case TINY_TOK_LTE: case TINY_TOK_GTE: {                    
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    if(!CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_NUM)) ||
-                       !CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_NUM))) {
-                        ReportErrorE(state, exp, "Left and right hand side of binary comparison must be numbers, but they're %s and %s",
+					bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_INT));
+					bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_INT));
+
+					bool fLhs = !iLhs && CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_FLOAT));
+					bool fRhs = !iRhs && CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_FLOAT));
+
+					if((!iLhs && !fLhs) || (!iRhs && !fRhs)) {
+                        ReportErrorE(state, exp, "Left and right hand side of binary comparison must be ints or floats, but they're %s and %s",
                                 GetTagName(exp->binary.lhs->tag),
                                 GetTagName(exp->binary.rhs->tag));
                     }
@@ -2492,7 +2182,7 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
                     exp->tag = GetPrimTag(SYM_TAG_BOOL);
                 } break;
 
-				case TOK_EQUALS: case TOK_NOTEQUALS: {
+				case TINY_TOK_EQUALS: case TINY_TOK_NOTEQUALS: {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
@@ -2504,7 +2194,7 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
 					exp->tag = GetPrimTag(SYM_TAG_BOOL);
 				} break;
 
-                case TOK_DECLARE: {
+                case TINY_TOK_DECLARE: {
                     assert(exp->binary.lhs->type == EXP_ID);
 
                     assert(exp->binary.lhs->id.sym);
@@ -2531,7 +2221,10 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
 					exp->tag = GetPrimTag(SYM_TAG_VOID);
 				} break;
 
-                default: exp->tag = GetPrimTag(SYM_TAG_VOID); break;
+				default: {
+					ResolveTypes(state, exp->binary.rhs);
+					exp->tag = GetPrimTag(SYM_TAG_VOID);
+				} break;
             }
         } break;
 
@@ -2539,15 +2232,18 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
             ResolveTypes(state, exp->unary.exp);
 
             switch(exp->unary.op) {
-                case '-': {
-                    if(!CompareTags(exp->unary.exp->tag, GetPrimTag(SYM_TAG_NUM))) {
+                case TINY_TOK_MINUS: {
+					bool i = CompareTags(exp->unary.exp->tag, GetPrimTag(SYM_TAG_INT));
+					bool f = !i && CompareTags(exp->unary.exp->tag, GetPrimTag(SYM_TAG_FLOAT));
+
+                    if(!(i || f)) {
                         ReportErrorE(state, exp, "Attempted to apply unary '-' to a %s.", GetTagName(exp->unary.exp->tag));
                     }
 
-                    exp->tag = GetPrimTag(SYM_TAG_NUM);
+					exp->tag = i ? GetPrimTag(SYM_TAG_INT) : GetPrimTag(SYM_TAG_FLOAT);
                 } break;
 
-                case TOK_NOT: {
+                case TINY_TOK_BANG: {
                     if(!CompareTags(exp->unary.exp->tag, GetPrimTag(SYM_TAG_BOOL))) {
                         ReportErrorE(state, exp, "Attempted to apply unary 'not' to a %s.", GetTagName(exp->unary.exp->tag));
                     }
@@ -2651,11 +2347,20 @@ static void CompileGetId(Tiny_State* state, Expr* exp)
     }
     else
     {
-        if(exp->id.sym->constant.isString)
-            GenerateCode(state, OP_PUSH_STRING);
-        else
-            GenerateCode(state, OP_PUSH_NUMBER);
-        GenerateInt(state, exp->id.sym->constant.index);
+		if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_STR)) {
+			GenerateCode(state, OP_PUSH_STRING);
+			GenerateInt(state, exp->id.sym->constant.sIndex);
+		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_BOOL)) {
+			GenerateCode(state, exp->id.sym->constant.bValue ? OP_PUSH_TRUE : OP_PUSH_FALSE);
+		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_INT)) {
+			GenerateCode(state, OP_PUSH_INT);
+			GenerateInt(state, exp->id.sym->constant.iValue);
+		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_FLOAT)) {
+			GenerateCode(state, OP_PUSH_FLOAT);
+			GenerateInt(state, exp->id.sym->constant.fIndex);
+		} else {
+			assert(0);
+		}
     }
 }
 
@@ -2715,16 +2420,22 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
             GenerateCode(state, exp->boolean ? OP_PUSH_TRUE : OP_PUSH_FALSE);
         } break;
 
-        case EXP_NUM:
+		case EXP_INT: case EXP_CHAR:
         {
-            GenerateCode(state, OP_PUSH_NUMBER);
-            GenerateInt(state, exp->number);
+            GenerateCode(state, OP_PUSH_INT);
+            GenerateInt(state, exp->iValue);
         } break;
+
+		case EXP_FLOAT:
+		{
+            GenerateCode(state, OP_PUSH_FLOAT);
+            GenerateInt(state, exp->fIndex);
+		} break;
 
         case EXP_STRING:
         {
             GenerateCode(state, OP_PUSH_STRING);
-            GenerateInt(state, exp->string);
+            GenerateInt(state, exp->sIndex);
         } break;
 
         case EXP_CALL:
@@ -2737,78 +2448,77 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
         {
             switch (exp->binary.op)
             {
-                case '+':
+                case TINY_TOK_PLUS:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, OP_ADD);
                 } break;
 
-                case '*':
-                {
-                    CompileExpr(state, exp->binary.lhs);
-                    CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_MUL);
-                } break;
-
-                case '/':
-                {
-                    CompileExpr(state, exp->binary.lhs);
-                    CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_DIV);
-                } break;
-
-                case '%':
-                {
-                    CompileExpr(state, exp->binary.lhs);
-                    CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_MOD);
-                } break;
-
-                case '|':
-                {
-                    CompileExpr(state, exp->binary.lhs);
-                    CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_OR);
-                } break;
-
-                case '&':
-                {
-                    CompileExpr(state, exp->binary.lhs);
-                    CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_AND);
-                } break;
-
-                case '-':
+				case TINY_TOK_MINUS:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, OP_SUB);
                 } break;
 
-                case '<':
+                case TINY_TOK_STAR:
+                {
+                    CompileExpr(state, exp->binary.lhs);
+                    CompileExpr(state, exp->binary.rhs);
+                    GenerateCode(state, OP_MUL);
+                } break;
+
+				case TINY_TOK_SLASH:
+                {
+                    CompileExpr(state, exp->binary.lhs);
+                    CompileExpr(state, exp->binary.rhs);
+                    GenerateCode(state, OP_DIV);
+                } break;
+
+				case TINY_TOK_PERCENT:
+                {
+                    CompileExpr(state, exp->binary.lhs);
+                    CompileExpr(state, exp->binary.rhs);
+                    GenerateCode(state, OP_MOD);
+                } break;
+
+				case TINY_TOK_OR:
+                {
+                    CompileExpr(state, exp->binary.lhs);
+                    CompileExpr(state, exp->binary.rhs);
+                    GenerateCode(state, OP_OR);
+                } break;
+
+				case TINY_TOK_AND:
+                {
+                    CompileExpr(state, exp->binary.lhs);
+                    CompileExpr(state, exp->binary.rhs);
+                    GenerateCode(state, OP_AND);
+                } break;
+
+				case TINY_TOK_LT:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, OP_LT);
                 } break;
 
-                case '>':
+				case TINY_TOK_GT:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, OP_GT);
                 } break;
 
-
-                case TOK_EQUALS:
+                case TINY_TOK_EQUALS:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, OP_EQU);
                 } break;
 
-                case TOK_NOTEQUALS:
+                case TINY_TOK_NOTEQUALS:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
@@ -2816,28 +2526,28 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
                     GenerateCode(state, OP_LOG_NOT);
                 } break;
 
-                case TOK_LTE:
+                case TINY_TOK_LTE:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, OP_LTE);
                 } break;
 
-                case TOK_GTE:
+                case TINY_TOK_GTE:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, OP_GTE);
                 } break;
 
-                case TOK_AND:
+                case TINY_TOK_LOG_AND:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, OP_LOG_AND);
                 } break;
 
-                case TOK_OR:
+                case TINY_TOK_LOG_OR:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
@@ -2860,14 +2570,14 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
             CompileExpr(state, exp->unary.exp);
             switch (exp->unary.op)
             {
-                case '-':
+                case TINY_TOK_MINUS:
                 {
-                    GenerateCode(state, OP_PUSH_NUMBER);
-                    GenerateInt(state, RegisterNumber(-1));
+                    GenerateCode(state, OP_PUSH_INT);
+                    GenerateInt(state, -1);
                     GenerateCode(state, OP_MUL);
                 } break;
 
-                case TOK_NOT:
+                case TINY_TOK_BANG:
                 {
                     GenerateCode(state, OP_LOG_NOT);
                 } break;
@@ -2886,13 +2596,13 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
 
 static void CompileStatement(Tiny_State* state, Expr* exp)
 {
-    if(exp->fileName) {
+    if(state->l.fileName) {
         GenerateCode(state, OP_FILE);
-        GenerateInt(state, RegisterString(exp->fileName));
+        GenerateInt(state, RegisterString(state->l.fileName));
     }
 
-    GenerateCode(state, OP_LINE);
-    GenerateInt(state, exp->lineNumber);
+    GenerateCode(state, OP_POS);
+    GenerateInt(state, exp->pos);
 
     switch(exp->type)
     {
@@ -2912,62 +2622,62 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
         {    
             switch(exp->binary.op)
             {
-                case TOK_DECLARECONST:
+                case TINY_TOK_DECLARECONST:
                     // Constants generate no code
                     break;
                 
-                case '=': case TOK_DECLARE: // These two are handled identically in terms of code generated
+                case TINY_TOK_EQUAL: case TINY_TOK_DECLARE: // These two are handled identically in terms of code generated
 
-                case TOK_PLUSEQUAL: case TOK_MINUSEQUAL: case TOK_MULEQUAL: case TOK_DIVEQUAL:
-                case TOK_MODEQUAL: case TOK_ANDEQUAL: case TOK_OREQUAL:
+                case TINY_TOK_PLUSEQUAL: case TINY_TOK_MINUSEQUAL: case TINY_TOK_STAREQUAL: case TINY_TOK_SLASHEQUAL:
+				case TINY_TOK_PERCENTEQUAL: case TINY_TOK_ANDEQUAL: case TINY_TOK_OREQUAL:
                 {
                     if (exp->binary.lhs->type == EXP_ID)
                     {
                         switch (exp->binary.op)
                         {
-                            case TOK_PLUSEQUAL:
+                            case TINY_TOK_PLUSEQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, OP_ADD);
                             } break;
 
-                            case TOK_MINUSEQUAL:
+                            case TINY_TOK_MINUSEQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, OP_SUB);
                             } break;
 
-                            case TOK_MULEQUAL:
+                            case TINY_TOK_STAREQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, OP_MUL);
                             } break;
 
-                            case TOK_DIVEQUAL:
+                            case TINY_TOK_SLASHEQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, OP_DIV);
                             } break;
 
-                            case TOK_MODEQUAL:
+                            case TINY_TOK_PERCENTEQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, OP_MOD);
                             } break;
 
-                            case TOK_ANDEQUAL:
+                            case TINY_TOK_ANDEQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, OP_AND);
                             } break;
 
-                            case TOK_OREQUAL:
+                            case TINY_TOK_OREQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
@@ -3017,11 +2727,9 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
             
             state->functionPcs[exp->proc.decl->func.index] = sb_count(state->program);
             
-            for(int i = 0; i < sb_count(exp->proc.decl->func.locals); ++i)
-            {
-                GenerateCode(state, OP_PUSH_NUMBER);
-                GenerateInt(state, RegisterNumber(0));
-            }
+			for (int i = 0; i < sb_count(exp->proc.decl->func.locals); ++i) {
+				GenerateCode(state, OP_PUSH_NULL);
+			}
             
             if (exp->proc.body)
                 CompileStatement(state, exp->proc.body);
@@ -3130,7 +2838,7 @@ static void Expr_destroy(Expr* exp)
             free(exp->id.name);
         } break;
 
-        case EXP_NULL: case EXP_BOOL: case EXP_NUM: case EXP_STRING: break;
+		case EXP_NULL: case EXP_BOOL: case EXP_CHAR: case EXP_INT: case EXP_FLOAT: case EXP_STRING: break;
         
         case EXP_CALL: 
         {
@@ -3271,33 +2979,21 @@ static void CompileState(Tiny_State* state, Expr** prog)
 
 void Tiny_CompileString(Tiny_State* state, const char* name, const char* string)
 {
-    // TODO: Instead of turning this into a string, create
-    // a file-like interface for strings or better yet
-    // just parse and compile strings
-    FILE* file = tmpfile();
-    
-    fwrite(string, 1, strlen(string), file);
-    rewind(file);
-
-    state->lineNumber = 1;
-    state->fileName = name;
-
-    state->curFile = file;
+    Tiny_InitLexer(&state->l, name, string);
 
     CurTok = 0;
-    Expr** prog = ParseProgram(state, file); 
+    Expr** prog = ParseProgram(state); 
         
     CompileState(state, prog);
 
-    fclose(file);
-    state->curFile = NULL;
+    Tiny_DestroyLexer(&state->l);
 
     DeleteProgram(prog);
 }
 
 void Tiny_CompileFile(Tiny_State* state, const char* filename)
 {
-    FILE* file = fopen(filename, "r");
+    FILE* file = fopen(filename, "rb");
 
     if(!file)
     {
@@ -3305,19 +3001,20 @@ void Tiny_CompileFile(Tiny_State* state, const char* filename)
         exit(1);
     }
 
-    state->lineNumber = 1;
-    state->fileName = filename;
+	fseek(file, 0, SEEK_END);
 
-    state->curFile = file;
+	long len = ftell(file);
+	
+	char* s = malloc(len + 1);
 
-    CurTok = 0;
-    Expr** prog = ParseProgram(state, file);
-    
-    CompileState(state, prog);
+	rewind(file);
 
-    DeleteProgram(prog);
+	fread(s, 1, len, file);
+	s[len] = 0;
 
-    fclose(file);
+	fclose(file);
 
-    state->curFile = NULL;
+	Tiny_CompileString(state, filename, s);
+
+	free(s);
 }

@@ -53,7 +53,7 @@ static Tiny_Value Strlen(Tiny_StateThread* thread, const Tiny_Value* args, int c
 	Tiny_Value val = args[0];
 
 	if (val.type == TINY_VAL_STRING)
-		return Tiny_NewNumber(strlen(Tiny_ToString(val)));
+		return Tiny_NewInt(strlen(Tiny_ToString(val)));
 	else
 		return Tiny_Null;
 }
@@ -63,11 +63,11 @@ static Tiny_Value Strchar(Tiny_StateThread* thread, const Tiny_Value* args, int 
     const char* s = Tiny_ToString(args[0]);
     size_t len = strlen(s);
 
-    int i = (int)Tiny_ToNumber(args[1]);
+    int i = Tiny_ToInt(args[1]);
 
     assert(i >= 0 && i < len);
 
-    return Tiny_NewNumber((double)s[i]);
+    return Tiny_NewInt(s[i]);
 }
 
 static const Tiny_NativeProp FileProp = {
@@ -98,7 +98,7 @@ static Tiny_Value Lib_Fsize(Tiny_StateThread* thread, const Tiny_Value* args, in
 	long size = ftell(file);
 	rewind(file);
 
-	return Tiny_NewNumber((double)size);
+	return Tiny_NewInt((int)size);
 }
 
 static Tiny_Value Lib_Fread(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -130,7 +130,7 @@ static Tiny_Value Lib_Fwrite(Tiny_StateThread* thread, const Tiny_Value* args, i
 	const char* str = Tiny_ToString(args[1]);
 	int num = count == 3 ? (int)Tiny_ToNumber(args[2]) : (int)strlen(str);
 
-	return Tiny_NewNumber(fwrite(str, 1, num, file));
+	return Tiny_NewInt(fwrite(str, 1, num, file));
 }
 
 static Tiny_Value Lib_Fclose(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -186,7 +186,7 @@ static Tiny_Value Lib_ArrayLen(Tiny_StateThread* thread, const Tiny_Value* args,
 {
 	Array* array = Tiny_ToAddr(args[0]);
 
-	return Tiny_NewNumber((double)array->length);
+	return Tiny_NewInt((double)array->length);
 }
 
 static Tiny_Value Lib_ArrayClear(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -218,7 +218,7 @@ static Tiny_Value Lib_ArrayPush(Tiny_StateThread* thread, const Tiny_Value* args
 static Tiny_Value Lib_ArrayGet(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	Array* array = Tiny_ToAddr(args[0]);
-	int index = (int)args[1].number;
+	int index = Tiny_ToInt(args[1]);
 
     return ArrayGetValue(array, index, Tiny_Value);
 }
@@ -226,7 +226,7 @@ static Tiny_Value Lib_ArrayGet(Tiny_StateThread* thread, const Tiny_Value* args,
 static Tiny_Value Lib_ArraySet(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	Array* array = Tiny_ToAddr(args[0]);
-	int index = (int)args[1].number;
+	int index = Tiny_ToInt(args[1]);
 	Tiny_Value value = args[2];
 
     ArraySet(array, index, &value);
@@ -314,7 +314,7 @@ static Tiny_Value Lib_DictExists(Tiny_StateThread* thread, const Tiny_Value* arg
 
 	const Tiny_Value* value = DictGet(dict, key);
 
-	return Tiny_NewNumber(value ? 1 : -1);
+	return Tiny_NewBool(value);
 }
 
 static Tiny_Value Lib_DictGet(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -386,16 +386,16 @@ static Tiny_Value Strcat(Tiny_StateThread* thread, const Tiny_Value* args, int c
 static Tiny_Value Lib_Ston(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	const char* str = Tiny_ToString(args[0]);
-	double value = strtod(str, NULL);
+	float value = strtof(str, NULL);
 	
-	return Tiny_NewNumber(value);
+	return Tiny_NewFloat(value);
 }
 
 #define NUMTOSTR_CONV_BUFFER_SIZE	32
 
 static Tiny_Value Lib_Ntos(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	double num = args[0].number;
+	float num = Tiny_ToFloat(args[0]);
 	
 	char* string = malloc(NUMTOSTR_CONV_BUFFER_SIZE + 1);
 	int c = sprintf(string, "%g", num);
@@ -407,18 +407,18 @@ static Tiny_Value Lib_Ntos(Tiny_StateThread* thread, const Tiny_Value* args, int
 
 static Tiny_Value Lib_Time(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	return Tiny_NewNumber((double)time(NULL));
+	return Tiny_NewInt((int)time(NULL));
 }
 
 static Tiny_Value SeedRand(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	srand((unsigned int)args[0].number);
+	srand((unsigned int)Tiny_ToInt(args[0]));
 	return Tiny_Null;
 }
 
 static Tiny_Value Rand(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	return Tiny_NewNumber(rand());
+	return Tiny_NewInt(rand());
 }
 
 static Tiny_Value Lib_Input(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -451,32 +451,6 @@ static Tiny_Value Lib_Input(Tiny_StateThread* thread, const Tiny_Value* args, in
 	return Tiny_NewString(thread, buffer);
 }
 
-static Tiny_Value Lib_Print(Tiny_StateThread* thread, const Tiny_Value* args, int count)
-{
-	for (int i = 0; i < count; ++i)
-	{
-		Tiny_Value val = args[i];
-
-		if (val.type == TINY_VAL_NUM)
-			printf("%g", val.number);
-		else if (val.type == TINY_VAL_STRING || val.type == TINY_VAL_CONST_STRING)
-			printf("%s", Tiny_ToString(val));
-		else if (val.type == TINY_VAL_NATIVE)
-		{
-			if (val.obj->nat.prop && val.obj->nat.prop->name)
-				printf("<native '%s' at %p>", val.obj->nat.prop->name, val.obj->nat.addr);
-			else
-				printf("<native at %p>", val.obj->nat.addr);
-		}
-
-		if (i + 1 < count)
-			putc(' ', stdout);
-	}
-
-	putc('\n', stdout);
-	return Tiny_Null;
-}
-
 static Tiny_Value Lib_Printf(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	const char* fmt = Tiny_ToString(args[0]);
@@ -496,8 +470,8 @@ static Tiny_Value Lib_Printf(Tiny_StateThread* thread, const Tiny_Value* args, i
 			++fmt;
 			switch (*fmt)
 			{
-				case 'd': printf("%d", (int)args[arg].number); break;
-				case 'g': printf("%g", args[arg].number); break;
+				case 'd': printf("%d", args[arg].i); break;
+				case 'f': printf("%f", args[arg].f); break;
 				case 's': printf("%s", Tiny_ToString(args[arg])); break;
 
 				default:
@@ -507,7 +481,8 @@ static Tiny_Value Lib_Printf(Tiny_StateThread* thread, const Tiny_Value* args, i
 				{
 					switch (args[arg].type)
 					{
-						case TINY_VAL_NUM: printf("%g", args[arg].number); break;
+						case TINY_VAL_INT: printf("%d", args[arg].i); break;
+						case TINY_VAL_FLOAT: printf("%f", args[arg].f); break;
 						case TINY_VAL_STRING: printf("%s", args[arg].obj->string);
 						case TINY_VAL_NATIVE:
 						{
@@ -531,7 +506,7 @@ static Tiny_Value Lib_Printf(Tiny_StateThread* thread, const Tiny_Value* args, i
 
 static Tiny_Value Exit(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	int arg = (int)args[0].number;
+	int arg = Tiny_ToInt(args[0]);
 
 	exit(arg);
 	
@@ -540,12 +515,12 @@ static Tiny_Value Exit(Tiny_StateThread* thread, const Tiny_Value* args, int cou
 
 static Tiny_Value Lib_Floor(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	return Tiny_NewNumber(floor(args[0].number));
+	return Tiny_NewFloat(floorf(Tiny_ToFloat(args[0])));
 }
 
 static Tiny_Value Lib_Ceil(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	return Tiny_NewNumber(ceil(args[0].number));
+	return Tiny_NewFloat(ceilf(Tiny_ToFloat(args[0])));
 }
 
 static Tiny_Value Lib_PerfCount(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -553,7 +528,7 @@ static Tiny_Value Lib_PerfCount(Tiny_StateThread* thread, const Tiny_Value* args
 	LARGE_INTEGER result;
 	QueryPerformanceCounter(&result);
 
-	return Tiny_NewNumber((double)result.QuadPart);
+	return Tiny_NewInt((int)result.QuadPart);
 }
 
 static Tiny_Value Lib_PerfFreq(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -561,12 +536,12 @@ static Tiny_Value Lib_PerfFreq(Tiny_StateThread* thread, const Tiny_Value* args,
 	LARGE_INTEGER result;
 	QueryPerformanceFrequency(&result);
 
-	return Tiny_NewNumber((double)result.QuadPart);
+	return Tiny_NewInt((int)result.QuadPart);
 }
 
 static Tiny_Value Lib_Sleep(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	Sleep((int)args[0].number);
+	Sleep(Tiny_ToInt(args[0]));
 	return Tiny_Null;
 }
 
@@ -576,10 +551,10 @@ void Tiny_BindStandardArray(Tiny_State* state)
 
 	Tiny_BindFunction(state, "array(...): array", CreateArray);
 	Tiny_BindFunction(state, "array_clear(array): void", Lib_ArrayClear);
-	Tiny_BindFunction(state, "array_resize(array, num): void", Lib_ArrayResize);
-	Tiny_BindFunction(state, "array_get(array, num): any", Lib_ArrayGet);
-	Tiny_BindFunction(state, "array_set(array, num, any): void", Lib_ArraySet);
-	Tiny_BindFunction(state, "array_len(array): num", Lib_ArrayLen);
+	Tiny_BindFunction(state, "array_resize(array, int): void", Lib_ArrayResize);
+	Tiny_BindFunction(state, "array_get(array, int): any", Lib_ArrayGet);
+	Tiny_BindFunction(state, "array_set(array, int, any): void", Lib_ArraySet);
+	Tiny_BindFunction(state, "array_len(array): int", Lib_ArrayLen);
 	Tiny_BindFunction(state, "array_push(array, any): void", Lib_ArrayPush);
 	Tiny_BindFunction(state, "array_pop(array): any", Lib_ArrayPop);
 	Tiny_BindFunction(state, "array_shift(array): any", Lib_ArrayShift);
@@ -587,6 +562,7 @@ void Tiny_BindStandardArray(Tiny_State* state)
 
 void Tiny_BindStandardDict(Tiny_State* state)
 {
+    Tiny_RegisterType(state, "array");
     Tiny_RegisterType(state, "dict");
 
 	Tiny_BindFunction(state, "dict(...): dict", CreateDict);
@@ -604,35 +580,34 @@ void Tiny_BindStandardIO(Tiny_State* state)
 
 	Tiny_BindFunction(state, "fopen(str, str): file", Lib_Fopen);
 	Tiny_BindFunction(state, "fclose(file): void", Lib_Fclose);
-	Tiny_BindFunction(state, "fread(file, num): void", Lib_Fread);
+	Tiny_BindFunction(state, "fread(file, int): void", Lib_Fread);
 	Tiny_BindFunction(state, "fwrite(file, str, ...): void", Lib_Fwrite);
-	Tiny_BindFunction(state, "fseek(file, num): void", Lib_Fseek);
-	Tiny_BindFunction(state, "fsize(file): num", Lib_Fsize);
+	Tiny_BindFunction(state, "fseek(file, int): void", Lib_Fseek);
+	Tiny_BindFunction(state, "fsize(file): int", Lib_Fsize);
 
 	Tiny_BindFunction(state, "input(...): void", Lib_Input);
-	Tiny_BindFunction(state, "print(...): void", Lib_Print);
 	Tiny_BindFunction(state, "printf(str, ...): void", Lib_Printf);
 }
 
 void Tiny_BindStandardLib(Tiny_State* state)
 {
-	Tiny_BindFunction(state, "strlen(str): num", Strlen);
-	Tiny_BindFunction(state, "strchar(str, num): num", Strchar);
+	Tiny_BindFunction(state, "strlen(str): int", Strlen);
+	Tiny_BindFunction(state, "strchar(str, int): int", Strchar);
 
 	Tiny_BindFunction(state, "strcat(str, str): str", Strcat);
-	Tiny_BindFunction(state, "ston(str): num", Lib_Ston);
-	Tiny_BindFunction(state, "ntos(num): str", Lib_Ntos);
+	Tiny_BindFunction(state, "ston(str): float", Lib_Ston);
+	Tiny_BindFunction(state, "ntos(float): str", Lib_Ntos);
 	
-	Tiny_BindFunction(state, "time(): num", Lib_Time);
-	Tiny_BindFunction(state, "srand(num): void", SeedRand);
-	Tiny_BindFunction(state, "rand(): num", Rand);
+	Tiny_BindFunction(state, "time(): int", Lib_Time);
+	Tiny_BindFunction(state, "srand(int): void", SeedRand);
+	Tiny_BindFunction(state, "rand(): int", Rand);
 
-	Tiny_BindFunction(state, "floor(num): num", Lib_Floor);
-	Tiny_BindFunction(state, "ceil(num): num", Lib_Ceil);
+	Tiny_BindFunction(state, "floor(float): float", Lib_Floor);
+	Tiny_BindFunction(state, "ceil(float): float", Lib_Ceil);
 
-	Tiny_BindFunction(state, "perf_count(): num", Lib_PerfCount);
-	Tiny_BindFunction(state, "perf_freq(): num", Lib_PerfFreq);
-	Tiny_BindFunction(state, "sleep(num): void", Lib_Sleep);
+	Tiny_BindFunction(state, "perf_count(): int", Lib_PerfCount);
+	Tiny_BindFunction(state, "perf_freq(): int", Lib_PerfFreq);
+	Tiny_BindFunction(state, "sleep(int): void", Lib_Sleep);
 
-	Tiny_BindFunction(state, "exit(num): void", Exit);
+	Tiny_BindFunction(state, "exit(int): void", Exit);
 }
