@@ -82,7 +82,14 @@ typedef struct sSymbol
 
         struct
         {
-            int index, nargs;
+            int index;
+
+            // nargs = sb_count
+            struct sSymbol** argTags;     // array
+            bool varargs;
+
+            const struct sSymbol* returnTag;
+
             Tiny_ForeignFunction callee;
         } foreignFunc;
 	};

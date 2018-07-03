@@ -296,14 +296,14 @@ int main(int argc, char** argv)
         Tiny_BindConstNumber(EntityStates[i], "KEY_UP", TK_UP);
         Tiny_BindConstNumber(EntityStates[i], "KEY_DOWN", TK_DOWN);
 
-        Tiny_BindFunction(EntityStates[i], "get_player_kills", GetPlayerKills);
+        Tiny_BindFunction(EntityStates[i], "get_player_kills(): num", GetPlayerKills);
 
         Tiny_BindFunction(EntityStates[i], "get_player", GetPlayer);
         Tiny_BindFunction(EntityStates[i], "add_ent", LibAddEnt);
         Tiny_BindFunction(EntityStates[i], "add_bullet", AddBullet);
         Tiny_BindFunction(EntityStates[i], "is_key_down", IsKeyDown);
-        Tiny_BindFunction(EntityStates[i], "accel", Accel);
-        Tiny_BindFunction(EntityStates[i], "accel_angle", AccelAngle);
+        Tiny_BindFunction(EntityStates[i], "accel(num, num): void", Accel);
+        Tiny_BindFunction(EntityStates[i], "accel_angle(num, num): void", AccelAngle);
         Tiny_BindFunction(EntityStates[i], "accel_towards", AccelTowards);
         Tiny_BindFunction(EntityStates[i], "get_x", GetX);
         Tiny_BindFunction(EntityStates[i], "get_y", GetY);

@@ -482,7 +482,7 @@ static int RegisterString(const char* string)
     return NumStrings - 1; 
 }
 
-static const Symbol* GetPrimTag(SymbolType type)
+static Symbol* GetPrimTag(SymbolType type)
 {
     static Symbol prims[5] = {
         { SYM_TAG_VOID, (char*)"void", },
@@ -532,6 +532,10 @@ static void Symbol_destroy(Symbol* sym)
 
         sb_free(sym->func.locals);
     }
+	else if (sym->type == SYM_FOREIGN_FUNCTION)
+	{
+		sb_free(sym->foreignFunc.argTags);
+	}
 
     free(sym->name);
     free(sym);
@@ -735,7 +739,7 @@ static Symbol* ReferenceFunction(Tiny_State* state, const char* name)
     return NULL;
 }
 
-void Tiny_BindFunctionNargs(Tiny_State* state, const char* name, int nargs, Tiny_ForeignFunction func)
+static void BindFunction(Tiny_State* state, const char* name, Symbol** argTags, bool varargs, const Symbol* returnTag, Tiny_ForeignFunction func)
 {
     for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
         Symbol* node = state->globalSymbols[i];
@@ -750,7 +754,12 @@ void Tiny_BindFunctionNargs(Tiny_State* state, const char* name, int nargs, Tiny
     Symbol* newNode = Symbol_create(SYM_FOREIGN_FUNCTION, name, state);
 
     newNode->foreignFunc.index = state->numForeignFunctions;
-    newNode->foreignFunc.nargs = nargs;
+
+    newNode->foreignFunc.argTags = argTags;
+    newNode->foreignFunc.varargs = varargs;
+
+    newNode->foreignFunc.returnTag = returnTag;
+
     newNode->foreignFunc.callee = func;
 
     sb_push(state->globalSymbols, newNode);
@@ -758,9 +767,78 @@ void Tiny_BindFunctionNargs(Tiny_State* state, const char* name, int nargs, Tiny
     state->numForeignFunctions += 1;
 }
 
-void Tiny_BindFunction(Tiny_State* state, const char* name, Tiny_ForeignFunction func)
+static void ScanUntilDelim(const char** ps, char* buf)
 {
-    Tiny_BindFunctionNargs(state, name, -1, func);
+    const char* s = *ps;
+    int i = 0;
+
+    while(*s && *s != '(' && *s != ')' && *s != ',') {
+        if(isspace(*s)) {
+            s += 1;
+            continue;
+        }
+
+        buf[i++] = *s++;
+    }
+
+    buf[i] = 0;
+
+    *ps = s;
+}
+
+static Symbol* GetTagFromName(Tiny_State* state, const char* name);
+
+void Tiny_BindFunction(Tiny_State* state, const char* sig, Tiny_ForeignFunction func)
+{
+    char name[MAX_TOK_LEN];
+
+    ScanUntilDelim(&sig, name);
+
+    if(!sig[0]) {
+        // Just the name
+        BindFunction(state, name, NULL, true, GetPrimTag(SYM_TAG_ANY), func);
+        return;
+    }
+
+    sig += 1;
+
+    Symbol** argTags = NULL;
+    bool varargs = false;
+    char buf[MAX_TOK_LEN];
+
+    while(*sig != ')' && !varargs) {
+        ScanUntilDelim(&sig, buf);
+
+        if(strcmp(buf, "...") == 0) {
+            varargs = true;
+            break;
+        } else {
+            Symbol* s = GetTagFromName(state, buf);
+
+            assert(s);
+
+            sb_push(argTags, s);
+        }
+		
+		if (*sig == ',') ++sig;
+    }
+
+    assert(*sig == ')');
+
+    sig += 1;
+
+    const Symbol* returnTag = GetPrimTag(SYM_TAG_ANY);
+
+    if(*sig == ':') {
+        sig += 1;
+
+        ScanUntilDelim(&sig, buf);
+
+        returnTag = GetTagFromName(state, buf);
+        assert(returnTag);
+    }
+
+    BindFunction(state, name, argTags, varargs, returnTag, func);
 }
 
 void Tiny_BindConstNumber(Tiny_State* state, const char* name, double number)
@@ -1790,17 +1868,22 @@ static void ExpectToken(Tiny_State* state, int tok, const char* msg)
     }
 }
 
+static Symbol* GetTagFromName(Tiny_State* state, const char* name)
+{
+    if(strcmp(name, "void") == 0) return GetPrimTag(SYM_TAG_VOID);
+    else if(strcmp(name, "bool") == 0) return GetPrimTag(SYM_TAG_BOOL);
+    else if(strcmp(name, "num") == 0) return GetPrimTag(SYM_TAG_NUM);
+	else if(strcmp(name, "str") == 0) return GetPrimTag(SYM_TAG_STR);
+    else if(strcmp(name, "any") == 0) return GetPrimTag(SYM_TAG_ANY);
+
+    return NULL;
+}
+
 static const Symbol* ParseType(Tiny_State* state, FILE* in)
 {
     ExpectToken(state, TOK_IDENT, "Expected identifier for typename.");
 
-    const Symbol* s = NULL;
-
-    if(strcmp(TokenBuffer, "void") == 0) s = GetPrimTag(SYM_TAG_VOID);
-    else if(strcmp(TokenBuffer, "bool") == 0) s = GetPrimTag(SYM_TAG_BOOL);
-    else if(strcmp(TokenBuffer, "num") == 0) s = GetPrimTag(SYM_TAG_NUM);
-	else if(strcmp(TokenBuffer, "str") == 0) s = GetPrimTag(SYM_TAG_STR);
-    else if(strcmp(TokenBuffer, "any") == 0) s = GetPrimTag(SYM_TAG_ANY);
+    const Symbol* s = GetTagFromName(state, TokenBuffer);
 
 	if (!s) {
 		ReportError(state, "%s doesn't name a type.", TokenBuffer);
@@ -2298,8 +2381,34 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
             }
 
 			if (func->type == SYM_FOREIGN_FUNCTION) {
-				exp->tag = GetPrimTag(SYM_TAG_ANY);
+				for (int i = 0; i < sb_count(exp->call.args); ++i) {
+					ResolveTypes(state, exp->call.args[i]);
+
+                    if(i >= sb_count(func->foreignFunc.argTags)) {
+						if (!func->foreignFunc.varargs) {
+							ReportErrorE(state, exp->call.args[i], "Too many arguments to function '%s' (%d expected).\n", exp->call.calleeName,
+								sb_count(func->foreignFunc.argTags));
+						}
+                        break;
+                    }
+
+					const Symbol* argTag = func->foreignFunc.argTags[i];
+
+					if (!CompareTags(exp->call.args[i]->tag, argTag)) {
+						ReportErrorE(state, exp->call.args[i],
+							"Argument %i is supposed to be a %s but you supplied a %s\n",
+							i + 1, GetTagName(argTag),
+							GetTagName(exp->call.args[i]->tag));
+					}
+				}
+
+				exp->tag = func->foreignFunc.returnTag;
 			} else {
+				if (sb_count(exp->call.args) != sb_count(func->func.args)) {
+					ReportErrorE(state, exp, "%s expects %d arguments but you supplied %d.\n",
+						exp->call.calleeName, sb_count(func->func.args), sb_count(exp->call.args));
+				}
+
 				for (int i = 0; i < sb_count(exp->call.args); ++i) {
 					ResolveTypes(state, exp->call.args[i]);
 
@@ -2308,8 +2417,8 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
 					if (!CompareTags(exp->call.args[i]->tag, argSym->var.tag)) {
 						ReportErrorE(state, exp->call.args[i],
 							"Argument %i is supposed to be a %s but you supplied a %s\n",
-							i + 1, GetTagName(exp->call.args[i]->tag),
-							GetTagName(argSym->var.tag));
+							i + 1, GetTagName(argSym->var.tag),
+							GetTagName(exp->call.args[i]->tag));
 					}
 				}
 
@@ -2554,9 +2663,10 @@ static void CompileCall(Tiny_State* state, Expr* exp)
         GenerateCode(state, OP_CALLF);
         
         int nargs = sb_count(exp->call.args);
+        int fNargs = sb_count(sym->foreignFunc.argTags);
 
-        if(sym->foreignFunc.nargs >= 0 && sym->foreignFunc.nargs != nargs) {
-            ReportErrorE(state, exp, "Function '%s' expects %d args but you supplied %d.\n", sym->foreignFunc.nargs, nargs);
+        if(!(sym->foreignFunc.varargs && nargs >= fNargs) && fNargs != nargs) {
+            ReportErrorE(state, exp, "Function '%s' expects %s%d args but you supplied %d.\n", exp->call.calleeName, sym->foreignFunc.varargs ? "at least " : "", fNargs, nargs);
         }
 
         GenerateInt(state, sb_count(exp->call.args));
