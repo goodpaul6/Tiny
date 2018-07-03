@@ -1,10 +1,10 @@
 last_char := ' '
 
-hop_buffer := array()
-unhop_buffer := array()
-
 spaces_per_tab :: 4
 max_hop_buffer_len :: 32
+
+hop_buffer := array()
+unhop_buffer := array()
 
 func push_hop(): void {
     if array_len(hop_buffer) > 0 {

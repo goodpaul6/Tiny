@@ -686,62 +686,62 @@ static void BindFunctions(Tiny_State* state)
 
     Tiny_BindStandardArray(state);
 
-    Tiny_BindFunction(state, "exit", Lib_Exit);
+    Tiny_BindFunction(state, "exit(num): void", Lib_Exit);
 
-    Tiny_BindFunction(state, "strlen", Lib_Strlen);
-    Tiny_BindFunction(state, "strspn", Lib_Strspn);
-    Tiny_BindFunction(state, "stridx", Lib_Stridx);
-    Tiny_BindFunction(state, "substr", Lib_Substr);
-    Tiny_BindFunction(state, "strtod", Lib_Strtod);
+    Tiny_BindFunction(state, "strlen(str): num", Lib_Strlen);
+    Tiny_BindFunction(state, "strspn(str, str): num", Lib_Strspn);
+    Tiny_BindFunction(state, "stridx(str, num): num", Lib_Stridx);
+    Tiny_BindFunction(state, "substr(str, num, num): str", Lib_Substr);
+    Tiny_BindFunction(state, "strtod(str): num", Lib_Strtod);
 
-    Tiny_BindFunction(state, "floor", Lib_Floor);
-    Tiny_BindFunction(state, "ceil", Lib_Ceil);
+    Tiny_BindFunction(state, "floor(num): num", Lib_Floor);
+    Tiny_BindFunction(state, "ceil(num): num", Lib_Ceil);
 
     Tiny_BindFunction(state, "set_token_color", Lib_SetTokenColor);
 
-    Tiny_BindFunction(state, "store_temp_line", Lib_StoreTempLine);
-    Tiny_BindFunction(state, "clear_temp_lines", Lib_ClearTempLines);
-    Tiny_BindFunction(state, "temp_line_count", Lib_TempLineCount);
-    Tiny_BindFunction(state, "get_temp_line", Lib_GetTempLine);
+    Tiny_BindFunction(state, "store_temp_line(str): bool", Lib_StoreTempLine);
+    Tiny_BindFunction(state, "clear_temp_lines(): void", Lib_ClearTempLines);
+    Tiny_BindFunction(state, "temp_line_count(): num", Lib_TempLineCount);
+    Tiny_BindFunction(state, "get_temp_line(num): str", Lib_GetTempLine);
 
-    Tiny_BindFunction(state, "open_file", Lib_OpenFile);
-    Tiny_BindFunction(state, "write_file", Lib_WriteFile);
+    Tiny_BindFunction(state, "open_file(str): bool", Lib_OpenFile);
+    Tiny_BindFunction(state, "write_file(str): bool", Lib_WriteFile);
 
-    Tiny_BindFunction(state, "set_status", Lib_SetStatus);
-    Tiny_BindFunction(state, "get_command", Lib_GetCommand);
+    Tiny_BindFunction(state, "set_status(str, ...): void", Lib_SetStatus);
+    Tiny_BindFunction(state, "get_command(): str", Lib_GetCommand);
 
-    Tiny_BindFunction(state, "get_vstart_x", Lib_GetVstartX);
-    Tiny_BindFunction(state, "get_vstart_y", Lib_GetVstartY);
+    Tiny_BindFunction(state, "get_vstart_x(): num", Lib_GetVstartX);
+    Tiny_BindFunction(state, "get_vstart_y(): num", Lib_GetVstartY);
 
-    Tiny_BindFunction(state, "get_mode", Lib_GetMode);
-    Tiny_BindFunction(state, "set_mode", Lib_SetMode);
+    Tiny_BindFunction(state, "get_mode(): num", Lib_GetMode);
+    Tiny_BindFunction(state, "set_mode(num): void", Lib_SetMode);
 
-    Tiny_BindFunction(state, "set_char", Lib_SetChar);
-    Tiny_BindFunction(state, "remove_char", Lib_RemoveChar);
-    Tiny_BindFunction(state, "insert_char", Lib_InsertChar);
-    Tiny_BindFunction(state, "insert_string", Lib_InsertString);
+    Tiny_BindFunction(state, "set_char(num): void", Lib_SetChar);
+    Tiny_BindFunction(state, "remove_char(): void", Lib_RemoveChar);
+    Tiny_BindFunction(state, "insert_char(num): void", Lib_InsertChar);
+    Tiny_BindFunction(state, "insert_string(str): void", Lib_InsertString);
 
-    Tiny_BindFunction(state, "line_count", Lib_LineCount);
-    Tiny_BindFunction(state, "get_line", Lib_GetLine);
+    Tiny_BindFunction(state, "line_count(): num", Lib_LineCount);
+    Tiny_BindFunction(state, "get_line(...): str", Lib_GetLine);
     Tiny_BindFunction(state, "get_line_from", Lib_GetLineFrom);
-    Tiny_BindFunction(state, "set_line", Lib_SetLine);
-    Tiny_BindFunction(state, "remove_line", Lib_RemoveLine);
-    Tiny_BindFunction(state, "insert_empty_line", Lib_InsertEmptyLine);
-    Tiny_BindFunction(state, "terminate_line", Lib_TerminateLine);
+    Tiny_BindFunction(state, "set_line(...): void", Lib_SetLine);
+    Tiny_BindFunction(state, "remove_line(...): void", Lib_RemoveLine);
+    Tiny_BindFunction(state, "insert_empty_line(...): void", Lib_InsertEmptyLine);
+    Tiny_BindFunction(state, "terminate_line(...): void", Lib_TerminateLine);
 
-    Tiny_BindFunction(state, "get_x", Lib_GetX);
-    Tiny_BindFunction(state, "get_y", Lib_GetY);
+    Tiny_BindFunction(state, "get_x(): num", Lib_GetX);
+    Tiny_BindFunction(state, "get_y(): num", Lib_GetY);
 
-    Tiny_BindFunction(state, "move_to", Lib_MoveTo);
-    Tiny_BindFunction(state, "move_to_first_occurance_of_string", Lib_MoveToFirstOccuranceOfString);
-    Tiny_BindFunction(state, "move", Lib_Move);
+    Tiny_BindFunction(state, "move_to(num, num): void", Lib_MoveTo);
+    Tiny_BindFunction(state, "move_to_first_occurance_of_string(str, bool): void", Lib_MoveToFirstOccuranceOfString);
+    Tiny_BindFunction(state, "move(num, num): void", Lib_Move);
 
-    Tiny_BindFunction(state, "read_char", Lib_ReadChar);
+    Tiny_BindFunction(state, "read_char(): num", Lib_ReadChar);
 
-    Tiny_BindFunction(state, "get_filename", Lib_GetFilename);
-    Tiny_BindFunction(state, "reload_scripts_next_frame", Lib_ReloadScriptsNextFrame);
+    Tiny_BindFunction(state, "get_filename(): str", Lib_GetFilename);
+    Tiny_BindFunction(state, "reload_scripts_next_frame(): void", Lib_ReloadScriptsNextFrame);
 
-    Tiny_BindFunction(state, "count_braces_down", Lib_CountBracesDown);
+    Tiny_BindFunction(state, "count_braces_down(num): num", Lib_CountBracesDown);
 }
 
 static void ReloadScripts(Editor* ed)
