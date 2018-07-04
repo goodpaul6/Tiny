@@ -13,6 +13,7 @@
 #include "tiny_lexer.h"
 #include "t_mem.h"
 #include "tiny_util.h"
+#include "tiny_opcodes.h"
 
 const Tiny_Value Tiny_Null = { TINY_VAL_NULL };
 
@@ -881,63 +882,6 @@ void Tiny_BindConstString(Tiny_State* state, const char* name, const char* strin
 	DeclareConst(state, name, GetPrimTag(SYM_TAG_STR))->constant.sIndex = RegisterString(string);
 }
 
-enum
-{
-    OP_PUSH_NULL,
-    OP_PUSH_TRUE,
-    OP_PUSH_FALSE,
-
-	OP_PUSH_INT,
-	OP_PUSH_FLOAT,
-    OP_PUSH_STRING,
-
-    OP_POP,
-
-    OP_ADD,
-    OP_SUB,
-    OP_MUL,
-    OP_DIV,
-    OP_MOD,
-    OP_OR,
-    OP_AND,
-    OP_LT,
-    OP_LTE,
-    OP_GT,
-    OP_GTE,
-
-    OP_EQU,
-
-    OP_LOG_NOT,
-    OP_LOG_AND,
-    OP_LOG_OR,
-
-    OP_PRINT,
-    
-    OP_SET,
-    OP_GET,
-    
-    OP_READ,
-    
-    OP_GOTO,
-    OP_GOTOZ,
-
-    OP_CALL,
-    OP_RETURN,
-    OP_RETURN_VALUE,
-
-    OP_CALLF,
-
-    OP_GETLOCAL,
-    OP_SETLOCAL,
-
-    OP_GET_RETVAL,
-
-    OP_HALT,
-
-    OP_FILE,
-    OP_POS,
-};
-
 static int ReadInteger(Tiny_StateThread* thread)
 {
     assert(thread->state);
@@ -1034,25 +978,25 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 
     switch(state->program[thread->pc])
     {
-        case OP_PUSH_NULL:
+        case TINY_OP_PUSH_NULL:
         {
             ++thread->pc;
             DoPush(thread, Tiny_Null);
         } break;
         
-        case OP_PUSH_TRUE:
+        case TINY_OP_PUSH_TRUE:
         {
             ++thread->pc;
             DoPush(thread, Tiny_NewBool(true));
         } break;
 
-        case OP_PUSH_FALSE:
+        case TINY_OP_PUSH_FALSE:
         {
             ++thread->pc;
             DoPush(thread, Tiny_NewBool(false));
         } break;
 
-		case OP_PUSH_INT:
+		case TINY_OP_PUSH_INT:
 		{
             ++thread->pc;
             
@@ -1062,7 +1006,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 			thread->sp += 1;
 		} break;
 
-		case OP_PUSH_FLOAT:
+		case TINY_OP_PUSH_FLOAT:
 		{
             ++thread->pc;
             
@@ -1071,7 +1015,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             DoPush(thread, Tiny_NewFloat(Numbers[fIndex]));
 		} break;
 
-        case OP_PUSH_STRING:
+        case TINY_OP_PUSH_STRING:
         {
             ++thread->pc;
 
@@ -1080,13 +1024,13 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             DoPush(thread, Tiny_NewConstString(Strings[stringIndex]));
         } break;
         
-        case OP_POP:
+        case TINY_OP_POP:
         {
             DoPop(thread);
             ++thread->pc;
 		} break;
 
-#define BIN_OP(OP, operator) case OP_##OP: { \
+#define BIN_OP(OP, operator) case TINY_OP_##OP: { \
 			Tiny_Value val2 = DoPop(thread); \
 			Tiny_Value val1 = DoPop(thread); \
 			if(val1.type == TINY_VAL_FLOAT && val2.type == TINY_VAL_INT) DoPush(thread, Tiny_NewFloat(val1.f operator (float)val2.i)); \
@@ -1096,9 +1040,9 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 			++thread->pc; \
 		} break;
 
-#define BIN_OP_INT(OP, operator) case OP_##OP: { Tiny_Value val2 = DoPop(thread); Tiny_Value val1 = DoPop(thread); DoPush(thread, Tiny_NewInt((int)val1.i operator (int)val2.i)); ++thread->pc; } break;
+#define BIN_OP_INT(OP, operator) case TINY_OP_##OP: { Tiny_Value val2 = DoPop(thread); Tiny_Value val1 = DoPop(thread); DoPush(thread, Tiny_NewInt((int)val1.i operator (int)val2.i)); ++thread->pc; } break;
 
-#define REL_OP(OP, operator) case OP_##OP: { \
+#define REL_OP(OP, operator) case TINY_OP_##OP: { \
 			Tiny_Value val2 = DoPop(thread); \
 			Tiny_Value val1 = DoPop(thread); \
 			if(val1.type == TINY_VAL_FLOAT && val2.type == TINY_VAL_INT) DoPush(thread, Tiny_NewBool(val1.f operator (float)val2.i)); \
@@ -1125,7 +1069,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
         #undef BIN_OP_INT
         #undef REL_OP
 
-        case OP_EQU:
+        case TINY_OP_EQU:
         {
             ++thread->pc;
             Tiny_Value b = DoPop(thread);
@@ -1160,7 +1104,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             }
         } break;
 
-        case OP_LOG_NOT:
+        case TINY_OP_LOG_NOT:
         {
             ++thread->pc;
             Tiny_Value a = DoPop(thread);
@@ -1168,7 +1112,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             DoPush(thread, Tiny_NewBool(!ExpectBool(a)));
         } break;
 
-        case OP_LOG_AND:
+        case TINY_OP_LOG_AND:
         {
             ++thread->pc;
             Tiny_Value b = DoPop(thread);
@@ -1177,7 +1121,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             DoPush(thread, Tiny_NewBool(ExpectBool(a) && ExpectBool(b)));
         } break;
 
-        case OP_LOG_OR:
+        case TINY_OP_LOG_OR:
         {
             ++thread->pc;
             Tiny_Value b = DoPop(thread);
@@ -1186,7 +1130,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             DoPush(thread, Tiny_NewBool(ExpectBool(a) || ExpectBool(b)));
         } break;
 
-        case OP_PRINT:
+        case TINY_OP_PRINT:
         {
             Tiny_Value val = DoPop(thread);
             if(val.type == TINY_VAL_INT) printf("%d\n", val.i);
@@ -1198,34 +1142,34 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             ++thread->pc;
         } break;
 
-        case OP_SET:
+        case TINY_OP_SET:
         {
             ++thread->pc;
             int varIdx = ReadInteger(thread);
             thread->globalVars[varIdx] = DoPop(thread);
         } break;
         
-        case OP_GET:
+        case TINY_OP_GET:
         {
             ++thread->pc;
             int varIdx = ReadInteger(thread);
             DoPush(thread, thread->globalVars[varIdx]); 
         } break;
         
-        case OP_READ:
+        case TINY_OP_READ:
         {
             DoRead(thread);
             ++thread->pc;
         } break;
         
-        case OP_GOTO:
+        case TINY_OP_GOTO:
         {
             ++thread->pc;
             int newPc = ReadInteger(thread);
             thread->pc = newPc;
         } break;
         
-        case OP_GOTOZ:
+        case TINY_OP_GOTOZ:
         {
             ++thread->pc;
             int newPc = ReadInteger(thread);
@@ -1236,7 +1180,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
                 thread->pc = newPc;
         } break;
         
-        case OP_CALL:
+        case TINY_OP_CALL:
         {
             ++thread->pc;
             int nargs = ReadInteger(thread);
@@ -1246,20 +1190,20 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             thread->pc = state->functionPcs[pcIdx];
         } break;
         
-        case OP_RETURN:
+        case TINY_OP_RETURN:
         {
             thread->retVal = Tiny_Null;
 
             DoPopIndir(thread);
         } break;
         
-        case OP_RETURN_VALUE:
+        case TINY_OP_RETURN_VALUE:
         {
             thread->retVal = DoPop(thread);
             DoPopIndir(thread);
         } break;
         
-        case OP_CALLF:
+        case TINY_OP_CALLF:
         {
             ++thread->pc;
             
@@ -1275,14 +1219,14 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             thread->sp = prevSize;
         } break;
 
-        case OP_GETLOCAL:
+        case TINY_OP_GETLOCAL:
         {
             ++thread->pc;
             int localIdx = ReadInteger(thread);
             DoPush(thread, thread->stack[thread->fp + localIdx]);
         } break;
         
-        case OP_SETLOCAL:
+        case TINY_OP_SETLOCAL:
         {
             ++thread->pc;
             int localIdx = ReadInteger(thread);
@@ -1290,13 +1234,13 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             thread->stack[thread->fp + localIdx] = val;
         } break;
 
-        case OP_GET_RETVAL:
+        case TINY_OP_GET_RETVAL:
         {
             ++thread->pc;
             DoPush(thread, thread->retVal);
         } break;
 
-        case OP_HALT:
+        case TINY_OP_HALT:
         {
             thread->fileName = NULL;
             thread->filePos = -1;
@@ -1304,7 +1248,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             thread->pc = -1;
         } break;
 
-        case OP_FILE:
+        case TINY_OP_FILE:
         {
             ++thread->pc;
             int stringIndex = ReadInteger(thread);
@@ -1312,7 +1256,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             thread->fileName = Strings[stringIndex];
         } break;
 
-		case OP_POS:
+		case TINY_OP_POS:
         {
             ++thread->pc;
             int line = ReadInteger(thread);
@@ -2326,24 +2270,24 @@ static void CompileGetId(Tiny_State* state, Expr* exp)
     if (exp->id.sym->type != SYM_CONST)
     {
         if (exp->id.sym->type == SYM_GLOBAL)
-            GenerateCode(state, OP_GET);
+            GenerateCode(state, TINY_OP_GET);
         else if (exp->id.sym->type == SYM_LOCAL)
-            GenerateCode(state, OP_GETLOCAL);
+            GenerateCode(state, TINY_OP_GETLOCAL);
 
         GenerateInt(state, exp->id.sym->var.index);
     }
     else
     {
 		if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_STR)) {
-			GenerateCode(state, OP_PUSH_STRING);
+			GenerateCode(state, TINY_OP_PUSH_STRING);
 			GenerateInt(state, exp->id.sym->constant.sIndex);
 		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_BOOL)) {
-			GenerateCode(state, exp->id.sym->constant.bValue ? OP_PUSH_TRUE : OP_PUSH_FALSE);
+			GenerateCode(state, exp->id.sym->constant.bValue ? TINY_OP_PUSH_TRUE : TINY_OP_PUSH_FALSE);
 		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_INT)) {
-			GenerateCode(state, OP_PUSH_INT);
+			GenerateCode(state, TINY_OP_PUSH_INT);
 			GenerateInt(state, exp->id.sym->constant.iValue);
 		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_FLOAT)) {
-			GenerateCode(state, OP_PUSH_FLOAT);
+			GenerateCode(state, TINY_OP_PUSH_FLOAT);
 			GenerateInt(state, exp->id.sym->constant.fIndex);
 		} else {
 			assert(0);
@@ -2368,7 +2312,7 @@ static void CompileCall(Tiny_State* state, Expr* exp)
 
     if (sym->type == SYM_FOREIGN_FUNCTION)
     {
-        GenerateCode(state, OP_CALLF);
+        GenerateCode(state, TINY_OP_CALLF);
         
         int nargs = sb_count(exp->call.args);
         int fNargs = sb_count(sym->foreignFunc.argTags);
@@ -2382,7 +2326,7 @@ static void CompileCall(Tiny_State* state, Expr* exp)
     }
     else
     {
-        GenerateCode(state, OP_CALL);
+        GenerateCode(state, TINY_OP_CALL);
         GenerateInt(state, sb_count(exp->call.args));
         GenerateInt(state, sym->func.index);
     }
@@ -2394,7 +2338,7 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
     {
         case EXP_NULL:
         {
-            GenerateCode(state, OP_PUSH_NULL);
+            GenerateCode(state, TINY_OP_PUSH_NULL);
         } break;
 
         case EXP_ID:
@@ -2404,31 +2348,31 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
 
         case EXP_BOOL:
         {
-            GenerateCode(state, exp->boolean ? OP_PUSH_TRUE : OP_PUSH_FALSE);
+            GenerateCode(state, exp->boolean ? TINY_OP_PUSH_TRUE : TINY_OP_PUSH_FALSE);
         } break;
 
 		case EXP_INT: case EXP_CHAR:
         {
-            GenerateCode(state, OP_PUSH_INT);
+            GenerateCode(state, TINY_OP_PUSH_INT);
             GenerateInt(state, exp->iValue);
         } break;
 
 		case EXP_FLOAT:
 		{
-            GenerateCode(state, OP_PUSH_FLOAT);
+            GenerateCode(state, TINY_OP_PUSH_FLOAT);
             GenerateInt(state, exp->fIndex);
 		} break;
 
         case EXP_STRING:
         {
-            GenerateCode(state, OP_PUSH_STRING);
+            GenerateCode(state, TINY_OP_PUSH_STRING);
             GenerateInt(state, exp->sIndex);
         } break;
 
         case EXP_CALL:
         {
             CompileCall(state, exp);
-            GenerateCode(state, OP_GET_RETVAL);
+            GenerateCode(state, TINY_OP_GET_RETVAL);
         } break;
 
         case EXP_BINARY:
@@ -2439,106 +2383,106 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_ADD);
+                    GenerateCode(state, TINY_OP_ADD);
                 } break;
 
 				case TINY_TOK_MINUS:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_SUB);
+                    GenerateCode(state, TINY_OP_SUB);
                 } break;
 
                 case TINY_TOK_STAR:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_MUL);
+                    GenerateCode(state, TINY_OP_MUL);
                 } break;
 
 				case TINY_TOK_SLASH:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_DIV);
+                    GenerateCode(state, TINY_OP_DIV);
                 } break;
 
 				case TINY_TOK_PERCENT:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_MOD);
+                    GenerateCode(state, TINY_OP_MOD);
                 } break;
 
 				case TINY_TOK_OR:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_OR);
+                    GenerateCode(state, TINY_OP_OR);
                 } break;
 
 				case TINY_TOK_AND:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_AND);
+                    GenerateCode(state, TINY_OP_AND);
                 } break;
 
 				case TINY_TOK_LT:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_LT);
+                    GenerateCode(state, TINY_OP_LT);
                 } break;
 
 				case TINY_TOK_GT:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_GT);
+                    GenerateCode(state, TINY_OP_GT);
                 } break;
 
                 case TINY_TOK_EQUALS:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_EQU);
+                    GenerateCode(state, TINY_OP_EQU);
                 } break;
 
                 case TINY_TOK_NOTEQUALS:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_EQU);
-                    GenerateCode(state, OP_LOG_NOT);
+                    GenerateCode(state, TINY_OP_EQU);
+                    GenerateCode(state, TINY_OP_LOG_NOT);
                 } break;
 
                 case TINY_TOK_LTE:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_LTE);
+                    GenerateCode(state, TINY_OP_LTE);
                 } break;
 
                 case TINY_TOK_GTE:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_GTE);
+                    GenerateCode(state, TINY_OP_GTE);
                 } break;
 
                 case TINY_TOK_LOG_AND:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_LOG_AND);
+                    GenerateCode(state, TINY_OP_LOG_AND);
                 } break;
 
                 case TINY_TOK_LOG_OR:
                 {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, OP_LOG_OR);
+                    GenerateCode(state, TINY_OP_LOG_OR);
                 } break;
 
                 default:
@@ -2559,14 +2503,14 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
             {
                 case TINY_TOK_MINUS:
                 {
-                    GenerateCode(state, OP_PUSH_INT);
+                    GenerateCode(state, TINY_OP_PUSH_INT);
                     GenerateInt(state, -1);
-                    GenerateCode(state, OP_MUL);
+                    GenerateCode(state, TINY_OP_MUL);
                 } break;
 
                 case TINY_TOK_BANG:
                 {
-                    GenerateCode(state, OP_LOG_NOT);
+                    GenerateCode(state, TINY_OP_LOG_NOT);
                 } break;
 
                 default:
@@ -2584,11 +2528,11 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
 static void CompileStatement(Tiny_State* state, Expr* exp)
 {
     if(state->l.fileName) {
-        GenerateCode(state, OP_FILE);
+        GenerateCode(state, TINY_OP_FILE);
         GenerateInt(state, RegisterString(state->l.fileName));
     }
 
-    GenerateCode(state, OP_POS);
+    GenerateCode(state, TINY_OP_POS);
     GenerateInt(state, exp->pos);
 
     switch(exp->type)
@@ -2626,49 +2570,49 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, OP_ADD);
+                                GenerateCode(state, TINY_OP_ADD);
                             } break;
 
                             case TINY_TOK_MINUSEQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, OP_SUB);
+                                GenerateCode(state, TINY_OP_SUB);
                             } break;
 
                             case TINY_TOK_STAREQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, OP_MUL);
+                                GenerateCode(state, TINY_OP_MUL);
                             } break;
 
                             case TINY_TOK_SLASHEQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, OP_DIV);
+                                GenerateCode(state, TINY_OP_DIV);
                             } break;
 
                             case TINY_TOK_PERCENTEQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, OP_MOD);
+                                GenerateCode(state, TINY_OP_MOD);
                             } break;
 
                             case TINY_TOK_ANDEQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, OP_AND);
+                                GenerateCode(state, TINY_OP_AND);
                             } break;
 
                             case TINY_TOK_OREQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, OP_OR);
+                                GenerateCode(state, TINY_OP_OR);
                             } break;
 
                             default:
@@ -2683,9 +2627,9 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
                         }
 
                         if (exp->binary.lhs->id.sym->type == SYM_GLOBAL)
-                            GenerateCode(state, OP_SET);
+                            GenerateCode(state, TINY_OP_SET);
                         else if (exp->binary.lhs->id.sym->type == SYM_LOCAL)
-                            GenerateCode(state, OP_SETLOCAL);
+                            GenerateCode(state, TINY_OP_SETLOCAL);
                         else        // Probably a constant, can't change it
                         {
                             ReportErrorE(state, exp, "Cannot assign to id '%s'.\n", exp->binary.lhs->id.name);
@@ -2708,27 +2652,27 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
         
         case EXP_PROC:
         {
-            GenerateCode(state, OP_GOTO);
+            GenerateCode(state, TINY_OP_GOTO);
             int skipGotoPc = sb_count(state->program);
             GenerateInt(state, 0);
             
             state->functionPcs[exp->proc.decl->func.index] = sb_count(state->program);
             
 			for (int i = 0; i < sb_count(exp->proc.decl->func.locals); ++i) {
-				GenerateCode(state, OP_PUSH_NULL);
+				GenerateCode(state, TINY_OP_PUSH_NULL);
 			}
             
             if (exp->proc.body)
                 CompileStatement(state, exp->proc.body);
 
-            GenerateCode(state, OP_RETURN);
+            GenerateCode(state, TINY_OP_RETURN);
             GenerateIntAt(state, sb_count(state->program), skipGotoPc);
         } break;
         
         case EXP_IF:
         {
             CompileExpr(state, exp->ifx.cond);
-            GenerateCode(state, OP_GOTOZ);
+            GenerateCode(state, TINY_OP_GOTOZ);
             
             int skipGotoPc = sb_count(state->program);
             GenerateInt(state, 0);
@@ -2736,7 +2680,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
             if(exp->ifx.body)
                 CompileStatement(state, exp->ifx.body);
             
-            GenerateCode(state, OP_GOTO);
+            GenerateCode(state, TINY_OP_GOTO);
             int exitGotoPc = sb_count(state->program);
             GenerateInt(state, 0);
 
@@ -2754,14 +2698,14 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
             
             CompileExpr(state, exp->whilex.cond);
             
-            GenerateCode(state, OP_GOTOZ);
+            GenerateCode(state, TINY_OP_GOTOZ);
             int skipGotoPc = sb_count(state->program);
             GenerateInt(state, 0);
             
             if(exp->whilex.body)
                 CompileStatement(state, exp->whilex.body);
             
-            GenerateCode(state, OP_GOTO);
+            GenerateCode(state, TINY_OP_GOTO);
             GenerateInt(state, condPc);
 
             GenerateIntAt(state, sb_count(state->program), skipGotoPc);
@@ -2774,7 +2718,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
             int condPc = sb_count(state->program);
             CompileExpr(state, exp->forx.cond);
 
-            GenerateCode(state, OP_GOTOZ);
+            GenerateCode(state, TINY_OP_GOTOZ);
             int skipGotoPc = sb_count(state->program);
             GenerateInt(state, 0);
 
@@ -2783,7 +2727,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 
             CompileStatement(state, exp->forx.step);
             
-            GenerateCode(state, OP_GOTO);
+            GenerateCode(state, TINY_OP_GOTO);
             GenerateInt(state, condPc);
 
             GenerateIntAt(state, sb_count(state->program), skipGotoPc);
@@ -2794,10 +2738,10 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
             if(exp->retExpr)
             {
                 CompileExpr(state, exp->retExpr);
-                GenerateCode(state, OP_RETURN_VALUE);
+                GenerateCode(state, TINY_OP_RETURN_VALUE);
             }
             else
-                GenerateCode(state, OP_RETURN);
+                GenerateCode(state, TINY_OP_RETURN);
         } break;
 
         default:
@@ -2930,9 +2874,9 @@ static void BuildForeignFunctions(Tiny_State* state)
 
 static void CompileState(Tiny_State* state, Expr** prog)
 {
-    // If this state was already compiled and it ends with an OP_HALT, We'll just overwrite it
+    // If this state was already compiled and it ends with an TINY_OP_HALT, We'll just overwrite it
     if(sb_count(state->program) > 0) {
-        if(state->program[sb_count(state->program) - 1] == OP_HALT) {
+        if(state->program[sb_count(state->program) - 1] == TINY_OP_HALT) {
             stb__sbn(state->program) -= 1;
         }
     }
@@ -2958,7 +2902,7 @@ static void CompileState(Tiny_State* state, Expr** prog)
     }
 
     CompileProgram(state, prog);
-    GenerateCode(state, OP_HALT);
+    GenerateCode(state, TINY_OP_HALT);
 
     CheckInitialized(state);        // Done after compilation because it might have registered undefined functions during the compilation stage
     
