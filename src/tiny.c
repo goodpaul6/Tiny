@@ -226,12 +226,12 @@ static void Symbol_destroy(Symbol* sym);
 
 static Tiny_Value Lib_ToInt(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	return Tiny_NewInt(Tiny_ToFloat(args[0]));
+	return Tiny_NewInt((int)Tiny_ToFloat(args[0]));
 }
 
 static Tiny_Value Lib_ToFloat(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	return Tiny_NewFloat(Tiny_ToInt(args[0]));
+	return Tiny_NewFloat((float)Tiny_ToInt(args[0]));
 }
 
 Tiny_State* Tiny_CreateState(void)
@@ -294,7 +294,7 @@ void Tiny_InitThread(Tiny_StateThread* thread, const Tiny_State* state)
     thread->indirStackSize = 0;
 
     thread->fileName = NULL;
-    thread->filePos = -1;
+    thread->lineNumber = -1;
 
     thread->userdata = NULL;
 }
@@ -372,7 +372,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
     int pc, fp, sp, indirStackSize;
 
     const char* fileName = thread->fileName;
-	int filePos = thread->filePos;
+	int lineNumber = thread->lineNumber;
 
     pc = thread->pc;
     fp = thread->fp;
@@ -401,7 +401,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
     thread->indirStackSize = indirStackSize;
 
     thread->fileName = fileName;
-    thread->filePos = filePos;
+    thread->lineNumber = lineNumber;
 
     return retVal;
 }
@@ -984,6 +984,16 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             DoPush(thread, Tiny_Null);
         } break;
         
+        case TINY_OP_PUSH_NULL_N:
+        {
+            ++thread->pc;
+        
+            Word n = thread->state->program[thread->pc++];
+
+            memset(&thread->stack[thread->sp], 0, sizeof(Tiny_Value) * n);
+            thread->sp += n;
+        } break;
+
         case TINY_OP_PUSH_TRUE:
         {
             ++thread->pc;
@@ -1006,6 +1016,44 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 			thread->sp += 1;
 		} break;
 
+        case TINY_OP_PUSH_0:
+        {
+            ++thread->pc;
+
+            thread->stack[thread->sp].type = TINY_VAL_INT;
+            thread->stack[thread->sp].i = 0;
+            thread->sp += 1;
+        } break;
+
+        case TINY_OP_PUSH_1:
+        {
+            ++thread->pc;
+
+            thread->stack[thread->sp].type = TINY_VAL_INT;
+            thread->stack[thread->sp].i = 1;
+            thread->sp += 1;
+        } break;
+
+		case TINY_OP_PUSH_CHAR:
+		{
+			++thread->pc;
+
+			thread->stack[thread->sp].type = TINY_VAL_INT;
+			thread->stack[thread->sp].i = thread->state->program[thread->pc];
+			thread->sp += 1;
+			thread->pc += 1;
+		} break;
+
+		case TINY_OP_PUSH_SHORT:
+		{
+			++thread->pc;
+
+			thread->stack[thread->sp].type = TINY_VAL_INT;
+			thread->stack[thread->sp].i = *(short*)(&thread->state->program[thread->pc]);
+			thread->sp += 1;
+			thread->pc += 2;
+		} break;
+
 		case TINY_OP_PUSH_FLOAT:
 		{
             ++thread->pc;
@@ -1013,6 +1061,14 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             int fIndex = ReadInteger(thread);
 
             DoPush(thread, Tiny_NewFloat(Numbers[fIndex]));
+		} break;
+
+		case TINY_OP_PUSH_FLOAT_FF:
+		{
+			++thread->pc;
+
+			Word fIndex = thread->state->program[thread->pc++];
+			DoPush(thread, Tiny_NewFloat(Numbers[fIndex]));
 		} break;
 
         case TINY_OP_PUSH_STRING:
@@ -1023,6 +1079,14 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 
             DoPush(thread, Tiny_NewConstString(Strings[stringIndex]));
         } break;
+
+		case TINY_OP_PUSH_STRING_FF:
+		{
+			++thread->pc;
+
+			Word sIndex = thread->state->program[thread->pc++];
+			DoPush(thread, Tiny_NewConstString(Strings[sIndex]));
+		} break;
         
         case TINY_OP_POP:
         {
@@ -1040,7 +1104,13 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 			++thread->pc; \
 		} break;
 
-#define BIN_OP_INT(OP, operator) case TINY_OP_##OP: { Tiny_Value val2 = DoPop(thread); Tiny_Value val1 = DoPop(thread); DoPush(thread, Tiny_NewInt((int)val1.i operator (int)val2.i)); ++thread->pc; } break;
+#define BIN_OP_INT(OP, operator) case TINY_OP_##OP: \
+		{ \
+			Tiny_Value val2 = DoPop(thread); \
+			Tiny_Value val1 = DoPop(thread); \
+			DoPush(thread, Tiny_NewInt((int)val1.i operator (int)val2.i)); \
+			++thread->pc; \
+		} break;
 
 #define REL_OP(OP, operator) case TINY_OP_##OP: { \
 			Tiny_Value val2 = DoPop(thread); \
@@ -1068,6 +1138,18 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
         #undef BIN_OP
         #undef BIN_OP_INT
         #undef REL_OP
+
+        case TINY_OP_ADD1:
+        {
+            ++thread->pc;
+            thread->stack[thread->sp - 1].i += 1;
+        } break;
+
+        case TINY_OP_SUB1:
+        {
+            ++thread->pc;
+            thread->stack[thread->sp - 1].i -= 1;
+        } break;
 
         case TINY_OP_EQU:
         {
@@ -1183,7 +1265,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
         case TINY_OP_CALL:
         {
             ++thread->pc;
-            int nargs = ReadInteger(thread);
+            Word nargs = thread->state->program[thread->pc++];
             int pcIdx = ReadInteger(thread);
             
             DoPushIndir(thread, nargs);
@@ -1207,7 +1289,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
         {
             ++thread->pc;
             
-            int nargs = ReadInteger(thread);
+            Word nargs = thread->state->program[thread->pc++];
             int fIdx = ReadInteger(thread);
 
             // the state of the stack prior to the function arguments being pushed
@@ -1229,7 +1311,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
         case TINY_OP_SETLOCAL:
         {
             ++thread->pc;
-            int localIdx = ReadInteger(thread);
+            Word localIdx = thread->state->program[thread->pc++];
             Tiny_Value val = DoPop(thread);
             thread->stack[thread->fp + localIdx] = val;
         } break;
@@ -1243,7 +1325,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
         case TINY_OP_HALT:
         {
             thread->fileName = NULL;
-            thread->filePos = -1;
+            thread->lineNumber = -1;
 
             thread->pc = -1;
         } break;
@@ -1256,12 +1338,12 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             thread->fileName = Strings[stringIndex];
         } break;
 
-		case TINY_OP_POS:
+		case TINY_OP_LINE:
         {
             ++thread->pc;
             int line = ReadInteger(thread);
 
-            thread->filePos = line;
+            thread->lineNumber = line;
         } break;
     }
 
@@ -1296,7 +1378,9 @@ typedef enum
 typedef struct sExpr
 {
     ExprType type;
-    Tiny_TokenPos pos;
+
+	Tiny_TokenPos pos;
+    int lineNumber;
 
     Symbol* tag;
 
@@ -1372,7 +1456,8 @@ static Expr* Expr_create(ExprType type, const Tiny_State* state)
 {
     Expr* exp = emalloc(sizeof(Expr));
 
-    exp->pos = state->l.pos;
+	exp->pos = state->l.pos;
+    exp->lineNumber = state->l.lineNumber;
     exp->type = type;
 
     exp->tag = NULL;
@@ -1406,7 +1491,7 @@ static void ReportErrorE(Tiny_State* state, const Expr* exp, const char* s, ...)
     va_list args;
     va_start(args, s);
 
-    Tiny_ReportErrorV(state->l.fileName, state->l.src, exp->pos, s, args);
+	Tiny_ReportErrorV(state->l.fileName, state->l.src, exp->pos, s, args);
 
     va_end(args);
     exit(1);
@@ -2254,6 +2339,51 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
 
 static void CompileProgram(Tiny_State* state, Expr** program);
 
+static void GeneratePushInt(Tiny_State* state, int iValue)
+{
+	if (iValue == 0) {
+		GenerateCode(state, TINY_OP_PUSH_0);
+	} else if (iValue == 1) {
+		GenerateCode(state, TINY_OP_PUSH_1);
+	} else if (iValue >= -128 && iValue <= 127) {
+		GenerateCode(state, TINY_OP_PUSH_CHAR);
+		GenerateCode(state, (Word)iValue);
+	} else if(iValue >= -32768 && iValue <= 32767) {
+        GenerateCode(state, TINY_OP_PUSH_SHORT);	
+
+		short sValue = (short)iValue;
+		Word* wp = (Word*)(&sValue);
+
+        GenerateCode(state, wp[0]);
+		GenerateCode(state, wp[1]);
+	} else {
+		GenerateCode(state, TINY_OP_PUSH_INT);
+		GenerateInt(state, iValue);
+	}
+}
+
+static void GeneratePushFloat(Tiny_State* state, int fIndex)
+{
+    if(fIndex <= 0xff) {
+        GenerateCode(state, TINY_OP_PUSH_FLOAT_FF);
+        GenerateCode(state, (Word)fIndex);
+    } else {
+        GenerateCode(state, TINY_OP_PUSH_FLOAT);
+        GenerateInt(state, fIndex);
+    }
+}
+
+static void GeneratePushString(Tiny_State* state, int sIndex)
+{
+    if(sIndex <= 0xff) {
+        GenerateCode(state, TINY_OP_PUSH_STRING_FF);
+        GenerateCode(state, (Word)sIndex);
+    } else {
+        GenerateCode(state, TINY_OP_PUSH_STRING);
+        GenerateInt(state, sIndex);
+    }
+}
+
 static void CompileGetId(Tiny_State* state, Expr* exp)
 {
     assert(exp->type == EXP_ID);
@@ -2279,16 +2409,13 @@ static void CompileGetId(Tiny_State* state, Expr* exp)
     else
     {
 		if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_STR)) {
-			GenerateCode(state, TINY_OP_PUSH_STRING);
-			GenerateInt(state, exp->id.sym->constant.sIndex);
+            GeneratePushString(state, exp->id.sym->constant.sIndex);
 		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_BOOL)) {
 			GenerateCode(state, exp->id.sym->constant.bValue ? TINY_OP_PUSH_TRUE : TINY_OP_PUSH_FALSE);
 		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_INT)) {
-			GenerateCode(state, TINY_OP_PUSH_INT);
-			GenerateInt(state, exp->id.sym->constant.iValue);
+            GeneratePushInt(state, exp->id.sym->constant.iValue);
 		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_FLOAT)) {
-			GenerateCode(state, TINY_OP_PUSH_FLOAT);
-			GenerateInt(state, exp->id.sym->constant.fIndex);
+            GeneratePushFloat(state, exp->id.sym->constant.fIndex);
 		} else {
 			assert(0);
 		}
@@ -2301,12 +2428,15 @@ static void CompileCall(Tiny_State* state, Expr* exp)
 {
     assert(exp->type == EXP_CALL);
 
+	if (sb_count(exp->call.args) > UCHAR_MAX) {
+		ReportErrorE(state, exp, "Exceeded maximum number of arguments (%d).", UCHAR_MAX);
+	}
+
     for (int i = 0; i < sb_count(exp->call.args); ++i)
         CompileExpr(state, exp->call.args[i]);
 
     Symbol* sym = ReferenceFunction(state, exp->call.calleeName);
-    if (!sym)
-    {
+    if (!sym) {
         ReportErrorE(state, exp, "Attempted to call undefined function '%s'.\n", exp->call.calleeName);
     }
 
@@ -2321,13 +2451,13 @@ static void CompileCall(Tiny_State* state, Expr* exp)
             ReportErrorE(state, exp, "Function '%s' expects %s%d args but you supplied %d.\n", exp->call.calleeName, sym->foreignFunc.varargs ? "at least " : "", fNargs, nargs);
         }
 
-        GenerateInt(state, sb_count(exp->call.args));
+        GenerateCode(state, (Word)sb_count(exp->call.args));
         GenerateInt(state, sym->foreignFunc.index);
     }
     else
     {
         GenerateCode(state, TINY_OP_CALL);
-        GenerateInt(state, sb_count(exp->call.args));
+        GenerateCode(state, (Word)sb_count(exp->call.args));
         GenerateInt(state, sym->func.index);
     }
 }
@@ -2353,20 +2483,17 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
 
 		case EXP_INT: case EXP_CHAR:
         {
-            GenerateCode(state, TINY_OP_PUSH_INT);
-            GenerateInt(state, exp->iValue);
+            GeneratePushInt(state, exp->iValue);
         } break;
 
 		case EXP_FLOAT:
 		{
-            GenerateCode(state, TINY_OP_PUSH_FLOAT);
-            GenerateInt(state, exp->fIndex);
+            GeneratePushFloat(state, exp->fIndex);
 		} break;
 
         case EXP_STRING:
         {
-            GenerateCode(state, TINY_OP_PUSH_STRING);
-            GenerateInt(state, exp->sIndex);
+            GeneratePushString(state, exp->sIndex);
         } break;
 
         case EXP_CALL:
@@ -2498,18 +2625,25 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
 
         case EXP_UNARY:
         {
-            CompileExpr(state, exp->unary.exp);
             switch (exp->unary.op)
             {
                 case TINY_TOK_MINUS:
-                {
-                    GenerateCode(state, TINY_OP_PUSH_INT);
-                    GenerateInt(state, -1);
-                    GenerateCode(state, TINY_OP_MUL);
+                {				
+					if (exp->unary.exp->type == EXP_INT) {
+						GenerateCode(state, TINY_OP_PUSH_INT);
+						GenerateInt(state, -exp->unary.exp->iValue);
+					} else {
+						CompileExpr(state, exp->unary.exp);
+
+						GenerateCode(state, TINY_OP_PUSH_INT);
+						GenerateInt(state, -1);
+						GenerateCode(state, TINY_OP_MUL);
+					}
                 } break;
 
                 case TINY_TOK_BANG:
                 {
+					CompileExpr(state, exp->unary.exp);
                     GenerateCode(state, TINY_OP_LOG_NOT);
                 } break;
 
@@ -2532,8 +2666,8 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
         GenerateInt(state, RegisterString(state->l.fileName));
     }
 
-    GenerateCode(state, TINY_OP_POS);
-    GenerateInt(state, exp->pos);
+    GenerateCode(state, TINY_OP_LINE);
+    GenerateInt(state, exp->lineNumber);
 
     switch(exp->type)
     {
@@ -2569,15 +2703,25 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
                             case TINY_TOK_PLUSEQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
-                                CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, TINY_OP_ADD);
+                                
+                                if(exp->binary.rhs->type == EXP_INT && exp->binary.rhs->iValue == 1) {
+                                    GenerateCode(state, TINY_OP_ADD1);
+                                } else {
+                                    CompileExpr(state, exp->binary.rhs);
+                                    GenerateCode(state, TINY_OP_ADD);
+                                }
                             } break;
 
                             case TINY_TOK_MINUSEQUAL:
                             {
                                 CompileGetId(state, exp->binary.lhs);
-                                CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, TINY_OP_SUB);
+
+                                if(exp->binary.rhs->type == EXP_INT && exp->binary.rhs->iValue == 1) {
+                                    GenerateCode(state, TINY_OP_SUB1);
+                                } else {
+                                    CompileExpr(state, exp->binary.rhs);
+                                    GenerateCode(state, TINY_OP_SUB);
+                                }
                             } break;
 
                             case TINY_TOK_STAREQUAL:
@@ -2627,15 +2771,22 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
                         }
 
                         if (exp->binary.lhs->id.sym->type == SYM_GLOBAL)
+                        {
                             GenerateCode(state, TINY_OP_SET);
+                            GenerateInt(state, exp->binary.lhs->id.sym->var.index);
+                        }
                         else if (exp->binary.lhs->id.sym->type == SYM_LOCAL)
+                        {
                             GenerateCode(state, TINY_OP_SETLOCAL);
+                            assert(exp->binary.lhs->id.sym->var.index <= 0xff);
+
+                            GenerateCode(state, (Word)exp->binary.lhs->id.sym->var.index);
+                        }
                         else        // Probably a constant, can't change it
                         {
                             ReportErrorE(state, exp, "Cannot assign to id '%s'.\n", exp->binary.lhs->id.name);
                         }
 
-                        GenerateInt(state, exp->binary.lhs->id.sym->var.index);
                         exp->binary.lhs->id.sym->var.initialized = true;
                     }
                     else
@@ -2658,9 +2809,12 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
             
             state->functionPcs[exp->proc.decl->func.index] = sb_count(state->program);
             
-			for (int i = 0; i < sb_count(exp->proc.decl->func.locals); ++i) {
-				GenerateCode(state, TINY_OP_PUSH_NULL);
-			}
+            if(sb_count(exp->proc.decl->func.locals) > 0xff) {
+                ReportErrorE(state, exp, "Exceeded maximum number of local variables (%d) allowed.", 0xff);
+            }
+
+            GenerateCode(state, TINY_OP_PUSH_NULL_N);
+            GenerateCode(state, (Word)sb_count(exp->proc.decl->func.locals));
             
             if (exp->proc.body)
                 CompileStatement(state, exp->proc.body);

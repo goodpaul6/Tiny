@@ -37,6 +37,8 @@ void Tiny_InitLexer(Tiny_Lexer* l, const char* fileName, const char* src)
 {
     l->fileName = fileName;
     l->src = src;
+
+    l->lineNumber = 1;
     l->pos = 0;
 
     l->last = ' ';
@@ -46,6 +48,7 @@ void Tiny_InitLexer(Tiny_Lexer* l, const char* fileName, const char* src)
 Tiny_TokenKind Tiny_GetToken(Tiny_Lexer* l)
 {
     while(isspace(l->last)) {
+        if(l->last == '\n') l->lineNumber++;
         l->last = GetChar(l);
     }
 

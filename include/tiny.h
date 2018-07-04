@@ -79,10 +79,10 @@ typedef struct Tiny_StateThread
     int indirStack[TINY_THREAD_INDIR_SIZE];
     int indirStackSize;
 
-    // These keep track of what file/pos of source code
+    // These keep track of what file/line of source code
     // the instruction at the current PC originated from
     const char* fileName;
-	int filePos;
+	int lineNumber;
 
     // Userdata pointer. Set to NULL when InitThread is called. Use it for whatever you want
     void* userdata;

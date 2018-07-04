@@ -4,12 +4,27 @@ enum
 {
     TINY_OP_PUSH_NULL,
 
+    // Pushes N null values onto the stack (where n <= 0xff)
+    TINY_OP_PUSH_NULL_N,
+
     TINY_OP_PUSH_TRUE,
     TINY_OP_PUSH_FALSE,
 
 	TINY_OP_PUSH_INT,
+     
+    // Fast integer ops
+    TINY_OP_PUSH_0,
+    TINY_OP_PUSH_1,
+    TINY_OP_PUSH_CHAR,
+    TINY_OP_PUSH_SHORT,
+
 	TINY_OP_PUSH_FLOAT,
+    // If the float is in the first 0xff constants, use this opcode
+    TINY_OP_PUSH_FLOAT_FF,
+
     TINY_OP_PUSH_STRING,
+    // If the string is in the first 0xff constants, use this opcode
+    TINY_OP_PUSH_STRING_FF,
 
     TINY_OP_POP,
 
@@ -24,6 +39,9 @@ enum
     TINY_OP_LTE,
     TINY_OP_GT,
     TINY_OP_GTE,
+
+    TINY_OP_ADD1,
+    TINY_OP_SUB1,
 
     TINY_OP_EQU,
 
@@ -55,5 +73,5 @@ enum
     TINY_OP_HALT,
 
     TINY_OP_FILE,
-    TINY_OP_POS
+    TINY_OP_LINE,
 };

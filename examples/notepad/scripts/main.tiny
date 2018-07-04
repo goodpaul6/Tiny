@@ -770,7 +770,7 @@ func update_insert_mode(): void {
                 }
             }
         }  
-    }
+    }    
 }
 
 func update(): void {

@@ -6,6 +6,8 @@ typedef struct
 {
     const char* fileName;
     const char* src;
+    
+    int lineNumber;
     Tiny_TokenPos pos;
 
     int last;
