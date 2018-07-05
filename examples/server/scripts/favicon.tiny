@@ -1,0 +1,12 @@
+f := fopen("images/icon.png", "rb")
+z := fsize(f)
+s := fread(f, z)
+
+fclose(f)
+
+if s != null {
+    printf("favicon size: %i\n", z)
+    send_response(STATUS_OK, "image/png", s, z)
+} else {
+    printf(":(\n")
+}

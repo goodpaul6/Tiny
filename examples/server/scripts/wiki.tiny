@@ -1,3 +1,34 @@
-printf("Hello world!\n")
+struct Page {
+    title: str
+    body: str
+}
 
-send_plain_text_response(STATUS_OK, "Hello!")
+func load_page(title: str): Page {
+    filename := strcat("pages/", title, ".txt")
+    body := read_file(filename)
+
+    if body == null {
+        return null
+    }
+    
+    return new Page{title, body}
+}
+
+if get_request_method() == "GET" {
+    target := get_request_target()
+
+    printf("GET '%s'\n", target)
+
+    title := substr(target, 1, -1)
+        
+    p := load_page(title)
+
+    if p != null {
+        send_response(STATUS_OK, "text/html; charset=utf8", 
+            strcat("<link rel=\"icon\" href=\"/favicon.png\"><h1>", title, "</h1><div>", p.body, "</div>"))
+    } else {
+        send_response(STATUS_NOT_FOUND, "text/plain", "That page doesn't exist.")
+    }
+} else {
+    send_response(STATUS_NOT_FOUND, "text/plain", "You can't do that.")
+}

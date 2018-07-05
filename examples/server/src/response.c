@@ -19,28 +19,29 @@ static const char* StatusName(int status)
 	return NULL;
 }
 
-char* EncodePlainTextResponse(int status, const char* serverName, const char* content)
+char* EncodeResponse(int status, const char* serverName, const char* contentType, const char* content, size_t contentLen)
 {
-    size_t contentLength = strlen(content);
-
     char buf[PLAIN_TEXT_BUFLEN];
 
-    size_t len = sprintf(buf, "HTTP/1.1 %d %s\n"
-            "Server: %s\n"
-            "Accept-Ranges: bytes\n"
-            "Content-Length: %zu\n"
-            "Vary: Accept-Encoding\n"
-            "Content-Type: text/plain\n\n",
+    size_t len = sprintf(buf, "HTTP/1.1 %d %s\r\n"
+            "Server: %s\r\n"
+            "Accept-Ranges: bytes\r\n"
+            "Content-Length: %zu\r\n"
+            "Vary: Accept-Encoding\r\n"
+            "Content-Type: %s\r\n\r\n",
             status, StatusName(status),
             serverName,
-            contentLength);
+            contentLen,
+            contentType);
 
-    char* response = malloc(len + contentLength + 1);
+	char* response = malloc(len + contentLen + 3);
 
     strcpy(response, buf);
-    strcpy(response + len, content);
+	memcpy(response + len, content, contentLen);
 
-    response[len + contentLength] = '\0';
+    response[len + contentLen] = '\r';
+	response[len + contentLen + 1] = '\n';
+	response[len + contentLen + 2] = 0;
     
     return response;
 }

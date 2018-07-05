@@ -1,3 +1,3 @@
 printf("Super secret webpage\n")
 
-send_plain_text_response(STATUS_OK, "You actually found it!")
+send_response(STATUS_OK, "text/plain", "You actually found it!")

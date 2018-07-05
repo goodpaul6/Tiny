@@ -2387,16 +2387,17 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
 							ReportErrorE(state, exp->call.args[i], "Too many arguments to function '%s' (%d expected).\n", exp->call.calleeName,
 								sb_count(func->foreignFunc.argTags));
 						}
-                        break;
-                    }
+						
+						// We don't break because we want all types to be resolved
+					} else {
+						const Symbol* argTag = func->foreignFunc.argTags[i];
 
-					const Symbol* argTag = func->foreignFunc.argTags[i];
-
-					if (!CompareTags(exp->call.args[i]->tag, argTag)) {
-						ReportErrorE(state, exp->call.args[i],
-							"Argument %i is supposed to be a %s but you supplied a %s\n",
-							i + 1, GetTagName(argTag),
-							GetTagName(exp->call.args[i]->tag));
+						if (!CompareTags(exp->call.args[i]->tag, argTag)) {
+							ReportErrorE(state, exp->call.args[i],
+								"Argument %i is supposed to be a %s but you supplied a %s\n",
+								i + 1, GetTagName(argTag),
+								GetTagName(exp->call.args[i]->tag));
+						}
 					}
 				}
 

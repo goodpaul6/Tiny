@@ -7,4 +7,4 @@ enum
     STATUS_FOUND        = 303
 };
 
-char* EncodePlainTextResponse(int status, const char* serverName, const char* content);
+char* EncodeResponse(int status, const char* serverName, const char* contentType, const char* content, size_t contentLen);

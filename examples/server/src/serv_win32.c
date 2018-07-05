@@ -30,6 +30,10 @@ typedef struct
 {
     Server* serv;
     Request request;
+
+	// Socket will be closed when this reaches 0
+	int* socketRc;
+
     SOCKET clientSocket;
 } RequestContext;
 
@@ -59,14 +63,23 @@ static TINY_FOREIGN_FUNCTION(LibGetHeaderValue)
 	return Tiny_NewConstString(value);
 }
 
-static TINY_FOREIGN_FUNCTION(SendPlainTextResponse)
+static TINY_FOREIGN_FUNCTION(SendResponse)
 {
 	RequestContext* ctx = thread->userdata;
 
-	char* s = EncodePlainTextResponse(Tiny_ToInt(args[0]), ctx->serv->conf.name, Tiny_ToString(args[1]));
+	const char* str = Tiny_ToString(args[2]);
+
+	char* s;
+	if (count == 3) {
+		size_t len = strlen(str);
+		s = EncodeResponse(Tiny_ToInt(args[0]), ctx->serv->conf.name, Tiny_ToString(args[1]), Tiny_ToString(args[2]), len);
+	} else {
+		int len = Tiny_ToInt(args[3]);
+		s = EncodeResponse(Tiny_ToInt(args[0]), ctx->serv->conf.name, Tiny_ToString(args[1]), Tiny_ToString(args[2]), len);
+	}
 	
 	int iSendResult = send(ctx->clientSocket, s, strlen(s), 0);
-
+	
 	if (iSendResult == SOCKET_ERROR) {
 		free(s);
 		return Tiny_NewInt(WSAGetLastError());
@@ -147,8 +160,13 @@ static int Listen(void* pServ)
 		int iSendResult;
 		int recvbuflen = DEFAULT_BUFLEN;
 
+		int* rc = malloc(sizeof(int));
+		*rc = 1;
+
 		do {
 			iResult = recv(clientSocket, recvbuf, recvbuflen, 0);
+			InterlockedIncrement(rc);
+
 			if (iResult > 0) {
                 // Null terminate buffer
                 recvbuf[iResult] = 0; 
@@ -156,6 +174,8 @@ static int Listen(void* pServ)
                 RequestContext* ctx = malloc(sizeof(RequestContext));
 
                 ctx->serv = serv;
+
+				ctx->socketRc = rc;
                 ctx->clientSocket = clientSocket;
 
                 if(!ParseRequest(&ctx->request, recvbuf)) {
@@ -169,7 +189,8 @@ static int Listen(void* pServ)
                     free(ctx);
 
                     // Send 404
-                    char* resp = EncodePlainTextResponse(STATUS_NOT_FOUND, serv->conf.name, "I can't find what you're looking for.");
+					char* resp = EncodeResponse(STATUS_NOT_FOUND, serv->conf.name, "text/plain", "I can't find what you're looking for.",
+						strlen("I can't find what you're looking for."));
 
                     iSendResult = send(clientSocket, resp, iResult, 0);
 
@@ -185,14 +206,15 @@ static int Listen(void* pServ)
 			} else if (iResult == 0) {
 				printf("Read complete.\n");
 			} else {
-				if (WSAGetLastError() == 10004) {
-					// I'm guessing context switch occurred while recv was happening; no problem
-				} else {
-					fprintf(stderr, "recv failed: %d\n", WSAGetLastError());
-					closesocket(clientSocket);
-				}
+				fprintf(stderr, "recv failed: %d\n", WSAGetLastError());
 			}
 		} while (iResult > 0);
+
+		InterlockedDecrement(rc);
+		if (*rc == 0) {
+			free(rc);
+			closesocket(clientSocket);
+		}
 	}
 
     WSACleanup();
@@ -209,7 +231,7 @@ static void InitState(Tiny_State* state)
 	Tiny_BindFunction(state, "get_request_target(): str", GetRequestTarget);
 	Tiny_BindFunction(state, "get_request_header_value(str): str", LibGetHeaderValue);
 
-	Tiny_BindFunction(state, "send_plain_text_response", SendPlainTextResponse);
+	Tiny_BindFunction(state, "send_response(int, str, str, ...): void", SendResponse);
 }
 
 static void FinalizeRequestContext(void* pCtx)
@@ -221,7 +243,12 @@ static void FinalizeRequestContext(void* pCtx)
         fprintf(stderr, "shutdown failed with error: %d\n", WSAGetLastError());
     }
 
-    closesocket(ctx->clientSocket);
+	InterlockedDecrement(ctx->socketRc);
+
+	if (*ctx->socketRc == 0) {
+		free(ctx->socketRc);
+		closesocket(ctx->clientSocket);
+	}
 
     DestroyRequest(&ctx->request);
 }
@@ -292,7 +319,7 @@ int main(int argc, char** argv)
     thrd_create(&listenThread, Listen, &serv);
 
     while(KeepRunning) {
-		UpdateScriptPool(serv.pool, 5);
+		UpdateScriptPool(serv.pool, 1);
     }
 
     DeleteScriptPool(serv.pool);

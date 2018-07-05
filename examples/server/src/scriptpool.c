@@ -29,15 +29,14 @@ struct ScriptPool
 
     State* states;  // array
 
-    mtx_t threadsMutex;
-
     int numThreads;
     Tiny_StateThread* threads;
 
-    mtx_t requestsMutex;
-
     StartRequest* firstRequest;
     StartRequest* lastRequest;
+
+    mtx_t threadsMutex;
+    mtx_t requestsMutex;
 };
 
 static Tiny_State* CreateState(ScriptPool* pool, const char* filename)
@@ -83,8 +82,9 @@ static Tiny_State* LoadState(ScriptPool* pool, const char* filename)
                         printf("Reloaded script %s.\n", filename);
                     }
 
+
 					mtx_unlock(&pool->threadsMutex);
-                }
+				}
             }
 
             return pool->states[i].state;
@@ -115,18 +115,21 @@ ScriptPool* CreateScriptPool(int numThreads, InitStateFunction initState, Finali
 
     pool->states = NULL;
 
-    if(mtx_init(&pool->threadsMutex, mtx_plain) != thrd_success) {
-        fprintf(stderr, "Could not initialize ScriptPool threads mutex.\n");
-
-        free(pool);
-        return NULL;
-    }
-
     pool->numThreads = numThreads;
     pool->threads = malloc(sizeof(Tiny_StateThread) * numThreads);
 
     for(int i = 0; i < numThreads; ++i) {
         pool->threads[i].pc = -1;
+    }
+
+    pool->firstRequest = pool->lastRequest = NULL;
+
+
+    if(mtx_init(&pool->threadsMutex, mtx_plain) != thrd_success) {
+        fprintf(stderr, "Could not initialize ScriptPool threads mutex.\n");
+
+        free(pool);
+        return NULL;
     }
 
     if(mtx_init(&pool->requestsMutex, mtx_plain) != thrd_success) {
@@ -135,8 +138,6 @@ ScriptPool* CreateScriptPool(int numThreads, InitStateFunction initState, Finali
         free(pool);
         return NULL;
     }
-
-    pool->firstRequest = pool->lastRequest = NULL;
 
     return pool;
 }
@@ -162,14 +163,13 @@ static bool StartThread(ScriptPool* pool, const Tiny_State* state, void* ctx)
 
     for(int i = 0; i < pool->numThreads; ++i) {
         if(pool->threads[i].pc < 0) {
-
             Tiny_InitThread(&pool->threads[i], state);
         
             pool->threads[i].userdata = ctx;
             Tiny_StartThread(&pool->threads[i]);
 
-            mtx_unlock(&pool->threadsMutex);
-            
+
+			mtx_unlock(&pool->threadsMutex);            
             return true;
         }
     }
@@ -206,47 +206,48 @@ void StartScript(ScriptPool* pool, const char* filename, void* ctx)
 
 void UpdateScriptPool(ScriptPool* pool, int n)
 {
-    mtx_lock(&pool->threadsMutex);
+	if (mtx_trylock(&pool->threadsMutex) == thrd_success) {
+		for (int i = 0; i < pool->numThreads; ++i) {
+			if (pool->threads[i].pc < 0) continue;
 
-    for(int i = 0; i < pool->numThreads; ++i) {
-        if(pool->threads[i].pc < 0) continue;
+			for (int k = 0; k < n; ++k) {
+				Tiny_ExecuteCycle(&pool->threads[i]);
 
-        for(int k = 0; k < n; ++k) {
-            Tiny_ExecuteCycle(&pool->threads[i]);
+				if (pool->threads[i].pc < 0) {
+					// Just finished
+					if (pool->finalizeContext) pool->finalizeContext(pool->threads[i].userdata);
+					Tiny_DestroyThread(&pool->threads[i]);
 
-            if(pool->threads[i].pc < 0) {
-                // Just finished
-                if(pool->finalizeContext) pool->finalizeContext(pool->threads[i].userdata);
-                Tiny_DestroyThread(&pool->threads[i]);
+					break;
+				}
+			}
+		}
 
-                break;
-            }
-        }
-    }
-
-    mtx_unlock(&pool->threadsMutex);
-
-    mtx_lock(&pool->requestsMutex);
-
-	if (!pool->firstRequest) {
-		mtx_unlock(&pool->requestsMutex);
-		return;
+		mtx_unlock(&pool->threadsMutex);
 	}
 
-    // If we successfully start a queued up script, then we remove it from the queue
-    if(StartThread(pool, pool->firstRequest->state, pool->firstRequest->ctx)) {
-        StartRequest* next = pool->firstRequest->next;
 
-        free(pool->firstRequest);
+	if (mtx_trylock(&pool->requestsMutex) == thrd_success) {
+		if (!pool->firstRequest) {
+			mtx_unlock(&pool->requestsMutex);
+			return;
+		}
 
-        if(pool->firstRequest == pool->lastRequest) {
-            pool->lastRequest = NULL;
-        }
+		// If we successfully start a queued up script, then we remove it from the queue
+		if (StartThread(pool, pool->firstRequest->state, pool->firstRequest->ctx)) {
+			StartRequest* next = pool->firstRequest->next;
 
-        pool->firstRequest = next;
-    }
+			free(pool->firstRequest);
 
-    mtx_unlock(&pool->requestsMutex);
+			if (pool->firstRequest == pool->lastRequest) {
+				pool->lastRequest = NULL;
+			}
+
+			pool->firstRequest = next;
+		}
+
+		mtx_unlock(&pool->requestsMutex);
+	}
 }
 
 void DeleteScriptPool(ScriptPool* pool)
@@ -268,8 +269,8 @@ void DeleteScriptPool(ScriptPool* pool)
 
     free(pool->threads);
 
-    free(pool);
-
     mtx_destroy(&pool->threadsMutex);
     mtx_destroy(&pool->requestsMutex);
+
+    free(pool);
 }
