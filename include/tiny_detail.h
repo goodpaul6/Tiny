@@ -3,11 +3,10 @@
 #include "tiny.h"
 #include "tiny_lexer.h"
 
-#define MAX_STACK		256
-#define MAX_INDIR		512
-#define MAX_ARGS		32
 #define MAX_NUMBERS     512
 #define MAX_STRINGS     512
+
+typedef unsigned char Word;
 
 typedef struct Tiny_Object
 {
@@ -25,10 +24,14 @@ typedef struct Tiny_Object
 			void* addr;
 			const Tiny_NativeProp* prop;	// Can be used to check type of native (ex. obj->nat.prop == &ArrayProp // this is an Array)
 		} nat;
+
+        struct
+        {
+            Word n;
+            Tiny_Value* fields;
+        } ostruct;
 	};
 } Tiny_Object;
-
-typedef unsigned char Word;
 
 typedef enum
 {
@@ -37,6 +40,7 @@ typedef enum
     SYM_CONST,
 	SYM_FUNCTION,
 	SYM_FOREIGN_FUNCTION,
+    SYM_FIELD,
 
     SYM_TAG_VOID,
     SYM_TAG_BOOL,
@@ -44,7 +48,8 @@ typedef enum
     SYM_TAG_FLOAT,
     SYM_TAG_STR,
     SYM_TAG_ANY,
-    SYM_TAG_FOREIGN
+    SYM_TAG_FOREIGN,
+    SYM_TAG_STRUCT
 } SymbolType;
 
 typedef struct sSymbol
@@ -100,6 +105,19 @@ typedef struct sSymbol
 
             Tiny_ForeignFunction callee;
         } foreignFunc;
+
+        struct
+        {
+            // If a struct type is referred to before definition
+            // it is declared automatically but with this field
+            // set to false. The compiler will check that no
+            // such symbols exist before it finishes compilation.
+            bool defined;
+
+            struct sSymbol** fields;     // array
+        } sstruct;
+
+        struct sSymbol* fieldTag;
 	};
 } Symbol;
 

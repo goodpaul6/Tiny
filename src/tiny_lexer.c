@@ -60,7 +60,11 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer* l)
 		while (l->last && l->last != '\n') {
 			l->last = GetChar(l);
 		}
-		if (l->last) l->last = GetChar(l);
+
+		if (l->last) {
+            l->last = GetChar(l);
+            l->lineNumber += 1;
+        }
 
 		return Tiny_GetToken(l);
 	}
@@ -125,6 +129,7 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer* l)
     MATCH(',', COMMA);
     MATCH(';', SEMI);
     MATCH(':', COLON);
+    MATCH('.', DOT);
 
     if(isalpha(l->last)) {
         ResetLexeme(l);
@@ -155,6 +160,8 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer* l)
         if(strcmp(l->lexeme, "while") == 0) return TINY_TOK_WHILE;
         if(strcmp(l->lexeme, "for") == 0) return TINY_TOK_FOR;
         if(strcmp(l->lexeme, "else") == 0) return TINY_TOK_ELSE;
+        if(strcmp(l->lexeme, "struct") == 0) return TINY_TOK_STRUCT;
+		if(strcmp(l->lexeme, "new") == 0) return TINY_TOK_NEW;
 
         return TINY_TOK_IDENT;
     }

@@ -369,16 +369,18 @@ static Tiny_Value Lib_DictKeys(Tiny_StateThread* thread, const Tiny_Value* args,
 
 static Tiny_Value Strcat(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	const char* str1 = Tiny_ToString(args[0]);
-	const char* str2 = Tiny_ToString(args[1]);
-	
-	size_t len1 = strlen(str1);
-	size_t len2 = strlen(str2);
-	
-	char* newString = malloc(len1 + len2 + 1);
-	strcpy(newString, str1);
-	strcpy(newString + len1, str2);
-	newString[len1 + len2] = '\0';
+    size_t totalLen = 0;
+
+    for(int i = 0; i < count; ++i) {
+        totalLen += strlen(Tiny_ToString(args[i]));
+    }
+		
+	char* newString = malloc(totalLen + 1);
+    newString[0] = 0;
+
+    for(int i = 0; i < count; ++i) {
+        strcat(newString, Tiny_ToString(args[i]));
+    }
 	
 	return Tiny_NewString(thread, newString);
 }
@@ -594,7 +596,7 @@ void Tiny_BindStandardLib(Tiny_State* state)
 	Tiny_BindFunction(state, "strlen(str): int", Strlen);
 	Tiny_BindFunction(state, "strchar(str, int): int", Strchar);
 
-	Tiny_BindFunction(state, "strcat(str, str): str", Strcat);
+	Tiny_BindFunction(state, "strcat(str, str, ...): str", Strcat);
 	Tiny_BindFunction(state, "ston(str): float", Lib_Ston);
 	Tiny_BindFunction(state, "ntos(float): str", Lib_Ntos);
 	

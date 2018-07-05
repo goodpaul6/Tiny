@@ -1,0 +1,18 @@
+struct Page {
+    title: str
+    body: str 
+}
+
+// For now, all structs are managed objects :(
+// If I want value semantics, I basically need to have pointers
+// in the language. Either that or all interactions by-ref have to
+// be done through global variables. Either way, not ideal for
+// a "scripting language".
+
+func handle_request(r: Request): str {    
+    p := new Page{"Hello", "Hello from tiny!"}
+
+    p.body = "What?"
+
+    return encode_plain_text_response(STATUS_OK, "tiny_server", p.body)
+}

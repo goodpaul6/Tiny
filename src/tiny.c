@@ -36,10 +36,14 @@ char* estrdup(const char* string)
 static void DeleteObject(Tiny_Object* obj)
 {
     if(obj->type == TINY_VAL_STRING) free(obj->string);
-    if (obj->type == TINY_VAL_NATIVE)
+    else if (obj->type == TINY_VAL_NATIVE)
     {
         if (obj->nat.prop && obj->nat.prop->finalize)
             obj->nat.prop->finalize(obj->nat.addr);
+    } 
+    else if(obj->type == TINY_VAL_STRUCT)
+    {
+        free(obj->ostruct.fields);
     }
 
     free(obj);
@@ -47,7 +51,7 @@ static void DeleteObject(Tiny_Object* obj)
 
 static inline bool IsObject(Tiny_Value val)
 {
-    return val.type == TINY_VAL_STRING || val.type == TINY_VAL_NATIVE;
+    return val.type == TINY_VAL_STRING || val.type == TINY_VAL_NATIVE || val.type == TINY_VAL_STRUCT;
 }
 
 void Tiny_ProtectFromGC(Tiny_Value value)
@@ -119,6 +123,14 @@ const Tiny_NativeProp* Tiny_GetProp(const Tiny_Value value)
 {
     if(value.type != TINY_VAL_NATIVE) return NULL;
     return value.obj->nat.prop;
+}
+
+Tiny_Value Tiny_GetField(const Tiny_Value value, int index)
+{
+    if(value.type != TINY_VAL_STRUCT) return Tiny_Null;
+    assert(index >= 0 && index < value.obj->ostruct.n);
+
+    return value.obj->ostruct.fields[index];
 }
 
 static Tiny_Object* NewObject(Tiny_StateThread* thread, Tiny_ValueType type)
@@ -540,6 +552,14 @@ static void Symbol_destroy(Symbol* sym)
 	{
 		sb_free(sym->foreignFunc.argTags);
 	}
+    else if(sym->type == SYM_TAG_STRUCT)
+    {
+        for(int i = 0; i < sb_count(sym->sstruct.fields); ++i) {
+            Symbol_destroy(sym->sstruct.fields[i]);
+        }
+
+        sb_free(sym->sstruct.fields);
+    }
 
     free(sym->name);
     free(sym);
@@ -770,11 +790,11 @@ static void BindFunction(Tiny_State* state, const char* name, Symbol** argTags, 
     state->numForeignFunctions += 1;
 }
 
-static Symbol* GetTagFromName(Tiny_State* state, const char* name);
+static Symbol* GetTagFromName(Tiny_State* state, const char* name, bool declareStruct);
 
 void Tiny_RegisterType(Tiny_State* state, const char* name)
 {
-    Symbol* s = GetTagFromName(state, name);
+    Symbol* s = GetTagFromName(state, name, false);
 
 	if (s) return;
 
@@ -829,7 +849,7 @@ void Tiny_BindFunction(Tiny_State* state, const char* sig, Tiny_ForeignFunction 
 			buf = NULL;
             break;
         } else {
-            Symbol* s = GetTagFromName(state, buf);
+            Symbol* s = GetTagFromName(state, buf, false);
 
             assert(s);
 
@@ -853,7 +873,7 @@ void Tiny_BindFunction(Tiny_State* state, const char* sig, Tiny_ForeignFunction 
 
         ScanUntilDelim(&sig, &buf);
 
-        returnTag = GetTagFromName(state, buf);
+        returnTag = GetTagFromName(state, buf, false);
         assert(returnTag);
 
 		sb_free(buf);
@@ -1087,6 +1107,52 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 			Word sIndex = thread->state->program[thread->pc++];
 			DoPush(thread, Tiny_NewConstString(Strings[sIndex]));
 		} break;
+
+        case TINY_OP_PUSH_STRUCT:
+        {
+            ++thread->pc;
+
+            Word nFields = thread->state->program[thread->pc++];
+            assert(nFields > 0);
+
+            Tiny_Object* obj = NewObject(thread, TINY_VAL_STRUCT);
+
+            obj->ostruct.n = nFields;
+            obj->ostruct.fields = malloc(sizeof(Tiny_Value) * nFields);
+
+            memcpy(obj->ostruct.fields, &thread->stack[thread->sp - nFields], sizeof(Tiny_Value) * nFields);
+            thread->sp -= nFields;
+            
+            thread->stack[thread->sp].type = TINY_VAL_STRUCT;
+            thread->stack[thread->sp].obj = obj;
+
+            thread->sp += 1;
+        } break;
+
+        case TINY_OP_STRUCT_GET:
+        {
+            ++thread->pc;
+
+            Word i = thread->state->program[thread->pc++];
+
+            assert(i >= 0 && i < thread->stack[thread->sp - 1].obj->ostruct.n);
+
+            thread->stack[thread->sp - 1] = thread->stack[thread->sp - 1].obj->ostruct.fields[i];
+        } break;
+
+        case TINY_OP_STRUCT_SET:
+        {
+            ++thread->pc;
+
+            Word i = thread->state->program[thread->pc++];
+
+			Tiny_Value vstruct = DoPop(thread);
+            Tiny_Value val = DoPop(thread);
+
+            assert(i >= 0 && i < vstruct.obj->ostruct.n);
+
+            vstruct.obj->ostruct.fields[i] = val;
+        } break;
         
         case TINY_OP_POP:
         {
@@ -1373,6 +1439,8 @@ typedef enum
     EXP_RETURN,
     EXP_WHILE,
     EXP_FOR,
+    EXP_DOT,
+    EXP_CONSTRUCTOR
 } ExprType;
 
 typedef struct sExpr
@@ -1448,6 +1516,18 @@ typedef struct sExpr
             struct sExpr* body;
         } forx;
         
+        struct
+        {
+            struct sExpr* lhs;
+            char* field;
+        } dot;
+
+        struct
+        {
+            Symbol* structTag;
+            struct sExpr** args;
+        } constructor;
+
         struct sExpr* retExpr;
     };
 } Expr;
@@ -1513,7 +1593,35 @@ static void ExpectToken(Tiny_State* state, int tok, const char* msg)
     if (CurTok != tok) ReportError(state, msg);
 }
 
-static Symbol* GetTagFromName(Tiny_State* state, const char* name)
+static Symbol* GetStructTag(Tiny_State* state, const char* name)
+{
+    for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        if(state->globalSymbols[i]->type == SYM_TAG_STRUCT && strcmp(state->globalSymbols[i]->name, name) == 0) {
+            return state->globalSymbols[i];
+        }
+    }
+
+    return NULL;
+}
+
+static Symbol* DeclareStruct(Tiny_State* state, const char* name, bool search)
+{
+    if(search) {
+        Symbol* s = GetStructTag(state, name);
+        if(s) return s;
+    }
+
+    Symbol* s = Symbol_create(SYM_TAG_STRUCT, name, state);
+
+    s->sstruct.defined = false;
+    s->sstruct.fields = NULL;
+
+    sb_push(state->globalSymbols, s);
+
+    return s;
+}
+
+static Symbol* GetTagFromName(Tiny_State* state, const char* name, bool declareStruct)
 {
     if(strcmp(name, "void") == 0) return GetPrimTag(SYM_TAG_VOID);
     else if(strcmp(name, "bool") == 0) return GetPrimTag(SYM_TAG_BOOL);
@@ -1525,20 +1633,43 @@ static Symbol* GetTagFromName(Tiny_State* state, const char* name)
         for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
             Symbol* s = state->globalSymbols[i];
 
-            if(s->type == SYM_TAG_FOREIGN && strcmp(s->name, name) == 0) {
+            if((s->type == SYM_TAG_FOREIGN || s->type == SYM_TAG_STRUCT) && strcmp(s->name, name) == 0) {
                 return s;
             }
+        }
+
+        if(declareStruct) {
+            return DeclareStruct(state, name, false);
         }
     }
 
     return NULL;
 }
 
+static Symbol* GetFieldTag(Symbol* s, const char* name, int* index)
+{
+    assert(s->type == SYM_TAG_STRUCT);
+    assert(s->sstruct.defined);
+
+    for(int i = 0; i < sb_count(s->sstruct.fields); ++i) {
+        Symbol* f = s->sstruct.fields[i];
+
+        if(strcmp(f->name, name) == 0) {
+            if(index) *index = i;
+            return f->fieldTag;
+        }
+    }
+
+    if(index) *index = -1;
+
+    return NULL;
+}
+
 static Symbol* ParseType(Tiny_State* state)
 {
-    ExpectToken(state, TINY_TOK_IDENT, "Expected identifier for typename.");
+	ExpectToken(state, TINY_TOK_IDENT, "Expected identifier for typename.");
 
-	Symbol* s = GetTagFromName(state, state->l.lexeme);
+	Symbol* s = GetTagFromName(state, state->l.lexeme, true);
 
 	if (!s) {
 		ReportError(state, "%s doesn't name a type.", state->l.lexeme);
@@ -1549,6 +1680,8 @@ static Symbol* ParseType(Tiny_State* state)
 	return s;
 }
 
+static Expr* ParseStatement(Tiny_State* state);
+
 static Expr* ParseIf(Tiny_State* state)
 {
     Expr* exp = Expr_create(EXP_IF, state);
@@ -1556,12 +1689,12 @@ static Expr* ParseIf(Tiny_State* state)
     GetNextToken(state);
 
     exp->ifx.cond = ParseExpr(state);
-    exp->ifx.body = ParseExpr(state);
+    exp->ifx.body = ParseStatement(state);
 
     if (CurTok == TINY_TOK_ELSE)
     {
         GetNextToken(state);
-        exp->ifx.alt = ParseExpr(state);
+        exp->ifx.alt = ParseStatement(state);
     }
     else
         exp->ifx.alt = NULL;
@@ -1583,7 +1716,7 @@ static Expr* ParseBlock(Tiny_State* state)
 
     while (CurTok != TINY_TOK_CLOSECURLY)
     {
-        Expr* e = ParseExpr(state);
+        Expr* e = ParseStatement(state);
         assert(e);
         
         sb_push(exp->block, e);
@@ -1663,21 +1796,113 @@ static Expr* ParseFunc(Tiny_State* state)
 
     GetNextToken(state);
 
-    ExpectToken(state, TINY_TOK_COLON, "Expected ':' after func prototype.");
-
-    GetNextToken(state);
-
-    exp->proc.decl->func.returnTag = ParseType(state);
+    if(CurTok != TINY_TOK_COLON) {
+        exp->proc.decl->func.returnTag = GetPrimTag(SYM_TAG_VOID);
+    } else {
+        GetNextToken(state);
+        exp->proc.decl->func.returnTag = ParseType(state);
+    }
 
     OpenScope(state);
 
-    exp->proc.body = ParseExpr(state);
+    exp->proc.body = ParseStatement(state);
 
     CloseScope(state);
 
     state->currFunc = NULL;
 
     return exp;
+}
+
+static Symbol* ParseStruct(Tiny_State* state)
+{
+    if(state->currFunc) {
+        ReportError(state, "Attempted to declare struct inside func %s. Can't do that bruh.", state->currFunc->name);
+    }
+
+    Tiny_TokenPos pos = state->l.pos;
+
+    GetNextToken(state);
+
+    ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'struct'.");
+
+    Symbol* s = DeclareStruct(state, state->l.lexeme, true);
+
+    if(s->sstruct.defined) {
+        ReportError(state, "Attempted to define struct %s multiple times.", state->l.lexeme);
+    }
+
+    s->pos = pos;
+    s->sstruct.defined = true;
+
+    GetNextToken(state);
+
+    ExpectToken(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name.");
+
+    GetNextToken(state);
+
+    while(CurTok != TINY_TOK_CLOSECURLY) {
+        ExpectToken(state, TINY_TOK_IDENT, "Expected identifier in struct fields.");
+
+        int count = sb_count(s->sstruct.fields);
+
+        if(count >= UCHAR_MAX) {
+            ReportError(state, "Too many fields in struct.");
+        }
+
+        for(int i = 0; i < count; ++i) {
+            if(strcmp(s->sstruct.fields[i]->name, state->l.lexeme) == 0) {
+                ReportError(state, "Declared multiple fields with the same name %s.", state->l.lexeme);
+            }
+        }
+
+        Symbol* f = Symbol_create(SYM_FIELD, state->l.lexeme, state);
+
+        GetNextToken(state);
+
+		ExpectToken(state, TINY_TOK_COLON, "Expected ':' after field name.");
+
+        GetNextToken(state);
+
+        f->fieldTag = ParseType(state);
+
+		sb_push(s->sstruct.fields, f);
+    }
+
+    GetNextToken(state);
+
+    if(!s->sstruct.fields) {
+        ReportError(state, "Struct must have at least one field.\n");
+    }
+
+    return s;
+}
+
+static Expr* ParseCall(Tiny_State* state, char* ident)
+{
+	assert(CurTok == TINY_TOK_OPENPAREN);
+
+	Expr* exp = Expr_create(EXP_CALL, state);
+
+	exp->call.args = NULL;
+
+	GetNextToken(state);
+
+	while (CurTok != TINY_TOK_CLOSEPAREN)
+	{
+		sb_push(exp->call.args, ParseExpr(state));
+
+		if (CurTok == TINY_TOK_COMMA) GetNextToken(state);
+		else if (CurTok != TINY_TOK_CLOSEPAREN)
+		{
+			ReportError(state, "Expected ')' after call.");
+		}
+	}
+
+	exp->call.calleeName = ident;
+
+	GetNextToken(state);
+	return exp;
 }
 
 static Expr* ParseFactor(Tiny_State* state)
@@ -1704,47 +1929,35 @@ static Expr* ParseFactor(Tiny_State* state)
             return exp;
         } break;
 
-        case TINY_TOK_OPENCURLY: return ParseBlock(state);
-
         case TINY_TOK_IDENT:
         {
             char* ident = Tiny_Strdup(state->l.lexeme);
             GetNextToken(state);
 
-            if(CurTok != TINY_TOK_OPENPAREN)
-            {
-                Expr* exp;
-                
-                exp = Expr_create(EXP_ID, state);
-                
-                exp->id.sym = ReferenceVariable(state, ident);
-                exp->id.name = ident;
+			if (CurTok == TINY_TOK_OPENPAREN) return ParseCall(state, ident);
 
-                return exp;
-            }
-            
-            Expr* exp = Expr_create(EXP_CALL, state);
+			Expr* exp = Expr_create(EXP_ID, state);
 
-            exp->call.args = NULL;
-            
-            GetNextToken(state);
-            
-            while(CurTok != TINY_TOK_CLOSEPAREN)
-            {
-                sb_push(exp->call.args, ParseExpr(state));
+			exp->id.sym = ReferenceVariable(state, ident);
+			exp->id.name = ident;
 
-                if(CurTok == TINY_TOK_COMMA) GetNextToken(state);
-                else if(CurTok != TINY_TOK_CLOSEPAREN)
-                {
-                    ReportError(state, "Expected ')' after call.");
-                }
-            }
+			while (CurTok == TINY_TOK_DOT) {
+				Expr* e = Expr_create(EXP_DOT, state);
 
-            exp->call.calleeName = ident;
+				GetNextToken(state);
 
-            GetNextToken(state);
-            return exp;
-        } break;
+				ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
+
+				e->dot.lhs = exp;
+				e->dot.field = Tiny_Strdup(state->l.lexeme);
+
+				GetNextToken(state);
+
+				exp = e;
+			}
+
+			return exp;
+		} break;
         
 		case TINY_TOK_MINUS: case TINY_TOK_BANG:
         {
@@ -1789,6 +2002,207 @@ static Expr* ParseFactor(Tiny_State* state)
             return exp;
         } break;
         
+        case TINY_TOK_OPENPAREN:
+        {
+            GetNextToken(state);
+            Expr* inner = ParseExpr(state);
+
+			ExpectToken(state, TINY_TOK_CLOSEPAREN, "Expected matching ')' after previous '('");
+            GetNextToken(state);
+            
+            Expr* exp = Expr_create(EXP_PAREN, state);
+            exp->paren = inner;
+            return exp;
+        } break;
+        
+        case TINY_TOK_NEW:
+        {
+            Expr* exp = Expr_create(EXP_CONSTRUCTOR, state);
+
+            GetNextToken(state);
+
+            Symbol* tag = DeclareStruct(state, state->l.lexeme, true);
+
+            GetNextToken(state);
+
+            exp->constructor.structTag = tag;
+            exp->constructor.args = NULL;
+            
+            ExpectToken(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name");
+
+            GetNextToken(state);
+
+            while(CurTok != TINY_TOK_CLOSECURLY) {
+                Expr* e = ParseExpr(state);
+
+				sb_push(exp->constructor.args, e);
+				
+                if(CurTok != TINY_TOK_CLOSECURLY && CurTok != TINY_TOK_COMMA) {
+                    ReportError(state, "Expected '}' or ',' in constructor arg list.");
+                }
+
+                if(CurTok == TINY_TOK_COMMA) GetNextToken(state);
+            }
+
+            GetNextToken(state);
+
+            return exp;
+        } break;
+
+        default: break;
+    }
+
+    ReportError(state, "Unexpected token '%s'\n", state->l.lexeme);
+    return NULL;
+}
+
+static int GetTokenPrec()
+{
+    int prec = -1;
+    switch(CurTok)
+    {
+        case TINY_TOK_STAR: case TINY_TOK_SLASH: case TINY_TOK_PERCENT: case TINY_TOK_AND: case TINY_TOK_OR: prec = 5; break;
+        
+        case TINY_TOK_PLUS: case TINY_TOK_MINUS:                prec = 4; break;
+        
+        case TINY_TOK_LTE: case TINY_TOK_GTE:
+        case TINY_TOK_EQUALS: case TINY_TOK_NOTEQUALS:
+        case TINY_TOK_LT: case TINY_TOK_GT:                prec = 3; break;
+        
+        case TINY_TOK_LOG_AND: case TINY_TOK_LOG_OR:        prec = 2; break;
+    }
+    
+    return prec;
+}
+
+static Expr* ParseBinRhs(Tiny_State* state, int exprPrec, Expr* lhs)
+{
+    while(true) {
+        int prec = GetTokenPrec();
+        
+        if(prec < exprPrec)
+            return lhs;
+
+        int binOp = CurTok;
+
+        GetNextToken(state);
+
+        Expr* rhs = ParseFactor(state);
+        int nextPrec = GetTokenPrec();
+        
+        if(prec < nextPrec)
+            rhs = ParseBinRhs(state, prec + 1, rhs);
+
+        Expr* newLhs = Expr_create(EXP_BINARY, state);
+        
+        newLhs->binary.lhs = lhs;
+        newLhs->binary.rhs = rhs;
+        newLhs->binary.op = binOp;
+        
+        lhs = newLhs;
+    }
+}
+
+static Expr* ParseExpr(Tiny_State* state)
+{
+    Expr* factor = ParseFactor(state);
+    return ParseBinRhs(state, 0, factor);
+}
+
+static Expr* ParseStatement(Tiny_State* state)
+{
+	switch (CurTok)
+	{
+        case TINY_TOK_OPENCURLY: return ParseBlock(state);
+
+        case TINY_TOK_IDENT:
+        {
+            char* ident = Tiny_Strdup(state->l.lexeme);
+            GetNextToken(state);
+
+            if(CurTok == TINY_TOK_OPENPAREN) return ParseCall(state, ident);
+
+            Expr* lhs = Expr_create(EXP_ID, state);
+            
+            lhs->id.sym = ReferenceVariable(state, ident);
+            lhs->id.name = ident;
+
+            while(CurTok == TINY_TOK_DOT) {
+                Expr* e = Expr_create(EXP_DOT, state);
+
+                GetNextToken(state);
+
+                ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
+
+                e->dot.lhs = lhs;
+                e->dot.field = Tiny_Strdup(state->l.lexeme);
+
+                GetNextToken(state);
+
+                lhs = e;
+            }
+
+            int op = CurTok;
+
+            if(CurTok == TINY_TOK_DECLARE || CurTok == TINY_TOK_COLON) {
+                if(lhs->type != EXP_ID) {
+                    ReportError(state, "Left hand side of declaration must be identifier.");
+                }
+
+                if (state->currFunc) {
+                    lhs->id.sym = DeclareLocal(state, ident);
+                } else {
+                    lhs->id.sym = DeclareGlobalVar(state, ident);
+                }
+
+                if(CurTok == TINY_TOK_COLON) {
+                    GetNextToken(state);
+                    lhs->id.sym->var.tag = ParseType(state);
+
+                    ExpectToken(state, TINY_TOK_EQUAL, "Expected '=' after typename.");
+
+                    op = TINY_TOK_EQUAL;
+                }
+            }
+
+            // If the precedence is >= 0 then it's an expression operator
+            if(GetTokenPrec(op) >= 0) {
+                ReportError(state, "Expected assignment statement.");
+            }
+
+            GetNextToken(state);
+
+            Expr* rhs = ParseExpr(state);
+
+            if(op == TINY_TOK_DECLARECONST) {
+                if (lhs->type != EXP_ID) {
+                    ReportError(state, "Left hand side of declaration must be identifier.");
+                }
+
+                if (rhs->type == EXP_BOOL) {
+                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_BOOL))->constant.bValue = rhs->boolean;
+                } else if (rhs->type == EXP_CHAR) {
+                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_INT))->constant.iValue = rhs->iValue;
+                } else if (rhs->type == EXP_INT) {
+                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_INT))->constant.iValue = rhs->iValue;
+                } else if(rhs->type == EXP_FLOAT) {
+                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_FLOAT))->constant.fIndex = rhs->fIndex;
+                } else if (rhs->type == EXP_STRING) {
+                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_STR))->constant.sIndex = rhs->sIndex;
+                } else {
+                    ReportError(state, "Expected number or string to be bound to constant '%s'.", lhs->id.name);
+                }
+            }
+
+            Expr* bin = Expr_create(EXP_BINARY, state);
+
+            bin->binary.lhs = lhs;
+            bin->binary.rhs = rhs;
+            bin->binary.op = op;
+
+            return bin;
+        } break;
+
         case TINY_TOK_FUNC: return ParseFunc(state);
         
         case TINY_TOK_IF: return ParseIf(state);
@@ -1802,7 +2216,7 @@ static Expr* ParseFactor(Tiny_State* state)
 
             OpenScope(state);
             
-            exp->whilex.body = ParseExpr(state);
+            exp->whilex.body = ParseStatement(state);
             
             CloseScope(state);
 
@@ -1817,7 +2231,7 @@ static Expr* ParseFactor(Tiny_State* state)
             // Every local declared after this is scoped to the for
             OpenScope(state);
 
-            exp->forx.init = ParseExpr(state);
+            exp->forx.init = ParseStatement(state);
 
             ExpectToken(state, TINY_TOK_SEMI, "Expected ';' after for initializer.");
 
@@ -1829,9 +2243,9 @@ static Expr* ParseFactor(Tiny_State* state)
 
             GetNextToken(state);
 
-            exp->forx.step = ParseExpr(state);
+            exp->forx.step = ParseStatement(state);
 
-            exp->forx.body = ParseExpr(state);
+            exp->forx.body = ParseStatement(state);
 
             CloseScope(state);
 
@@ -1860,133 +2274,10 @@ static Expr* ParseFactor(Tiny_State* state)
             exp->retExpr = ParseExpr(state);
             return exp;
         } break;
+	}
 
-        case TINY_TOK_OPENPAREN:
-        {
-            GetNextToken(state);
-            Expr* inner = ParseExpr(state);
-
-			ExpectToken(state, TINY_TOK_CLOSEPAREN, "Expected matching ')' after previous '('");
-            GetNextToken(state);
-            
-            Expr* exp = Expr_create(EXP_PAREN, state);
-            exp->paren = inner;
-            return exp;
-        } break;
-        
-        default: break;
-    }
-
-    ReportError(state, "Unexpected token '%s'\n", state->l.lexeme);
-    return NULL;
-}
-
-static int GetTokenPrec()
-{
-    int prec = -1;
-    switch(CurTok)
-    {
-        case TINY_TOK_STAR: case TINY_TOK_SLASH: case TINY_TOK_PERCENT: case TINY_TOK_AND: case TINY_TOK_OR: prec = 5; break;
-        
-        case TINY_TOK_PLUS: case TINY_TOK_MINUS:                prec = 4; break;
-        
-        case TINY_TOK_LTE: case TINY_TOK_GTE:
-        case TINY_TOK_EQUALS: case TINY_TOK_NOTEQUALS:
-        case TINY_TOK_LT: case TINY_TOK_GT:                prec = 3; break;
-        
-        case TINY_TOK_LOG_AND: case TINY_TOK_LOG_OR:        prec = 2; break;
-
-        case TINY_TOK_PLUSEQUAL: case TINY_TOK_MINUSEQUAL: case TINY_TOK_STAREQUAL: case TINY_TOK_SLASHEQUAL:
-        case TINY_TOK_PERCENTEQUAL: case TINY_TOK_ANDEQUAL: case TINY_TOK_OREQUAL:
-        case TINY_TOK_DECLARECONST:
-        case TINY_TOK_DECLARE: case TINY_TOK_COLON: case TINY_TOK_EQUAL:                        prec = 1; break;
-    }
-    
-    return prec;
-}
-
-static Expr* ParseBinRhs(Tiny_State* state, int exprPrec, Expr* lhs)
-{
-    while(1)
-    {
-        int prec = GetTokenPrec();
-        
-        if(prec < exprPrec)
-            return lhs;
-
-        int binOp = CurTok;
-
-        // They're trying to declare a variable (we can only know this when we 
-        // encounter this token)
-        if (binOp == TINY_TOK_DECLARE) {
-            if (lhs->type != EXP_ID)
-            {
-                ReportError(state, "Expected identifier to the left-hand side of ':='.\n");
-            }
-
-            // If we're inside a function declare a local, otherwise a global
-            if (state->currFunc)
-                lhs->id.sym = DeclareLocal(state, lhs->id.name);
-            else
-                lhs->id.sym = DeclareGlobalVar(state, lhs->id.name);
-        } else if(binOp == TINY_TOK_COLON) {
-            // They're trying to declare a variable with explicit type
-            if (state->currFunc)
-                lhs->id.sym = DeclareLocal(state, lhs->id.name);
-            else
-                lhs->id.sym = DeclareGlobalVar(state, lhs->id.name);
-
-			GetNextToken(state);
-
-			lhs->id.sym->var.tag = ParseType(state);
-
-			binOp = TINY_TOK_EQUAL;
-        }
-
-        GetNextToken(state);
-
-        Expr* rhs = ParseFactor(state);
-        int nextPrec = GetTokenPrec();
-        
-        if(prec < nextPrec)
-            rhs = ParseBinRhs(state, prec + 1, rhs);
-
-        if (binOp == TINY_TOK_DECLARECONST)
-        {
-            if (lhs->type != EXP_ID)
-            {
-                ReportError(state, "Expected identifier to the left-hand side of '::'.\n");
-            }
-
-			if (rhs->type == EXP_BOOL) {
-				DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_BOOL))->constant.bValue = rhs->boolean;
-			} else if (rhs->type == EXP_CHAR) {
-				DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_INT))->constant.iValue = rhs->iValue;
-			} else if (rhs->type == EXP_INT) {
-				DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_INT))->constant.iValue = rhs->iValue;
-			} else if(rhs->type == EXP_FLOAT) {
-				DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_FLOAT))->constant.fIndex = rhs->fIndex;
-			} else if (rhs->type == EXP_STRING) {
-				DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_STR))->constant.sIndex = rhs->sIndex;
-			} else {
-                ReportError(state, "Expected number or string to be bound to constant '%s'.\n", lhs->id.name);
-            }
-        }
-
-        Expr* newLhs = Expr_create(EXP_BINARY, state);
-        
-        newLhs->binary.lhs = lhs;
-        newLhs->binary.rhs = rhs;
-        newLhs->binary.op = binOp;
-        
-        lhs = newLhs;
-    }
-}
-
-static Expr* ParseExpr(Tiny_State* state)
-{
-    Expr* factor = ParseFactor(state);
-    return ParseBinRhs(state, 0, factor);
+	ReportError(state, "Unexpected token '%s'.", state->l.lexeme);
+	return NULL;
 }
 
 static Expr** ParseProgram(Tiny_State* state)
@@ -1999,8 +2290,12 @@ static Expr** ParseProgram(Tiny_State* state)
 
         while(CurTok != TINY_TOK_EOF)
         {
-            Expr* stmt = ParseExpr(state);
-            sb_push(arr, stmt);
+            if(CurTok == TINY_TOK_STRUCT) {
+                ParseStruct(state);
+            } else {
+                Expr* stmt = ParseStatement(state);
+                sb_push(arr, stmt);
+            }
         }
 
         return arr;
@@ -2226,7 +2521,7 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
                     exp->tag = GetPrimTag(SYM_TAG_VOID);
                 } break;
 
-				case '=': {
+				case TINY_TOK_EQUAL: {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
@@ -2334,6 +2629,46 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
 
             exp->tag = GetPrimTag(SYM_TAG_VOID);
         } break;
+
+        case EXP_DOT: {
+            ResolveTypes(state, exp->dot.lhs);
+
+            if(exp->dot.lhs->tag->type != SYM_TAG_STRUCT) {
+                ReportErrorE(state, exp, "Cannot use '.' on a %s", GetTagName(exp->dot.lhs->tag));
+            }
+
+            exp->tag = GetFieldTag(exp->dot.lhs->tag, exp->dot.field, NULL);
+
+            if(!exp->tag) {
+                ReportErrorE(state, exp, "Struct %s doesn't have a field named %s", exp->dot.lhs->tag->name, exp->dot.field);
+            }
+        } break;
+        
+        case EXP_CONSTRUCTOR: {
+            assert(exp->constructor.structTag->sstruct.defined);
+            assert(sb_count(exp->constructor.args) <= UCHAR_MAX);
+
+            int meCount = sb_count(exp->constructor.args);
+            int tagCount = sb_count(exp->constructor.structTag->sstruct.fields);
+
+            if(meCount != tagCount) {
+                ReportErrorE(state, exp, "struct %s constructor expects %d args but you supplied %d.", exp->constructor.structTag->name, tagCount, meCount);
+            }
+
+            for(int i = 0; i < sb_count(exp->constructor.args); ++i) {
+                ResolveTypes(state, exp->constructor.args[i]);
+
+                Symbol* provided = exp->constructor.args[i]->tag;
+                Symbol* expected = exp->constructor.structTag->sstruct.fields[i]->fieldTag;
+
+                if(!CompareTags(provided, expected)) {
+                    ReportErrorE(state, exp->constructor.args[i], "Argument %d to constructor is supposed to be a %s but you supplied a %s",
+                            i + 1, GetTagName(expected), GetTagName(provided));
+                }
+            }
+
+            exp->tag = exp->constructor.structTag;
+        } break;
     }
 }
 
@@ -2384,45 +2719,59 @@ static void GeneratePushString(Tiny_State* state, int sIndex)
     }
 }
 
-static void CompileGetId(Tiny_State* state, Expr* exp)
+static void CompileExpr(Tiny_State* state, Expr* exp);
+
+static void CompileGetIdOrDot(Tiny_State* state, Expr* exp)
 {
-    assert(exp->type == EXP_ID);
+    if(exp->type == EXP_ID) {
+        if (!exp->id.sym) ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name);
 
-    if (!exp->id.sym)
-    {
-        ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name);
-    }
+        assert(exp->id.sym->type == SYM_GLOBAL ||
+                exp->id.sym->type == SYM_LOCAL ||
+                exp->id.sym->type == SYM_CONST);
 
-    assert(exp->id.sym->type == SYM_GLOBAL ||
-        exp->id.sym->type == SYM_LOCAL ||
-        exp->id.sym->type == SYM_CONST);
+        if (exp->id.sym->type != SYM_CONST)
+        {
+            if (exp->id.sym->type == SYM_GLOBAL)
+                GenerateCode(state, TINY_OP_GET);
+            else if (exp->id.sym->type == SYM_LOCAL)
+                GenerateCode(state, TINY_OP_GETLOCAL);
 
-    if (exp->id.sym->type != SYM_CONST)
-    {
-        if (exp->id.sym->type == SYM_GLOBAL)
-            GenerateCode(state, TINY_OP_GET);
-        else if (exp->id.sym->type == SYM_LOCAL)
-            GenerateCode(state, TINY_OP_GETLOCAL);
+            GenerateInt(state, exp->id.sym->var.index);
+        }
+        else
+        {
+            if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_STR)) {
+                GeneratePushString(state, exp->id.sym->constant.sIndex);
+            } else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_BOOL)) {
+                GenerateCode(state, exp->id.sym->constant.bValue ? TINY_OP_PUSH_TRUE : TINY_OP_PUSH_FALSE);
+            } else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_INT)) {
+                GeneratePushInt(state, exp->id.sym->constant.iValue);
+            } else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_FLOAT)) {
+                GeneratePushFloat(state, exp->id.sym->constant.fIndex);
+            } else {
+                assert(0);
+            }
+        }
+    } else {
+        assert(exp->type == EXP_DOT);
 
-        GenerateInt(state, exp->id.sym->var.index);
-    }
-    else
-    {
-		if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_STR)) {
-            GeneratePushString(state, exp->id.sym->constant.sIndex);
-		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_BOOL)) {
-			GenerateCode(state, exp->id.sym->constant.bValue ? TINY_OP_PUSH_TRUE : TINY_OP_PUSH_FALSE);
-		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_INT)) {
-            GeneratePushInt(state, exp->id.sym->constant.iValue);
-		} else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_FLOAT)) {
-            GeneratePushFloat(state, exp->id.sym->constant.fIndex);
-		} else {
-			assert(0);
-		}
+        assert(exp->dot.lhs);
+        assert(exp->dot.field);
+        assert(exp->dot.lhs->tag->type == SYM_TAG_STRUCT);
+
+        int idx;
+
+        GetFieldTag(exp->dot.lhs->tag, exp->dot.field, &idx);
+
+        assert(idx >= 0 && idx <= UCHAR_MAX);
+
+        CompileExpr(state, exp->dot.lhs);
+
+        GenerateCode(state, TINY_OP_STRUCT_GET);
+        GenerateCode(state, (Word)idx);
     }
 }
-
-static void CompileExpr(Tiny_State* state, Expr* exp);
 
 static void CompileCall(Tiny_State* state, Expr* exp)
 {
@@ -2472,8 +2821,9 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
         } break;
 
         case EXP_ID:
+        case EXP_DOT:
         {
-            CompileGetId(state, exp);
+            CompileGetIdOrDot(state, exp);
         } break;
 
         case EXP_BOOL:
@@ -2500,6 +2850,25 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
         {
             CompileCall(state, exp);
             GenerateCode(state, TINY_OP_GET_RETVAL);
+        } break;
+
+        case EXP_CONSTRUCTOR:
+        {
+            assert(exp->constructor.structTag->sstruct.defined);
+            assert(sb_count(exp->constructor.args) <= UCHAR_MAX);
+
+            int meCount = sb_count(exp->constructor.args);
+            int tagCount = sb_count(exp->constructor.structTag->sstruct.fields);
+
+            // Should be checked in ResolveTypes
+            assert(meCount == tagCount);
+
+            for(int i = 0; i < sb_count(exp->constructor.args); ++i) {
+                CompileExpr(state, exp->constructor.args[i]);
+            }
+
+            GenerateCode(state, TINY_OP_PUSH_STRUCT);
+            GenerateCode(state, sb_count(exp->constructor.args));
         } break;
 
         case EXP_BINARY:
@@ -2696,13 +3065,13 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
                 case TINY_TOK_PLUSEQUAL: case TINY_TOK_MINUSEQUAL: case TINY_TOK_STAREQUAL: case TINY_TOK_SLASHEQUAL:
 				case TINY_TOK_PERCENTEQUAL: case TINY_TOK_ANDEQUAL: case TINY_TOK_OREQUAL:
                 {
-                    if (exp->binary.lhs->type == EXP_ID)
+                    if (exp->binary.lhs->type == EXP_ID || exp->binary.lhs->type == EXP_DOT)
                     {
                         switch (exp->binary.op)
                         {
                             case TINY_TOK_PLUSEQUAL:
                             {
-                                CompileGetId(state, exp->binary.lhs);
+                                CompileGetIdOrDot(state, exp->binary.lhs);
                                 
                                 if(exp->binary.rhs->type == EXP_INT && exp->binary.rhs->iValue == 1) {
                                     GenerateCode(state, TINY_OP_ADD1);
@@ -2714,7 +3083,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 
                             case TINY_TOK_MINUSEQUAL:
                             {
-                                CompileGetId(state, exp->binary.lhs);
+                                CompileGetIdOrDot(state, exp->binary.lhs);
 
                                 if(exp->binary.rhs->type == EXP_INT && exp->binary.rhs->iValue == 1) {
                                     GenerateCode(state, TINY_OP_SUB1);
@@ -2726,35 +3095,35 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
 
                             case TINY_TOK_STAREQUAL:
                             {
-                                CompileGetId(state, exp->binary.lhs);
+                                CompileGetIdOrDot(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, TINY_OP_MUL);
                             } break;
 
                             case TINY_TOK_SLASHEQUAL:
                             {
-                                CompileGetId(state, exp->binary.lhs);
+                                CompileGetIdOrDot(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, TINY_OP_DIV);
                             } break;
 
                             case TINY_TOK_PERCENTEQUAL:
                             {
-                                CompileGetId(state, exp->binary.lhs);
+                                CompileGetIdOrDot(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, TINY_OP_MOD);
                             } break;
 
                             case TINY_TOK_ANDEQUAL:
                             {
-                                CompileGetId(state, exp->binary.lhs);
+                                CompileGetIdOrDot(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, TINY_OP_AND);
                             } break;
 
                             case TINY_TOK_OREQUAL:
                             {
-                                CompileGetId(state, exp->binary.lhs);
+                                CompileGetIdOrDot(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, TINY_OP_OR);
                             } break;
@@ -2764,34 +3133,50 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
                                 break;
                         }
 
-                        if (!exp->binary.lhs->id.sym)
-                        {
-                            // The variable being referenced doesn't exist
-                            ReportErrorE(state, exp, "Assigning to undeclared identifier '%s'.\n", exp->binary.lhs->id.name);
-                        }
+                        if(exp->binary.lhs->type == EXP_ID) {
+                            if (!exp->binary.lhs->id.sym)
+                            {
+                                // The variable being referenced doesn't exist
+                                ReportErrorE(state, exp, "Assigning to undeclared identifier '%s'.\n", exp->binary.lhs->id.name);
+                            }
 
-                        if (exp->binary.lhs->id.sym->type == SYM_GLOBAL)
-                        {
-                            GenerateCode(state, TINY_OP_SET);
-                            GenerateInt(state, exp->binary.lhs->id.sym->var.index);
-                        }
-                        else if (exp->binary.lhs->id.sym->type == SYM_LOCAL)
-                        {
-                            GenerateCode(state, TINY_OP_SETLOCAL);
-                            assert(exp->binary.lhs->id.sym->var.index <= 0xff);
+                            if (exp->binary.lhs->id.sym->type == SYM_GLOBAL)
+                            {
+                                GenerateCode(state, TINY_OP_SET);
+                                GenerateInt(state, exp->binary.lhs->id.sym->var.index);
+                            }
+                            else if (exp->binary.lhs->id.sym->type == SYM_LOCAL)
+                            {
+                                GenerateCode(state, TINY_OP_SETLOCAL);
+                                assert(exp->binary.lhs->id.sym->var.index <= 0xff);
 
-                            GenerateCode(state, (Word)exp->binary.lhs->id.sym->var.index);
-                        }
-                        else        // Probably a constant, can't change it
-                        {
-                            ReportErrorE(state, exp, "Cannot assign to id '%s'.\n", exp->binary.lhs->id.name);
-                        }
+                                GenerateCode(state, (Word)exp->binary.lhs->id.sym->var.index);
+                            }
+                            else        // Probably a constant, can't change it
+                            {
+                                ReportErrorE(state, exp, "Cannot assign to id '%s'.\n", exp->binary.lhs->id.name);
+                            }
 
-                        exp->binary.lhs->id.sym->var.initialized = true;
+                            exp->binary.lhs->id.sym->var.initialized = true;
+                        } else {
+                            assert(exp->binary.lhs->type == EXP_DOT);
+                            assert(exp->binary.lhs->dot.lhs->tag->type == SYM_TAG_STRUCT);
+
+                            int idx;
+
+                            GetFieldTag(exp->binary.lhs->dot.lhs->tag, exp->binary.lhs->dot.field, &idx);
+
+                            assert(idx >= 0 && idx <= UCHAR_MAX);
+
+                            CompileExpr(state, exp->binary.lhs->dot.lhs);
+
+                            GenerateCode(state, TINY_OP_STRUCT_SET);
+                            GenerateCode(state, (Word)idx);
+                        }
                     }
                     else
                     {
-                        ReportErrorE(state, exp, "LHS of assignment operation must be a variable\n");
+                        ReportErrorE(state, exp, "LHS of assignment operation must be a variable or dot expr\n");
                     }
                 } break;
 
@@ -2966,6 +3351,21 @@ static void Expr_destroy(Expr* exp)
             Expr_destroy(exp->forx.body);
         } break;
 
+        case EXP_DOT:
+        {
+            Expr_destroy(exp->dot.lhs);
+            free(exp->dot.field);
+        } break;
+
+        case EXP_CONSTRUCTOR:
+        {
+            for(int i = 0; i < sb_count(exp->constructor.args); ++i) {
+                Expr_destroy(exp->constructor.args[i]);
+            }
+
+            sb_free(exp->constructor.args);
+        } break;
+
         default: assert(false); break;
     }
     free(exp);
@@ -3068,6 +3468,14 @@ void Tiny_CompileString(Tiny_State* state, const char* name, const char* string)
 
     CurTok = 0;
     Expr** prog = ParseProgram(state); 
+
+    // Make sure all structs are defined
+    for(int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        Symbol* s = state->globalSymbols[i];
+        if(s->type == SYM_TAG_STRUCT && !s->sstruct.defined) {
+            ReportErrorS(state, s, "Referenced undefined struct %s.", s->name);
+        }
+    }
         
     CompileState(state, prog);
 

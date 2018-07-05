@@ -26,6 +26,11 @@ enum
     // If the string is in the first 0xff constants, use this opcode
     TINY_OP_PUSH_STRING_FF,
 
+    TINY_OP_PUSH_STRUCT,
+
+    TINY_OP_STRUCT_GET,
+    TINY_OP_STRUCT_SET,
+
     TINY_OP_POP,
 
     TINY_OP_ADD,

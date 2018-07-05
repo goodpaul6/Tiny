@@ -39,7 +39,8 @@ typedef enum
     TINY_VAL_STRING,
     TINY_VAL_CONST_STRING,
     TINY_VAL_NATIVE,
-    TINY_VAL_LIGHT_NATIVE
+    TINY_VAL_LIGHT_NATIVE,
+    TINY_VAL_STRUCT
 } Tiny_ValueType;
 
 typedef struct Tiny_Value
@@ -145,6 +146,10 @@ void* Tiny_ToAddr(const Tiny_Value value);
 // It would also return NULL if the NativeProp supplied when the object was created was NULL,
 // either way, you have no information, so deal with it.
 const Tiny_NativeProp* Tiny_GetProp(const Tiny_Value value);
+
+// Returns Tiny_Null if value isn't a struct.
+// Asserts if index is out of bounds
+Tiny_Value Tiny_GetField(const Tiny_Value value, int index);
 
 Tiny_State* Tiny_CreateState(void);
 

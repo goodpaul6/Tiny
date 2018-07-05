@@ -21,6 +21,7 @@ typedef enum
     TINY_TOK_COMMA,
     TINY_TOK_SEMI,
     TINY_TOK_COLON,
+    TINY_TOK_DOT,
 
     TINY_TOK_LOG_AND,                   // &&
     TINY_TOK_LOG_OR,                    // ||
@@ -57,6 +58,8 @@ typedef enum
     TINY_TOK_RETURN,
     TINY_TOK_FUNC,
     TINY_TOK_FOREIGN,
+    TINY_TOK_STRUCT,
+    TINY_TOK_NEW,
 
     TINY_TOK_EOF,
 } Tiny_TokenKind;
