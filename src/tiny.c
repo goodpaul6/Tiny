@@ -15,6 +15,12 @@
 #include "tiny_util.h"
 #include "tiny_opcodes.h"
 
+// TODO(Apaar): Make a cstr type (for ConstStrings)
+// all str's can be used where a cstr is expected, but 
+// cstrs cannot be used where strs are expected.
+// This'll catch potential string lifetime issues at 
+// compile-time.
+
 const Tiny_Value Tiny_Null = { TINY_VAL_NULL };
 
 static int NumNumbers = 0;
@@ -1137,7 +1143,8 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 
             assert(i >= 0 && i < thread->stack[thread->sp - 1].obj->ostruct.n);
 
-            thread->stack[thread->sp - 1] = thread->stack[thread->sp - 1].obj->ostruct.fields[i];
+			Tiny_Value val = thread->stack[thread->sp - 1].obj->ostruct.fields[i];
+            thread->stack[thread->sp - 1] = val;
         } break;
 
         case TINY_OP_STRUCT_SET:

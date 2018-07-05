@@ -3,6 +3,7 @@
 #include <stdlib.h>
 #include <ctype.h>
 
+#include "stretchy_buffer.h"
 #include "request.h"
 
 #define S(k) #k
@@ -10,7 +11,7 @@
 
 bool ParseRequest(Request* r, const char* buf)
 {
-    r->firstHeader = NULL;
+    r->headers = NULL;
     r->body = NULL;
 
 	int n = sscanf(buf, "%" X(REQUEST_METHOD_SIZE) "s %" X(REQUEST_TARGET_SIZE) "s %" X(REQUEST_VERSION_SIZE) "s", r->method, r->target, r->version);
@@ -29,8 +30,6 @@ bool ParseRequest(Request* r, const char* buf)
 
 	buf += 1;
 
-    RequestHeader* last = NULL;
-
     while(true) {
         const char* lineEnd = strchr(buf, '\n');
 
@@ -41,38 +40,28 @@ bool ParseRequest(Request* r, const char* buf)
             break;
         }
 
-        RequestHeader* header = malloc(sizeof(RequestHeader));
+        RequestHeader header;
 
-		header->next = NULL;
-
-        if(sscanf(buf, "%" X(REQUEST_HEADER_NAME_SIZE) "s", header->name) != 1) {
+        if(sscanf(buf, "%" X(REQUEST_HEADER_NAME_SIZE) "s", header.name) != 1) {
             fprintf(stderr, "Failed to parse request header.\n");
-            free(header);
-
             return false;
 		}
 
 		buf = strchr(buf, ':');
 		
 		if (!buf) {
-			fprintf(stderr, "Failed to parse request header: missing ':' after name.\n");
-			free(header);
-			
-			RequestHeader* next;
-			while (r->firstHeader) {
-				free(r->firstHeader->value);
+			fprintf(stderr, "Failed to parse request header: missing ':' after name.\n");		
+            for(int i = 0; i < sb_count(r->headers); ++i) {
+                free(r->headers[i].name);
+            }
 
-				next = r->firstHeader->next;
-
-				free(r->firstHeader);
-				r->firstHeader = next;
-			}
+            sb_free(r->headers);
 
 			return false;
 		}
 
 		// Get rid of the ':'
-		header->name[strlen(header->name) - 1] = 0;
+		header.name[strlen(header.name) - 1] = 0;
 
 		buf += 1;
 
@@ -82,25 +71,20 @@ bool ParseRequest(Request* r, const char* buf)
         }
 
         // Read everything until the end of the line
-        header->value = malloc(lineEnd - buf + 1);
+        header.value = malloc(lineEnd - buf + 1);
 
         int i = 0;
         while(buf < lineEnd) {
 			if(*buf == '\r') ++buf;
-            else header->value[i++] = *buf++;
+            else header.value[i++] = *buf++;
         }
 
-        header->value[i] = 0;
+        header.value[i] = 0;
 
         // Skip '\n'
         buf += 1;
 
-        if(!r->firstHeader) {
-            r->firstHeader = last = header;
-        } else {
-            last->next = header;
-            last = header;
-        }
+        sb_push(r->headers, header);
     }
 
     size_t len = strlen(buf);
@@ -115,9 +99,9 @@ bool ParseRequest(Request* r, const char* buf)
 
 const char* GetHeaderValue(const Request* r, const char* name)
 {
-    for(const RequestHeader* h = r->firstHeader; h; h = h->next) {
-        if(strcmp(h->name, name) == 0) {
-            return h->value;
+    for(int i = 0; i < sb_count(r->headers); ++i) {
+        if(strcmp(r->headers[i].name, name) == 0) {
+            return r->headers[i].value;
         }
     }
 
@@ -126,13 +110,11 @@ const char* GetHeaderValue(const Request* r, const char* name)
 
 void DestroyRequest(Request* r)
 {
-    RequestHeader* next;
-
-    for(RequestHeader* h = r->firstHeader; h; h = next) {
-        free(h->value);
-        next = h->next;
-        free(h);
+    for(int i = 0; i < sb_count(r->headers); ++i) {
+		free(r->headers[i].value);
     }
+
+    sb_free(r->headers);
 
     free(r->body);
 }

@@ -1,8 +1,12 @@
 if(WIN32)
     set(SOURCES
         src/serv_win32.c
+        src/scriptpool.c
         src/request.c
-        src/response.c)
+        src/response.c
+        src/config.c
+        src/tinycthread.c
+        src/util.c)
 else()
     set(SOURCES
         src/serv_dummy.c)

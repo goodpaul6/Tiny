@@ -142,6 +142,45 @@ static Tiny_Value Lib_Fclose(Tiny_StateThread* thread, const Tiny_Value* args, i
 	return Tiny_Null;
 }
 
+static Tiny_Value Lib_ReadFile(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+	FILE* file = fopen(Tiny_ToString(args[0]), "rb");
+
+	if (!file) {
+		return Tiny_Null;
+	}
+
+	fseek(file, 0, SEEK_END);
+	long len = ftell(file);
+	rewind(file);
+
+	char* s = malloc(len + 1);
+	
+	fread(s, 1, len, file);
+	s[len] = 0;
+
+	fclose(file);
+
+	return Tiny_NewString(thread, s);
+}
+
+static Tiny_Value Lib_WriteFile(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+	FILE* file = fopen(Tiny_ToString(args[0]), "w");
+
+	if (!file) {
+		return Tiny_NewBool(false);
+	}
+
+	const char* s = Tiny_ToString(args[1]);
+
+	fwrite(s, 1, strlen(s), file);
+	fclose(file);
+
+	return Tiny_NewBool(true);
+}
+
+
 static void ArrayFree(void* ptr)
 {
 	Array* array = ptr;
@@ -385,6 +424,37 @@ static Tiny_Value Strcat(Tiny_StateThread* thread, const Tiny_Value* args, int c
 	return Tiny_NewString(thread, newString);
 }
 
+static Tiny_Value Lib_Substr(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+{
+    assert(count == 3);
+
+    const char* s = Tiny_ToString(args[0]);
+    int start = (int)Tiny_ToNumber(args[1]);
+    int end = (int)Tiny_ToNumber(args[2]);
+
+    if(end == -1) {
+        end = strlen(s);
+    }
+
+    assert(start >= 0 && start <= end);
+
+    if(start == end) {
+        return Tiny_NewConstString("");
+    }
+
+    assert(end <= strlen(s));
+
+    char* sub = malloc(end - start + 1);
+    for(int i = start; i < end; ++i) {
+        sub[i - start] = s[i];
+    }
+
+    sub[end - start] = '\0';
+    
+    // TODO(Apaar): Figure out if there's a way we can just not allocate for this
+    return Tiny_NewString(thread, sub);
+}
+
 static Tiny_Value Lib_Ston(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	const char* str = Tiny_ToString(args[0]);
@@ -453,6 +523,35 @@ static Tiny_Value Lib_Input(Tiny_StateThread* thread, const Tiny_Value* args, in
 	return Tiny_NewString(thread, buffer);
 }
 
+static void Print(Tiny_Value val)
+{
+	switch (val.type)
+	{
+		case TINY_VAL_INT: printf("%i", val.i); break;
+		case TINY_VAL_FLOAT: printf("%f", val.f); break;
+		case TINY_VAL_STRING: printf("%s", val.obj->string);
+		case TINY_VAL_LIGHT_NATIVE: printf("<light native at %p>", val.addr); break;
+		case TINY_VAL_NATIVE:
+		{
+			if (val.obj->nat.prop && val.obj->nat.prop->name)
+				printf("<native '%s' at %p>", val.obj->nat.prop->name, val.obj->nat.addr);
+			else
+				printf("<native at %p>", val.obj->nat.addr);
+		} break;
+		case TINY_VAL_STRUCT:
+		{
+			printf("struct {");
+
+			for (int i = 0; i < val.obj->ostruct.n; ++i) {
+				Print(val.obj->ostruct.fields[i]);
+				putc(',', stdout);
+			}
+
+			putc('}', stdout);
+		} break;
+	}
+}
+
 static Tiny_Value Lib_Printf(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
 	const char* fmt = Tiny_ToString(args[0]);
@@ -472,29 +571,15 @@ static Tiny_Value Lib_Printf(Tiny_StateThread* thread, const Tiny_Value* args, i
 			++fmt;
 			switch (*fmt)
 			{
-				case 'd': printf("%d", args[arg].i); break;
+				case 'i': printf("%d", args[arg].i); break;
 				case 'f': printf("%f", args[arg].f); break;
 				case 's': printf("%s", Tiny_ToString(args[arg])); break;
 
+				case 'q': Print(args[arg]); break;
+				case '%': putc('%', stdout);
+
 				default:
 					printf("\nInvalid format specifier '%c'\n", *fmt);
-
-				case 'q':
-				{
-					switch (args[arg].type)
-					{
-						case TINY_VAL_INT: printf("%d", args[arg].i); break;
-						case TINY_VAL_FLOAT: printf("%f", args[arg].f); break;
-						case TINY_VAL_STRING: printf("%s", args[arg].obj->string);
-						case TINY_VAL_NATIVE:
-						{
-							if (args[arg].obj->nat.prop && args[arg].obj->nat.prop->name)
-								printf("<native '%s' at %p>", args[arg].obj->nat.prop->name, args[arg].obj->nat.addr);
-							else
-								printf("<native at %p>", args[arg].obj->nat.addr);
-						} break;
-					}
-				} break;
 			}
 			++fmt;
 			++arg;
@@ -582,10 +667,13 @@ void Tiny_BindStandardIO(Tiny_State* state)
 
 	Tiny_BindFunction(state, "fopen(str, str): file", Lib_Fopen);
 	Tiny_BindFunction(state, "fclose(file): void", Lib_Fclose);
-	Tiny_BindFunction(state, "fread(file, int): void", Lib_Fread);
+	Tiny_BindFunction(state, "fread(file, int): str", Lib_Fread);
 	Tiny_BindFunction(state, "fwrite(file, str, ...): void", Lib_Fwrite);
 	Tiny_BindFunction(state, "fseek(file, int): void", Lib_Fseek);
 	Tiny_BindFunction(state, "fsize(file): int", Lib_Fsize);
+
+	Tiny_BindFunction(state, "read_file(str): str", Lib_ReadFile);
+	Tiny_BindFunction(state, "write_file(str, str): bool", Lib_WriteFile);
 
 	Tiny_BindFunction(state, "input(...): void", Lib_Input);
 	Tiny_BindFunction(state, "printf(str, ...): void", Lib_Printf);
@@ -595,8 +683,9 @@ void Tiny_BindStandardLib(Tiny_State* state)
 {
 	Tiny_BindFunction(state, "strlen(str): int", Strlen);
 	Tiny_BindFunction(state, "strchar(str, int): int", Strchar);
-
 	Tiny_BindFunction(state, "strcat(str, str, ...): str", Strcat);
+	Tiny_BindFunction(state, "substr(str, int, int): str", Lib_Substr);
+
 	Tiny_BindFunction(state, "ston(str): float", Lib_Ston);
 	Tiny_BindFunction(state, "ntos(float): str", Lib_Ntos);
 	

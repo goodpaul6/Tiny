@@ -91,11 +91,9 @@ typedef struct Tiny_StateThread
 
 typedef Tiny_Value (*Tiny_ForeignFunction)(Tiny_StateThread* thread, const Tiny_Value* args, int count);
 
-extern const Tiny_Value Tiny_Null;
+#define TINY_FOREIGN_FUNCTION(name) Tiny_Value name(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 
-void* emalloc(size_t size);
-void* erealloc(void* mem, size_t newSize);
-char* estrdup(const char* string);
+extern const Tiny_Value Tiny_Null;
 
 void Tiny_ProtectFromGC(Tiny_Value value);
 

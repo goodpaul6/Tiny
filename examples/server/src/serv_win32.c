@@ -8,99 +8,78 @@
 #include <iphlpapi.h>
 #include <stdio.h>
 #include <assert.h>
+#include <signal.h>
+#include <stdlib.h>
 
 #include "tiny.h"
+#include "config.h"
 #include "request.h"
 #include "response.h"
+#include "scriptpool.h"
+#include "tinycthread.h"
 
 #define DEFAULT_BUFLEN  4096
 
-static Tiny_Value Lib_GetRequestMethod(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+typedef struct
 {
-    assert(count == 1);
+    Config conf;
+    ScriptPool* pool;
+} Server;
 
-    Request* r = Tiny_ToAddr(args[0]);
-    return Tiny_NewConstString(r->method);
+typedef struct
+{
+    Server* serv;
+    Request request;
+    SOCKET clientSocket;
+} RequestContext;
+
+static volatile bool KeepRunning = true;
+
+static TINY_FOREIGN_FUNCTION(GetRequestMethod)
+{
+	RequestContext* ctx = thread->userdata;
+	return Tiny_NewConstString(ctx->request.method);
 }
 
-static Tiny_Value Lib_GetRequestTarget(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+static TINY_FOREIGN_FUNCTION(GetRequestTarget)
 {
-    assert(count == 1);
-
-    Request* r = Tiny_ToAddr(args[0]);
-    return Tiny_NewConstString(r->target);
+	RequestContext* ctx = thread->userdata;
+	return Tiny_NewConstString(ctx->request.target);
 }
 
-static Tiny_Value Lib_GetHeaderValue(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+static TINY_FOREIGN_FUNCTION(LibGetHeaderValue)
 {
-    assert(count == 2);
+	RequestContext* ctx = thread->userdata;
+	const char* value = GetHeaderValue(&ctx->request, Tiny_ToString(args[0]));
 
-    Request* r = Tiny_ToAddr(args[0]);
-    const char* name = Tiny_ToString(args[1]);
+	if (!value) {
+		return Tiny_Null;
+	}
 
-    return Tiny_NewConstString(GetHeaderValue(r, name));
+	return Tiny_NewConstString(value);
 }
 
-static Tiny_Value Lib_GetRequestBody(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+static TINY_FOREIGN_FUNCTION(SendPlainTextResponse)
 {
-    assert(count == 1);
+	RequestContext* ctx = thread->userdata;
 
-    Request* r = Tiny_ToAddr(args[0]);
-    return Tiny_NewConstString(r->body);
+	char* s = EncodePlainTextResponse(Tiny_ToInt(args[0]), ctx->serv->conf.name, Tiny_ToString(args[1]));
+	
+	int iSendResult = send(ctx->clientSocket, s, strlen(s), 0);
+
+	if (iSendResult == SOCKET_ERROR) {
+		free(s);
+		return Tiny_NewInt(WSAGetLastError());
+	}
+
+	free(s);
+	return Tiny_Null;
 }
 
-static Tiny_Value Lib_EncodePlainTextResponse(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+static int Listen(void* pServ)
 {
-    assert(count == 3);
-
-    char* s = EncodePlainTextResponse(Tiny_ToInt(args[0]),
-                                      Tiny_ToString(args[1]),
-                                      Tiny_ToString(args[2]));
-
-    return Tiny_NewString(thread, s);
-}
-
-int main(int argc, char** argv) 
-{
-    if(argc != 2) {
-        fprintf(stderr, "Usage: %s <script.tiny>\n", argv[0]);
-        return 1;
-    }
-
-	Tiny_State* state = Tiny_CreateState();
-
-    Tiny_RegisterType(state, "Request");
-
-    Tiny_BindFunction(state, "get_request_method(Request): str", Lib_GetRequestMethod);
-    Tiny_BindFunction(state, "get_request_target(Request): str", Lib_GetRequestTarget);
-    Tiny_BindFunction(state, "get_header_value(Request, str): str", Lib_GetHeaderValue);
-    Tiny_BindFunction(state, "get_request_body(Request): str", Lib_GetRequestBody);
-
-    Tiny_BindConstInt(state, "STATUS_OK", STATUS_OK);
-    Tiny_BindConstInt(state, "STATUS_NOT_FOUND", STATUS_NOT_FOUND);
-    Tiny_BindConstInt(state, "STATUS_FOUND", STATUS_FOUND);
-
-    Tiny_BindFunction(state, "encode_plain_text_response(int, str, str): str", Lib_EncodePlainTextResponse);
-
-	Tiny_CompileFile(state, argv[1]);
-
-    int handleRequest = Tiny_GetFunctionIndex(state, "handle_request");
-
-    if(handleRequest < 0) {
-        fprintf(stderr, "Script %s is missing 'handle_request' function.\n", argv[1]);
-
-        Tiny_DeleteState(state);
-        return 0;
-    }
-
-    Tiny_StateThread thread;
-    Tiny_InitThread(&thread, state);
-
-    // Run all the global code in the script
-    Tiny_StartThread(&thread);
-  
-    while (Tiny_ExecuteCycle(&thread));
-
+    Server* serv = pServ;
+    
     // Listen for connections
     WSADATA wsaData;
     SOCKET listenSocket;
@@ -122,7 +101,7 @@ int main(int argc, char** argv)
 
     struct addrinfo* result;
 
-    iResult = getaddrinfo(NULL, "8080", &hints, &result);
+    iResult = getaddrinfo(NULL, serv->conf.port, &hints, &result);
     if(iResult != 0) {
         fprintf(stderr, "getaddrinfo failed: %d\n", iResult);
         WSACleanup();
@@ -156,14 +135,12 @@ int main(int argc, char** argv)
         return 1;
     }
 	
-	while (true) {
+	while (KeepRunning) {
 		SOCKET clientSocket = accept(listenSocket, NULL, NULL);
 
 		if (clientSocket == INVALID_SOCKET) {
 			fprintf(stderr, "accept failed: %d\n", WSAGetLastError());
-			closesocket(listenSocket);
-			WSACleanup();
-			return 1;
+            continue;
 		}
 
 		char recvbuf[DEFAULT_BUFLEN];
@@ -173,74 +150,154 @@ int main(int argc, char** argv)
 		do {
 			iResult = recv(clientSocket, recvbuf, recvbuflen, 0);
 			if (iResult > 0) {
-                Request r;
-
                 // Null terminate buffer
-                recvbuf[iResult] = 0;
+                recvbuf[iResult] = 0; 
 
-                if(!ParseRequest(&r, recvbuf)) {
-                    continue;
+                RequestContext* ctx = malloc(sizeof(RequestContext));
+
+                ctx->serv = serv;
+                ctx->clientSocket = clientSocket;
+
+                if(!ParseRequest(&ctx->request, recvbuf)) {
+                    free(ctx);
+                    return 1;
                 }
 
-                Tiny_Value args[1] = {
-                    Tiny_NewLightNative(&r)
-                };
+                const char* filename = GetFilenameForTarget(&serv->conf, ctx->request.target);
 
-                Tiny_Value response = Tiny_CallFunction(&thread, handleRequest, args, 1);
+                if(!filename) {
+                    free(ctx);
 
-                DestroyRequest(&r);
+                    // Send 404
+                    char* resp = EncodePlainTextResponse(STATUS_NOT_FOUND, serv->conf.name, "I can't find what you're looking for.");
 
-				/*
-				const char* response =
-					"HTTP/1.1 200 OK\n"
-					"Date: Mon, 27 Jul 2009 12:28:53 GMT\n"
-					"Server: Apache\n"
-					"Last-Modified: Wed, 22 Jul 2009 19:15:56 GMT\n"
-					"ETag: \"34aa387-d-1568eb00\"\n"
-					"Accept-Ranges: bytes\n"
-					"Content-Length: 51\n"
-					"Vary: Accept-Encoding\n"
-					"Content-Type: text/plain\n\n"
-					"Hello World! My payload includes a trailing CRLF.\r\n";
-				*/
+                    iSendResult = send(clientSocket, resp, iResult, 0);
 
-				iSendResult = send(clientSocket, Tiny_ToString(response), iResult, 0);
+                    free(resp);
 
-				if (iSendResult == SOCKET_ERROR) {
-					fprintf(stderr, "send failed: %d\n", WSAGetLastError());                    
-
-					closesocket(clientSocket);
-					WSACleanup();
-
-					return 1;
-				}
-
-				printf("bytes sent: %d\n", iSendResult);
+                    if (iSendResult == SOCKET_ERROR) {
+                        fprintf(stderr, "send failed: %d\n", WSAGetLastError());
+                        closesocket(clientSocket);
+                    }
+                } else {
+                    StartScript(serv->pool, filename, ctx);
+                }
 			} else if (iResult == 0) {
-				printf("Connection closing...\n");
+				printf("Read complete.\n");
 			} else {
-				fprintf(stderr, "recv failed: %d\n", WSAGetLastError());
-				closesocket(clientSocket);
-				WSACleanup();
-				return 1;
+				if (WSAGetLastError() == 10004) {
+					// I'm guessing context switch occurred while recv was happening; no problem
+				} else {
+					fprintf(stderr, "recv failed: %d\n", WSAGetLastError());
+					closesocket(clientSocket);
+				}
 			}
 		} while (iResult > 0);
-
-		iResult = shutdown(clientSocket, SD_SEND);
-		if (iResult == SOCKET_ERROR) {
-			fprintf(stderr, "shutdown failed with error: %d\n", WSAGetLastError());
-			closesocket(clientSocket);
-			WSACleanup();
-			return 1;
-		}
-
-		closesocket(clientSocket);
 	}
 
     WSACleanup();
+	return 0;
+}
 
-    Tiny_DestroyThread(&thread);
-	Tiny_DeleteState(state);
+static void InitState(Tiny_State* state)
+{
+	Tiny_BindConstInt(state, "STATUS_OK", STATUS_OK);
+	Tiny_BindConstInt(state, "STATUS_NOT_FOUND", STATUS_NOT_FOUND);
+	Tiny_BindConstInt(state, "STATUS_FOUND", STATUS_FOUND);
+
+	Tiny_BindFunction(state, "get_request_method(): str", GetRequestMethod);
+	Tiny_BindFunction(state, "get_request_target(): str", GetRequestTarget);
+	Tiny_BindFunction(state, "get_request_header_value(str): str", LibGetHeaderValue);
+
+	Tiny_BindFunction(state, "send_plain_text_response", SendPlainTextResponse);
+}
+
+static void FinalizeRequestContext(void* pCtx)
+{
+    RequestContext* ctx = pCtx;
+
+    int iResult = shutdown(ctx->clientSocket, SD_SEND);
+    if (iResult == SOCKET_ERROR) {
+        fprintf(stderr, "shutdown failed with error: %d\n", WSAGetLastError());
+    }
+
+    closesocket(ctx->clientSocket);
+
+    DestroyRequest(&ctx->request);
+}
+
+static void IntHandler(int dummy)
+{
+    KeepRunning = false;
+}
+
+int main(int argc, char** argv) 
+{
+    if(argc != 2) {
+        fprintf(stderr, "Usage: %s <script.tiny>\n", argv[0]);
+        return 1;
+    }
+    
+    // TODO(Apaar): Instead of loading a single script, the script
+    // supplied will be used to configure the server like so:
+    //
+    // set_port(8080)
+    // 
+    // add_route("/static/*", "scripts/static.tiny")
+    // add_route("/*", "scripts/wiki.tiny")
+    //
+    // init_db_connection("wiki.db")
+    // if get_argc() == 3 && get_argv(2) == "initdb" {
+    //     db_run("drop table users;")
+    //     db_run("create table users { ... }")
+    // }
+    //
+    // The first route that matches is executed.
+    //
+    // How will execution work? I'll store a pool of Tiny_StateThreads
+    // and every iteration of the loop below, I'll accept incoming connections
+    // and do the routing process, and I'll also run a handful of cycles
+    // on all the threads which are alive. Each thread will maintain a context
+    // which will store the request and the client socket.
+    //
+    // Every one of these scripts should do stuff like:
+    //
+    // if get_request_method() == "GET" {
+    //     send_plain_text_response("Hello!")
+    // }
+    //
+    // The database connection will be stored globally (accessible by all threads).
+    //
+
+    signal(SIGINT, IntHandler);
+
+    Server serv;
+
+    InitConfig(&serv.conf, argv[1], argc, argv);
+    
+    if(!serv.conf.name) {
+        fprintf(stderr, "Script doesn't specify a server name.\n");
+        return 1;
+    }
+
+    if(!serv.conf.port) {
+        fprintf(stderr, "Script doesn't specify a port.\n");
+        return 1;
+    }
+
+    serv.pool = CreateScriptPool(serv.conf.numThreads, InitState, FinalizeRequestContext);
+
+    thrd_t listenThread;
+
+    thrd_create(&listenThread, Listen, &serv);
+
+    while(KeepRunning) {
+		UpdateScriptPool(serv.pool, 5);
+    }
+
+    DeleteScriptPool(serv.pool);
+
+    DestroyConfig(&serv.conf);
 
     return 0;
 }

@@ -7,10 +7,8 @@
 #define REQUEST_VERSION_SIZE        64
 #define REQUEST_HEADER_NAME_SIZE    128
 
-typedef struct RequestHeader
+typedef struct
 {
-    struct RequestHeader* next;
-
     char name[REQUEST_HEADER_NAME_SIZE];
     char* value;
 } RequestHeader;
@@ -21,8 +19,7 @@ typedef struct
     char target[REQUEST_TARGET_SIZE];
     char version[REQUEST_VERSION_SIZE];
 
-    RequestHeader* firstHeader;
-
+    RequestHeader* headers;     // array
     char* body;
 } Request;
 
