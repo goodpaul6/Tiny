@@ -397,6 +397,8 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
     sp = thread->sp;
     indirStackSize = thread->indirStackSize;
 
+    Tiny_Value retVal = thread->retVal;
+
     AllocGlobals(thread);
 
     for (int i = 0; i < count; ++i) {
@@ -411,7 +413,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
         ExecuteCycle(thread);
     }
 
-    Tiny_Value retVal = thread->retVal;
+    Tiny_Value newRetVal = thread->retVal;
 
     thread->pc = pc;
     thread->fp = fp;
@@ -421,7 +423,9 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
     thread->fileName = fileName;
     thread->lineNumber = lineNumber;
 
-    return retVal;
+    thread->retVal = retVal;
+
+    return newRetVal;
 }
 
 bool Tiny_ExecuteCycle(Tiny_StateThread* thread)
@@ -2534,7 +2538,7 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
                     ResolveTypes(state, exp->binary.rhs);
 
 					if (!CompareTags(exp->binary.lhs->tag, exp->binary.rhs->tag)) {
-						ReportErrorE(state, exp, "Attempted to assign a %s to a %s", GetTagName(exp->binary.lhs->tag), GetTagName(exp->binary.rhs->tag));
+						ReportErrorE(state, exp, "Attempted to assign a %s to a %s", GetTagName(exp->binary.rhs->tag), GetTagName(exp->binary.lhs->tag));
 					}
 
 					exp->tag = GetPrimTag(SYM_TAG_VOID);

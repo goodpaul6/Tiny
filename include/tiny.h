@@ -27,7 +27,6 @@ typedef struct
 
     void(*protectFromGC)(void*);
     void(*finalize)(void*);				
-    struct Tiny_Value (*toString)(void*);
 } Tiny_NativeProp;
 
 typedef enum

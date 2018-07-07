@@ -2,6 +2,5 @@ set_name("tiny_server")
 set_port("8080")
 set_num_threads(10)
 
-add_route("/favicon.png", "scripts/favicon.tiny")
 add_route("/test/*", "scripts/test.tiny")
 add_route("/*", "scripts/wiki.tiny")

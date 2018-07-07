@@ -74,7 +74,6 @@ static const Tiny_NativeProp FileProp = {
 	"file",
 	NULL,
 	NULL,
-	NULL
 };
 
 static Tiny_Value Lib_Fopen(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -201,7 +200,6 @@ const Tiny_NativeProp ArrayProp = {
 	"array",
 	ArrayMark,
 	ArrayFree,
-	NULL	// TODO: Implement ArrayString
 };
 
 static Tiny_Value CreateArray(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -314,8 +312,7 @@ static void DictFree(void* d)
 const Tiny_NativeProp DictProp = {
 	"dict",
 	DictProtectFromGC,
-	DictFree,
-	NULL
+	DictFree
 };
 
 static Tiny_Value CreateDict(Tiny_StateThread* thread, const Tiny_Value* args, int count)

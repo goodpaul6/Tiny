@@ -5,11 +5,14 @@
 #include "config.h"
 #include "util.h"
 
-struct Route
+static TINY_FOREIGN_FUNCTION(SetCyclesPerLoop)
 {
-    char* pattern;
-    char* filename;
-};
+    Config* c = thread->userdata;
+
+    c->cyclesPerLoop = Tiny_ToInt(args[0]);
+
+    return Tiny_Null;
+}
 
 static TINY_FOREIGN_FUNCTION(SetName)
 {
@@ -84,6 +87,8 @@ void InitConfig(Config* c, const char* filename, int argc, char** argv)
 
     c->routes = NULL;
 
+    c->cyclesPerLoop = 10;
+
     Tiny_State* state = Tiny_CreateState();
 
     Tiny_BindFunction(state, "get_argc(): int", GetArgc);
@@ -93,7 +98,9 @@ void InitConfig(Config* c, const char* filename, int argc, char** argv)
 
     Tiny_BindFunction(state, "set_name(str): void", SetName);
     Tiny_BindFunction(state, "set_port(str): void", SetPort);
+
     Tiny_BindFunction(state, "set_num_threads(int): void", SetNumThreads);
+    Tiny_BindFunction(state, "set_cycles_per_loop(int): void", SetCyclesPerLoop);
 
     Tiny_CompileFile(state, filename);
 

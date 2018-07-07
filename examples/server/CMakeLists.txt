@@ -1,11 +1,14 @@
 if(WIN32)
     set(SOURCES
-        src/serv_win32.c
-        src/scriptpool.c
+        src/main_win32.c
+        src/loop.c
+        src/lib.c
+        src/sock.c
         src/request.c
         src/response.c
         src/config.c
         src/tinycthread.c
+        src/list.c
         src/util.c)
 else()
     set(SOURCES

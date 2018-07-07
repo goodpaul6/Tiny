@@ -1,3 +1,6 @@
-printf("Super secret webpage\n")
+sends("HTTP/1.1 200 OK\r\n")
+sends("Content-Type: text/plain\r\n")
+sends("Content-Length: 14\r\n\r\n")
+sends("Hello world!\r\n")
 
-send_response(STATUS_OK, "text/plain", "You actually found it!")
+

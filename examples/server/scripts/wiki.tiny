@@ -1,34 +1,29 @@
-struct Page {
-    title: str
-    body: str
-}
-
-func load_page(title: str): Page {
+func load_page(title: str): buf {
     filename := strcat("pages/", title, ".txt")
-    body := read_file(filename)
-
-    if body == null {
-        return null
-    }
-    
-    return new Page{title, body}
+    return get_file_contents(filename)
 }
 
 if get_request_method() == "GET" {
-    target := get_request_target()
+    title := substr(get_request_target(), 1, -1)
 
-    printf("GET '%s'\n", target)
+    contents := call_wait("load_page", title)  
+   
+    if contents != null {
+        buf_push_byte(contents, '\r')
+        buf_push_byte(contents, '\n')
 
-    title := substr(target, 1, -1)
-        
-    p := load_page(title)
+        sends("HTTP/1.1 200 OK\r\n")
+        sends("Content-Type: text/plain\r\n")
+        sendf("Content-Length: %i\r\n", buf_len(contents))
+        sends("\r\n")
+        sendb(contents)
+    } else {     
+        resp := strcat("Couldn't find page '", title, "'\r\n")
 
-    if p != null {
-        send_response(STATUS_OK, "text/html; charset=utf8", 
-            strcat("<link rel=\"icon\" href=\"/favicon.png\"><h1>", title, "</h1><div>", p.body, "</div>"))
-    } else {
-        send_response(STATUS_NOT_FOUND, "text/plain", "That page doesn't exist.")
+        sends("HTTP/1.1 404 Not Found\r\n")
+        sends("Content-Type: text/plain\r\n")
+        sendf("Content-Length: %i\r\n", resp)
+        sends("\r\n")
+        sends(resp)
     }
-} else {
-    send_response(STATUS_NOT_FOUND, "text/plain", "You can't do that.")
 }

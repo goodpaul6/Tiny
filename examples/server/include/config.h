@@ -1,6 +1,10 @@
 #pragma once
 
-typedef struct Route Route;
+typedef struct
+{
+    char* pattern;
+    char* filename;
+} Route;
 
 typedef struct
 {
@@ -12,6 +16,8 @@ typedef struct
 
     int numThreads;
     Route* routes;      // array
+
+    int cyclesPerLoop;
 } Config;
 
 void InitConfig(Config* c, const char* filename, int argc, char** argv);

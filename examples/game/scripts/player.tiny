@@ -5,25 +5,25 @@ func update() : void {
     ang := 0.0
 
     if is_key_down('W') {
-        ang -= 90
+        ang -= 90.0
         if is_key_down('A') {
-            ang -= 45
+            ang -= 45.0
         } else if is_key_down('D') {
-            ang += 45
+            ang += 45.0
         }
 
         accel_angle(ang, v)
     } else if is_key_down('S') {
-        ang += 90
+        ang += 90.0
         if is_key_down('A') {
-            ang += 45
+            ang += 45.0
         } else if is_key_down('D') {
-            ang -= 45
+            ang -= 45.0
         }
 
         accel_angle(ang, v)
     } else if is_key_down('A') {
-        ang = 180
+        ang = 180.0
         accel_angle(ang, v)
     } else if is_key_down('D') {
         accel_angle(ang, v)
