@@ -55,6 +55,7 @@ int main(int argc, char** argv)
     InitList(&serv.requestQueue, sizeof(ClientRequest));
 
     cnd_init(&serv.updateLoop);
+    cnd_init(&serv.newConn);
 
     // The loop thread is responsible for initializing LoopData
 
@@ -137,6 +138,8 @@ int main(int argc, char** argv)
         InitSock(&sock, (void*)clientSocket);
         
         ListPushBack(&serv.clientQueue, &sock);
+
+        cnd_signal(&serv.newConn);
 	}
 
     WSACleanup();
@@ -144,6 +147,7 @@ int main(int argc, char** argv)
     thrd_join(&connThread, NULL);
 	thrd_join(&loopThread, NULL);
 
+    cnd_destroy(&serv.newConn);
     cnd_destroy(&serv.updateLoop);
 
 	DestroyList(&serv.requestQueue);

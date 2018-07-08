@@ -1,6 +1,6 @@
 set_name("tiny_server")
 set_port("8080")
-set_num_threads(2)
+set_num_threads(8)
 
 add_route("/test/*", "scripts/test.tiny")
 add_route("/sum/*", "scripts/count.tiny")

@@ -8,6 +8,7 @@
 static void FinalizeBuf(void* bp)
 {	
 	sb_free(*(unsigned char**)bp);
+	free(bp);
 }
 
 const Tiny_NativeProp BufProp = {

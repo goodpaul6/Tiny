@@ -59,5 +59,8 @@ typedef struct
 
     LoopData loop;
 
+    // Signaled when an accept call succeeds
+    cnd_t newConn;
+
     ConnectionData conn;
 } Server;

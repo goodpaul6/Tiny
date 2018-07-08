@@ -196,6 +196,12 @@ static TINY_FOREIGN_FUNCTION(Lib_GetHeaderValue)
     return Tiny_NewConstString(s);
 }
 
+static TINY_FOREIGN_FUNCTION(Stop)
+{
+	thread->pc = -1;
+	return Tiny_Null;
+}
+
 static Tiny_State* CreateState(const char* filename)
 {
     Tiny_State* state = Tiny_CreateState();
@@ -215,6 +221,8 @@ static Tiny_State* CreateState(const char* filename)
     Tiny_BindFunction(state, "get_request_target(): str", GetRequestTarget);
     Tiny_BindFunction(state, "get_request_body(): str", GetRequestBody);
     Tiny_BindFunction(state, "get_header_value(str): str", Lib_GetHeaderValue);
+
+	Tiny_BindFunction(state, "stop(): void", Stop);
 
     Tiny_CompileFile(state, filename);
 
@@ -303,6 +311,8 @@ static void LoopBody(Server* serv)
         }
 
         if(thread->pc < 0) {
+            printf("Completed job on StateThread %d (%s).\n", i, ((Context*)thread->userdata)->req.target);
+
             DeleteContext(thread->userdata);
             Tiny_DestroyThread(thread);
 
@@ -342,16 +352,14 @@ static void LoopBody(Server* serv)
         
         bool found = false;
 
-		printf("Processing request.\n");
-
         for(int i = 0; i < serv->conf.numThreads; ++i) {
+            Tiny_StateThread* thread = &serv->loop.threads[i];
+
             if(serv->loop.threads[i].pc >= 0) {
                 continue;
             }
 
             found = true;
-
-            Tiny_StateThread* thread = &serv->loop.threads[i];
 
             const char* filename = GetFilenameForTarget(&serv->conf, req.r.target);
 
@@ -399,7 +407,7 @@ static void LoopBody(Server* serv)
 			thread->userdata = ctx;
             Tiny_StartThread(thread);
 		
-			printf("Started StateThread (%s) to handle %s %s\n", filename, req.r.method, req.r.target);
+			printf("Started StateThread %d (%s) to handle %s %s\n", i, filename, req.r.method, req.r.target);
 			break;
         }
 

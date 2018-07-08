@@ -681,7 +681,7 @@ void Tiny_BindStandardLib(Tiny_State* state)
 	Tiny_BindFunction(state, "substr(str, int, int): str", Lib_Substr);
 
 	Tiny_BindFunction(state, "ston(str): float", Lib_Ston);
-	Tiny_BindFunction(state, "ntos(float): str", Lib_Ntos);
+	Tiny_BindFunction(state, "ntos(...): str", Lib_Ntos);
 	
 	Tiny_BindFunction(state, "time(): int", Lib_Time);
 	Tiny_BindFunction(state, "srand(int): void", SeedRand);
