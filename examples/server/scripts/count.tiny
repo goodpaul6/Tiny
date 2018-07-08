@@ -1,0 +1,19 @@
+func sum_nums_to(num: float): int {
+    k := 0
+    for i := 1; i < num; i += 1 {
+        k += i
+    }
+
+    return k
+}
+
+n := ston(substr(get_request_target(), strlen("/sum/"), -1))
+
+sum := call_wait("sum_nums_to", n)
+
+resp := strcat("sum of all integers from 1 to ", ntos(n), " is ", ntos(sum), "\r\n")
+
+sends("HTTP/1.1 200 OK\r\n")
+sends("Content-Type: text/plain\r\n")
+sendf("Content-Length: %i\r\n\r\n", strlen(resp))
+sends(resp)

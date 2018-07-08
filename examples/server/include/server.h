@@ -4,15 +4,8 @@
 #include "list.h"
 #include "config.h"
 #include "tinycthread.h"
+#include "requestparser.h"
 #include "sock.h"
-
-typedef struct
-{
-    Sock client;
-
-    int len;
-    char* buf;
-} ReceivedData;
 
 typedef struct
 {
@@ -31,15 +24,40 @@ typedef struct
 
 typedef struct
 {
+    Sock client;
+    Request r;
+} ClientRequest;
+
+typedef struct
+{
+    bool active;
+    Sock client;
+    Request r;
+    RequestParser p;
+} Connection;
+
+typedef struct ConnectionData
+{
+    Connection* conns;
+} ConnectionData;
+
+typedef struct
+{
     Config conf;
     
     // This is filled by the main thread listening
-    // for clients. It contains ReceivedData
-    List dataQueue;
+    // for clients. It contains Sock's (client sockets)
+    List clientQueue;
 
-    // When some data is received or a waiting StateThread finishes its work
+    // This is filled by the connection handler thread
+    // It contains ClientRequests
+    List requestQueue;
+
+    // When a request is parsed or a waiting StateThread finishes its work
     // this is signaled.
     cnd_t updateLoop;
 
     LoopData loop;
+
+    ConnectionData conn;
 } Server;

@@ -20,12 +20,35 @@ int InitSock(Sock* sock, void* handle)
 #endif
 }
 
+int SockRecv(Sock* sock, char* buf, int len)
+{
+#ifdef _WIN32
+    int r = recv((SOCKET)sock->handle, buf, len, 0);
+
+    if(r == SOCKET_ERROR) {
+        if(WSAGetLastError() == WSAEWOULDBLOCK) {
+            return SOCK_WOULD_BLOCK;
+        }
+
+        return SOCK_ERROR;
+    }
+
+    return r;
+#else
+    return SOCK_ERROR;
+#endif    
+}
+
 int SockSend(Sock* sock, const char* buf, int len)
 {
 #ifdef _WIN32
     int r = send((SOCKET)sock->handle, buf, len, 0);
 
     if(r == SOCKET_ERROR) {
+        if(WSAGetLastError() == WSAEWOULDBLOCK) {
+            return SOCK_WOULD_BLOCK;
+        }
+
         return SOCK_ERROR;
     }
 

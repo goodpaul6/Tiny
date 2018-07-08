@@ -5,6 +5,15 @@
 #include "config.h"
 #include "util.h"
 
+static TINY_FOREIGN_FUNCTION(SetMaxConns)
+{
+    Config* c = thread->userdata;
+
+    c->maxConns = Tiny_ToInt(args[0]);
+
+    return Tiny_Null;
+}
+
 static TINY_FOREIGN_FUNCTION(SetCyclesPerLoop)
 {
     Config* c = thread->userdata;
@@ -89,6 +98,8 @@ void InitConfig(Config* c, const char* filename, int argc, char** argv)
 
     c->cyclesPerLoop = 10;
 
+	c->maxConns = 10;
+
     Tiny_State* state = Tiny_CreateState();
 
     Tiny_BindFunction(state, "get_argc(): int", GetArgc);
@@ -98,6 +109,8 @@ void InitConfig(Config* c, const char* filename, int argc, char** argv)
 
     Tiny_BindFunction(state, "set_name(str): void", SetName);
     Tiny_BindFunction(state, "set_port(str): void", SetPort);
+
+    Tiny_BindFunction(state, "set_max_conns(int): void", SetMaxConns);
 
     Tiny_BindFunction(state, "set_num_threads(int): void", SetNumThreads);
     Tiny_BindFunction(state, "set_cycles_per_loop(int): void", SetCyclesPerLoop);

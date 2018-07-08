@@ -9,6 +9,9 @@ if(WIN32)
         src/config.c
         src/tinycthread.c
         src/list.c
+        src/requestparser.c
+        src/request.c
+        src/connloop.c
         src/util.c)
 else()
     set(SOURCES

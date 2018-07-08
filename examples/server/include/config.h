@@ -14,6 +14,8 @@ typedef struct
     char* name;
     char* port;
 
+    int maxConns;
+
     int numThreads;
     Route* routes;      // array
 

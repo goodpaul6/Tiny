@@ -280,7 +280,7 @@ static void DeleteContext(Context* ctx)
 
 static void LoopBody(Server* serv)
 {
-    bool hasRunningThread = false;
+    bool isActive = false;
 
     for(int i = 0; i < serv->conf.numThreads; ++i) {
         Tiny_StateThread* thread = &serv->loop.threads[i];
@@ -310,52 +310,53 @@ static void LoopBody(Server* serv)
         }
 
         if(willHaveRunningThread) {
-            hasRunningThread = true;
+            isActive = true;
         }
     }
 
-    ReceivedData data;
+    ClientRequest req;
 
-    if(!ListPopFront(&serv->dataQueue, &data)) {
-        if(!hasRunningThread) {
-            mtx_lock(&serv->dataQueue.mutex);
+    if(!ListPopFront(&serv->requestQueue, &req)) {
+        if(!isActive) {
+            mtx_lock(&serv->requestQueue.mutex);
 
-            while(!serv->dataQueue.head && !hasRunningThread) {
-				cnd_wait(&serv->updateLoop, &serv->dataQueue.mutex);
+            while(!serv->requestQueue.head && !isActive) {
+				cnd_wait(&serv->updateLoop, &serv->requestQueue.mutex);
 
                 // Re-check the threads to see if anyone is running because
                 // we could've been woken up as a result of a waiting call
                 // being completed
                 for(int i = 0; i < serv->conf.numThreads; ++i) {
                     if(serv->loop.threads[i].pc >= 0 && !Waiting(&serv->loop.threads[i])) {
-                        hasRunningThread = true;
+                        isActive = true;
                         break;
                     }
                 }
             }
             
-            mtx_unlock(&serv->dataQueue.mutex);
+            mtx_unlock(&serv->requestQueue.mutex);
         }     
     } else {
-        // Look for a thread that's available
+        // Look for a thread that's available, if there isn't one
+        // requeue the request
+        
+        bool found = false;
+
+		printf("Processing request.\n");
+
         for(int i = 0; i < serv->conf.numThreads; ++i) {
             if(serv->loop.threads[i].pc >= 0) {
                 continue;
             }
 
+            found = true;
+
             Tiny_StateThread* thread = &serv->loop.threads[i];
 
-            Request req;
-
-            if(!ParseRequest(&req, data.buf)) {
-                // Invalid request, don't do anything
-                break;
-            }
-
-            const char* filename = GetFilenameForTarget(&serv->conf, req.target);
+            const char* filename = GetFilenameForTarget(&serv->conf, req.r.target);
 
             if(!filename) {
-                printf("Failed to match target '%s'\n", req.target);
+                printf("Failed to match target '%s'\n", req.r.target);
 
                 const char* response = "HTTP/1.1 404 Not Found\r\n"
                    "Content-Type: text/plain\r\n"
@@ -363,7 +364,7 @@ static void LoopBody(Server* serv)
                    "\r\n"
                    "That webpage does not exist.\r\n"; 
 
-                SockSend(&data.client, response, strlen(response));
+                SockSend(&req.client, response, strlen(response));
                 break;
             }
 
@@ -378,15 +379,15 @@ static void LoopBody(Server* serv)
 					"\r\n"
 					"I'm sorry but someone messed up the server.\r\n";
 
-                SockSend(&data.client, response, strlen(response));
+                SockSend(&req.client, response, strlen(response));
                 break;
             }
 
             Context* ctx = malloc(sizeof(Context));
 
-            memcpy(&ctx->req, &req, sizeof(Request));
+            ctx->req = req.r;
 
-            ctx->client = data.client;			
+            ctx->client = req.client;			
 			RetainSock(&ctx->client);
 
             ctx->serv = serv;
@@ -398,8 +399,12 @@ static void LoopBody(Server* serv)
 			thread->userdata = ctx;
             Tiny_StartThread(thread);
 		
-			printf("Started thread (%s) to handle %s %s.\n", filename, req.method, req.target);
+			printf("Started StateThread (%s) to handle %s %s\n", filename, req.r.method, req.r.target);
 			break;
+        }
+
+        if(!found) {
+            ListPushBack(&serv->requestQueue, &req);
         }
     }
 

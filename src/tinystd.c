@@ -52,10 +52,7 @@ static Tiny_Value Strlen(Tiny_StateThread* thread, const Tiny_Value* args, int c
 {
 	Tiny_Value val = args[0];
 
-	if (val.type == TINY_VAL_STRING)
-		return Tiny_NewInt(strlen(Tiny_ToString(val)));
-	else
-		return Tiny_Null;
+	return Tiny_NewInt(strlen(Tiny_ToString(val)));
 }
 
 static Tiny_Value Strchar(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -464,7 +461,7 @@ static Tiny_Value Lib_Ston(Tiny_StateThread* thread, const Tiny_Value* args, int
 
 static Tiny_Value Lib_Ntos(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	float num = Tiny_ToFloat(args[0]);
+	float num = Tiny_ToNumber(args[0]);
 	
 	char* string = malloc(NUMTOSTR_CONV_BUFFER_SIZE + 1);
 	int c = sprintf(string, "%g", num);

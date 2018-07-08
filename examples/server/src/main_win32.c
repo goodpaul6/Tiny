@@ -15,11 +15,10 @@
 #include "sock.h"
 #include "stretchy_buffer.h"
 
-#define DEFAULT_BUFLEN  4096
-
 volatile bool KeepRunning = true;
 
 int MainLoop(void* pServ);
+int ConnLoop(void* pServ);
 
 static void IntHandler(int dummy)
 {
@@ -52,15 +51,17 @@ int main(int argc, char** argv)
 		"Cycles Per Loop: %d\n"
 		"Num Routes: %d\n", serv.conf.name, serv.conf.port, serv.conf.numThreads, serv.conf.cyclesPerLoop, sb_count(serv.conf.routes));
 
-    InitList(&serv.dataQueue, sizeof(ReceivedData));
+    InitList(&serv.clientQueue, sizeof(Sock));
+    InitList(&serv.requestQueue, sizeof(ClientRequest));
 
     cnd_init(&serv.updateLoop);
 
     // The loop thread is responsible for initializing LoopData
 
-    thrd_t loopThread;
+    thrd_t loopThread, connThread;
 
     thrd_create(&loopThread, MainLoop, &serv);
+    thrd_create(&connThread, ConnLoop, &serv);
 
     // Initialize winsock and listen for clients
     WSADATA wsaData;
@@ -125,47 +126,28 @@ int main(int argc, char** argv)
             continue;
 		}
 
+		int iMode = 1;
+        if (ioctlsocket(clientSocket, FIONBIO, &iMode) == SOCKET_ERROR) {
+            fprintf(stderr, "ioctlsocket failed: %d\n", WSAGetLastError());
+            continue;
+        }
+
         Sock sock;
 
         InitSock(&sock, (void*)clientSocket);
-
-		char recvbuf[DEFAULT_BUFLEN];
-		int recvbuflen = DEFAULT_BUFLEN;
-
-		do {
-			iResult = recv(clientSocket, recvbuf, recvbuflen - 1, 0);
-			if (iResult > 0) {
-                // Null terminate buffer
-                recvbuf[iResult] = 0;  
-
-                ReceivedData data;
-
-                data.client = sock;
-
-                data.len = iResult;
-
-                // Include null terminator
-                data.buf = malloc(iResult + 1); 
-                memcpy(data.buf, recvbuf, data.len + 1);
-
-                ListPushBack(&serv.dataQueue, &data);
-
-				cnd_signal(&serv.updateLoop);
-			} else if (iResult == 0) {
-				printf("Read complete.\n");
-			} else {
-				fprintf(stderr, "recv failed: %d\n", WSAGetLastError());
-			}
-		} while (iResult > 0);
-
-        ReleaseSock(&sock);
+        
+        ListPushBack(&serv.clientQueue, &sock);
 	}
 
     WSACleanup();
 
+    thrd_join(&connThread, NULL);
 	thrd_join(&loopThread, NULL);
 
     cnd_destroy(&serv.updateLoop);
+
+	DestroyList(&serv.requestQueue);
+	DestroyList(&serv.clientQueue);
 
     DestroyConfig(&serv.conf);
 

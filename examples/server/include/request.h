@@ -10,7 +10,7 @@
 typedef struct
 {
     char name[REQUEST_HEADER_NAME_SIZE];
-    char* value;
+    char* value;                // array
 } RequestHeader;
 
 typedef struct
@@ -20,10 +20,10 @@ typedef struct
     char version[REQUEST_VERSION_SIZE];
 
     RequestHeader* headers;     // array
-    char* body;
+    char* body;                 // array
 } Request;
 
-bool ParseRequest(Request* r, const char* buf);
+void InitRequest(Request* r);
 
 const char* GetHeaderValue(const Request* r, const char* name);
 
