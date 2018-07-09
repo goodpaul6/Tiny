@@ -29,6 +29,8 @@ static void LoopBody(Server* serv)
 
             conn->client = client;
             conn->active = true;
+
+			printf("Opening socket %d.\n", i);
 			break;
         }
     }
@@ -83,7 +85,7 @@ static void LoopBody(Server* serv)
             if (res != SOCK_WOULD_BLOCK) {
                 if (res == 0) {
 					if (*conn->client.rc == 1) {
-						printf("Closing socket.\n");
+						printf("Closing socket %d.\n", i);
 					}
 
                     DestroyRequest(&conn->r);
@@ -95,24 +97,21 @@ static void LoopBody(Server* serv)
                     continue;
                 }
 
-                int i = 0;
+                int k = 0;
                 int len = res;
 
-                while (i < res) {
-                    int m = ParseRequest(&conn->p, &conn->r, buf + i, len);
-                    i += m;
+                while (k < res) {
+                    int m = ParseRequest(&conn->p, &conn->r, buf + k, len);
+                    k += m;
                     len -= m;
 
                     if (conn->p.state == REQUEST_STATE_DONE) {
                         // Queue it up yo
                         ClientRequest r;
 
-                        printf("Just got request.\n");
+                        printf("Just got request from socket %d.\n", i);
 
                         r.client = conn->client;
-
-                        RetainSock(&r.client);
-
                         r.r = conn->r;
 
                         ListPushBack(&serv->requestQueue, &r);

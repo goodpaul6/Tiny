@@ -2,5 +2,7 @@ set_name("tiny_server")
 set_port("8080")
 set_num_threads(8)
 
-add_route("/view/*", "scripts/view_page.tiny")
+add_common_script("scripts/http.tiny")
+add_common_script("scripts/page.tiny")
 
+add_route("/view/*", "scripts/view_page.tiny")

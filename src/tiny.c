@@ -34,7 +34,7 @@ static char* Strings[MAX_STRINGS] = { 0 };
 
 char* estrdup(const char* string)
 {
-    char* dupString = emalloc(strlen(string) + 1);
+    char* dupString = malloc(strlen(string) + 1);
     strcpy(dupString, string);
     return dupString;
 }

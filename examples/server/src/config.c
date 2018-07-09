@@ -17,6 +17,15 @@
 #error TODO Port to unix
 #endif
 
+static TINY_FOREIGN_FUNCTION(AddCommonScript)
+{
+    Config* c = thread->userdata;
+
+    sb_push(c->commonScripts, estrdup(Tiny_ToString(args[0])));
+
+    return Tiny_Null;
+}
+
 static TINY_FOREIGN_FUNCTION(SetMaxConns)
 {
     Config* c = thread->userdata;
@@ -157,6 +166,8 @@ void InitConfig(Config* c, const char* filename, int argc, char** argv)
 
 	c->maxConns = 10;
 
+    c->commonScripts = NULL;
+
 	c->modules = NULL;
 
     Tiny_State* state = Tiny_CreateState();
@@ -173,6 +184,8 @@ void InitConfig(Config* c, const char* filename, int argc, char** argv)
 
     Tiny_BindFunction(state, "set_num_threads(int): void", SetNumThreads);
     Tiny_BindFunction(state, "set_cycles_per_loop(int): void", SetCyclesPerLoop);
+
+    Tiny_BindFunction(state, "add_common_script(str): void", AddCommonScript);
 
     Tiny_BindFunction(state, "load_module(str, ...): void", Lib_LoadModule);
 
@@ -224,6 +237,12 @@ void DestroyConfig(Config* c)
     }
 
     sb_free(c->routes);
+
+    for(int i = 0; i < sb_count(c->commonScripts); ++i) {
+        free(c->commonScripts[i]);
+    }
+    
+    sb_free(c->commonScripts);
     
     for(int i = 0; i < sb_count(c->modules); ++i) {
         for(int j = 0; j < sb_count(c->modules[i].funcs); ++j) {

@@ -7,6 +7,8 @@
 #include "display.h"
 #include "editor.h"
 
+char* estrdup(const char* str);
+
 static float StatusTime = 0;
 
 static void MoveTo(Editor* ed, int x, int y)

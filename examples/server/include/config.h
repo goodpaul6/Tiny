@@ -35,7 +35,11 @@ typedef struct
 
     int cyclesPerLoop;
 
-    ForeignModule* modules; // array
+    // These scripts are "imported" (compiled) into
+    // all other scripts
+    char** commonScripts;       // array
+
+    ForeignModule* modules;     // array
 } Config;
 
 void InitConfig(Config* c, const char* filename, int argc, char** argv);

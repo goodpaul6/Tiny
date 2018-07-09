@@ -233,6 +233,10 @@ static Tiny_State* CreateState(const Config* c, const char* filename)
         }
     }
 
+    for(int i = 0; i < sb_count(c->commonScripts); ++i) {
+        Tiny_CompileFile(state, c->commonScripts[i]);
+    }
+
     Tiny_CompileFile(state, filename);
 
 	return state;

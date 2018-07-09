@@ -1,0 +1,5 @@
+if get_request_method() == "GET" {
+} else if get_request_method() == "POST" {
+} else {
+    send_http_not_allowed()
+}

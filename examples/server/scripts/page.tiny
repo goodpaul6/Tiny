@@ -1,0 +1,15 @@
+struct Page {
+    title: str
+    body: buf
+}
+
+func load_page(title: str): Page {
+    filename := strcat("pages/", title, ".txt")
+    body := get_file_contents(filename)
+
+    if body == null {
+        return null
+    }
+
+    return new Page{title, body}
+}

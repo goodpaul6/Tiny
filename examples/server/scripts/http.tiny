@@ -1,0 +1,27 @@
+func send_http_not_allowed(allowed: str) {
+    sends("HTTP/1.1 405 Method Not Allowed\r\n")
+    sendf("Allow: %s\r\n", allowed)
+}
+
+func send_http(status: str, content_type: str, resp: str) {
+    sendf("HTTP/1.1 %s\r\n", status)
+    sendf("Content-Type: %s\r\n", content_type)
+    sendf("Content-Length: %i\r\n\r\n%s", strlen(resp), resp)
+}
+
+func send_http_buf(status: str, content_type: str, buf: buf) {    
+    sendf("HTTP/1.1 %s", status)
+    sendf("Content-Type: %s\r\n", content_type)
+    sendf("Content-Length: %i\r\n\r\n", buf_len(buf))
+    sendb(buf)
+}
+
+func send_not_found() {
+    send_http("404 Not Found", "text/html", 
+        "<h1>Not Found</h1><div>That page doesn't exist.</div>")
+}
+
+func send_internal_error(err: str) {
+    send_http("500 Internal Server Error", "text/html",
+        strcat("<h1>Internal Error</h1><div>", err, "</div>"))
+}
