@@ -3,6 +3,7 @@ if(WIN32)
         src/main_win32.c
         src/loop.c
         src/lib.c
+        src/libtemplate.c
         src/sock.c
         src/request.c
         src/response.c

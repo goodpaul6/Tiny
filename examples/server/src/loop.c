@@ -202,14 +202,17 @@ static TINY_FOREIGN_FUNCTION(Stop)
 	return Tiny_Null;
 }
 
-static Tiny_State* CreateState(const char* filename)
+static Tiny_State* CreateState(const Config* c, const char* filename)
 {
     Tiny_State* state = Tiny_CreateState();
 
     Tiny_BindStandardLib(state);
+    Tiny_BindStandardArray(state);
+    Tiny_BindStandardDict(state);
     
     BindBuffer(state);
     BindIO(state);
+    BindTemplateUtils(state);
 
     Tiny_BindFunction(state, "call_wait(str, ...): any", CallWait);
 
@@ -223,6 +226,12 @@ static Tiny_State* CreateState(const char* filename)
     Tiny_BindFunction(state, "get_header_value(str): str", Lib_GetHeaderValue);
 
 	Tiny_BindFunction(state, "stop(): void", Stop);
+
+    for(int i = 0; i < sb_count(c->modules); ++i) {
+        for(int j = 0; j < sb_count(c->modules[i].funcs); ++j) {
+            Tiny_BindFunction(state, c->modules[i].funcs[j].sig, c->modules[i].funcs[j].func);
+        }
+    }
 
     Tiny_CompileFile(state, filename);
 
@@ -252,7 +261,7 @@ static Tiny_State* LoadState(Server* serv, const char* filename)
                     if(!inUse) {
                         Tiny_DeleteState(loop->states[i].state);
 
-						loop->states[i].state = CreateState(filename);
+						loop->states[i].state = CreateState(&serv->conf, filename);
                         loop->states[i].writeTime = writeTime;
 
                         printf("Reloaded script %s.\n", filename);
@@ -268,7 +277,7 @@ static Tiny_State* LoadState(Server* serv, const char* filename)
     StateFilename s;
 
     s.filename = estrdup(filename);
-	s.state = CreateState(filename);
+	s.state = CreateState(&serv->conf, filename);
     s.writeTime = 0;
 
     GetLastWriteTime(filename, &s.writeTime);

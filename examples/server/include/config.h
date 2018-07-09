@@ -1,10 +1,24 @@
 #pragma once
 
+#include "tiny.h"
+
 typedef struct
 {
     char* pattern;
     char* filename;
 } Route;
+
+typedef struct
+{
+    Tiny_ForeignFunction func;
+    char* sig;
+} ForeignModuleFunction;
+
+typedef struct
+{
+    void* handle;
+    ForeignModuleFunction* funcs;   // array
+} ForeignModule;
 
 typedef struct
 {
@@ -20,6 +34,8 @@ typedef struct
     Route* routes;      // array
 
     int cyclesPerLoop;
+
+    ForeignModule* modules; // array
 } Config;
 
 void InitConfig(Config* c, const char* filename, int argc, char** argv);

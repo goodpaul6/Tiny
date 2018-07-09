@@ -4,7 +4,7 @@ func load_page(title: str): buf {
 }
 
 if get_request_method() == "GET" {
-    title := substr(get_request_target(), 1, -1)
+    title := substr(get_request_target(), strlen("/view/"), -1)
 
     contents := call_wait("load_page", title)  
    

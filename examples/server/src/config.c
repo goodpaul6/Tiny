@@ -1,9 +1,21 @@
 #include <stdlib.h>
+#include <stdio.h>
 #include <assert.h>
 
 #include "tiny.h"
 #include "config.h"
 #include "util.h"
+
+#ifdef _WIN32
+
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <Windows.h>
+#else
+#error TODO Port to unix
+#endif
 
 static TINY_FOREIGN_FUNCTION(SetMaxConns)
 {
@@ -84,6 +96,51 @@ static TINY_FOREIGN_FUNCTION(SetNumThreads)
     return Tiny_Null;
 }
 
+static TINY_FOREIGN_FUNCTION(Lib_LoadModule)
+{
+    Config* c = thread->userdata;
+
+    const char* name = Tiny_ToString(args[0]);
+
+    ForeignModule mod = { 0 };
+
+#ifdef WIN32
+    mod.handle = (void*)LoadLibraryA(name);
+#else
+#error How to load dll?
+#endif
+
+    if(!mod.handle) {
+        fprintf(stderr, "Failed to load module '%s'.\n", name);
+        exit(1);
+    }
+
+    for(int i = 1; i < count; i += 2) {
+        const char* procName = Tiny_ToString(args[i]);
+        
+        ForeignModuleFunction modFunc;
+
+        modFunc.sig = estrdup(Tiny_ToString(args[i + 1]));
+
+#ifdef _WIN32
+        modFunc.func = (Tiny_ForeignFunction)GetProcAddress(mod.handle, procName);
+#else
+#error GetProcAddress equivalent here
+#endif
+
+        if(!modFunc.func) {
+            fprintf(stderr, "Failed to load procedure '%s' from module '%s'.\n", procName, name);
+            exit(1);
+        }
+
+        sb_push(mod.funcs, modFunc);
+    }
+
+    sb_push(c->modules, mod);
+
+    return Tiny_Null;
+}
+
 void InitConfig(Config* c, const char* filename, int argc, char** argv)
 {
     c->name = NULL;
@@ -100,6 +157,8 @@ void InitConfig(Config* c, const char* filename, int argc, char** argv)
 
 	c->maxConns = 10;
 
+	c->modules = NULL;
+
     Tiny_State* state = Tiny_CreateState();
 
     Tiny_BindFunction(state, "get_argc(): int", GetArgc);
@@ -114,6 +173,8 @@ void InitConfig(Config* c, const char* filename, int argc, char** argv)
 
     Tiny_BindFunction(state, "set_num_threads(int): void", SetNumThreads);
     Tiny_BindFunction(state, "set_cycles_per_loop(int): void", SetCyclesPerLoop);
+
+    Tiny_BindFunction(state, "load_module(str, ...): void", Lib_LoadModule);
 
     Tiny_CompileFile(state, filename);
 
@@ -163,4 +224,14 @@ void DestroyConfig(Config* c)
     }
 
     sb_free(c->routes);
+    
+    for(int i = 0; i < sb_count(c->modules); ++i) {
+        for(int j = 0; j < sb_count(c->modules[i].funcs); ++j) {
+            free(c->modules[i].funcs[j].sig);
+        }
+
+        sb_free(c->modules[i].funcs);
+    }
+
+    sb_free(c->modules);
 }

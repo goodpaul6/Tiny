@@ -1,0 +1,41 @@
+if get_request_method() != "GET" {
+    sends("HTTP/1.1 405 Method Not Allowed\r\n")
+    sends("Allow: GET\r\n")
+    stop()
+}
+
+func view(title: str) {
+    filename := strcat("pages/", title, ".txt")
+    body := get_file_contents(filename)
+    
+    if body == null {
+        resp := "<h1>Not Found</h1><div>That page doesn't exist.</div>"
+
+        sends("HTTP/1.1 404 Not Found\r\n")
+        sends("Content-Type: text/html\r\n")
+        sendf("Content-Length: %i\r\n\r\n%s\r\n", strlen(resp), resp)
+        return;
+    }
+
+    res := render_template("templates/view.html", 
+        dict("title", title,
+             "body", body,
+             "dispuser", array(true, false, false),
+             "users", array("apaar", "joshua")))
+
+    if res == null {
+        resp := "<h1>Internal Error</h1><div>There was some kind of error with the templating.</div>"
+
+        sends("HTTP/1.1 500 Internal Server Error\r\n")
+        sends("Content-Type: text/html\r\n")
+        sendf("Content-Length: %i\r\n\r\n%s\r\n", strlen(resp), resp)
+        return;
+    }
+
+    sends("HTTP/1.1 200 OK\r\n")
+    sendf("Content-Type: text/html\r\n")
+    sendf("Content-Length: %i\r\n\r\n", buf_len(res))
+    sendb(res) 
+}
+
+call_wait("view", substr(get_request_target(), strlen("/view/"), -1))
