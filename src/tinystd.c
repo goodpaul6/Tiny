@@ -55,7 +55,7 @@ static Tiny_Value Strlen(Tiny_StateThread* thread, const Tiny_Value* args, int c
 	return Tiny_NewInt(strlen(Tiny_ToString(val)));
 }
 
-static Tiny_Value Strchar(Tiny_StateThread* thread, const Tiny_Value* args, int count)
+static Tiny_Value Stridx(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
     const char* s = Tiny_ToString(args[0]);
     size_t len = strlen(s);
@@ -65,6 +65,20 @@ static Tiny_Value Strchar(Tiny_StateThread* thread, const Tiny_Value* args, int 
     assert(i >= 0 && i < len);
 
     return Tiny_NewInt(s[i]);
+}
+
+static TINY_FOREIGN_FUNCTION(Strchr)
+{
+    const char* s = Tiny_ToString(args[0]);
+    char c = Tiny_ToInt(args[1]);
+
+    const char* cs = strchr(s, c);
+
+    if(cs) {
+        return Tiny_NewInt((int)(cs - s));
+    }
+
+    return Tiny_NewInt(-1);
 }
 
 static const Tiny_NativeProp FileProp = {
@@ -676,7 +690,8 @@ void Tiny_BindStandardIO(Tiny_State* state)
 void Tiny_BindStandardLib(Tiny_State* state)
 {
 	Tiny_BindFunction(state, "strlen(str): int", Strlen);
-	Tiny_BindFunction(state, "strchar(str, int): int", Strchar);
+	Tiny_BindFunction(state, "stridx(str, int): int", Stridx);
+	Tiny_BindFunction(state, "strchr(str, int): int", Strchr);
 	Tiny_BindFunction(state, "strcat(str, str, ...): str", Strcat);
 	Tiny_BindFunction(state, "substr(str, int, int): str", Lib_Substr);
 

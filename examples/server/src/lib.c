@@ -7,6 +7,14 @@
 #include "dict.h"
 #include "lib.h"
 
+#ifdef _WIN32
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+
+#include <Windows.h>
+#endif
+
 char* estrdup(const char* s);
 
 static void FinalizeBuf(void* bp)
@@ -23,6 +31,7 @@ const Tiny_NativeProp BufProp = {
 };
 
 extern const Tiny_NativeProp DictProp;
+extern const Tiny_NativeProp ArrayProp;
 
 static TINY_FOREIGN_FUNCTION(Buf)
 {
@@ -135,6 +144,54 @@ static TINY_FOREIGN_FUNCTION(FilePutContents)
 
     return Tiny_NewBool(true);
 }
+
+static void ConvertPath(char* s)
+{
+#ifdef _WIN32
+    while(*s) {
+        if(*s == '/') *s = '\\';
+		s += 1;
+    }
+#else
+#endif
+}
+
+static TINY_FOREIGN_FUNCTION(ListDir)
+{
+    const char* dir = Tiny_ToString(args[0]);
+
+#ifdef _WIN32
+    char path[MAX_PATH];
+
+    strcpy(path, dir);
+    ConvertPath(path);
+
+    strcat(path, "\\*");
+
+    WIN32_FIND_DATA data;
+    
+    HANDLE hFind = FindFirstFile(path, &data);
+
+    if(hFind == INVALID_HANDLE_VALUE) {
+        return Tiny_Null;
+    }
+
+    Array* a = malloc(sizeof(Array));
+
+    InitArray(a, sizeof(Tiny_Value));
+
+    do {
+		if(data.cFileName[0] == '.') continue;
+
+        Tiny_Value val = Tiny_NewString(thread, estrdup(data.cFileName));
+        ArrayPush(a, &val);
+    } while(FindNextFile(hFind, &data));
+
+    return Tiny_NewNative(thread, a, &ArrayProp);
+#else
+    return Tiny_Null;
+#endif
+}
  
 static char* DecodeURL(const char* s)
 {
@@ -240,9 +297,12 @@ void BindBuffer(Tiny_State* state)
 void BindIO(Tiny_State* state)
 {
     Tiny_RegisterType(state, "buf");
+    Tiny_RegisterType(state, "array");
 
     Tiny_BindFunction(state, "get_file_contents(str): buf", GetFileContents);
     Tiny_BindFunction(state, "file_put_contents(str, buf): bool", FilePutContents);
+
+	Tiny_BindFunction(state, "list_dir(str): array", ListDir);
 }
 
 void BindHttpUtils(Tiny_State* state)
