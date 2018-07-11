@@ -1,13 +1,18 @@
 if get_request_method() != "GET" {
-    send_http_not_allowed("GET")
+    send_not_allowed("GET")
     stop()
 }
 
 func view(title: str) {
+    if !check_safe_title(title) {
+        send_not_found()
+        return;
+    }
+
     page := load_page(title)
     
     if page == null {
-        send_not_found()
+        send_redirect(strcat("/edit/", title), "302 Found")
         return;
     }
 

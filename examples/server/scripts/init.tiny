@@ -6,3 +6,5 @@ add_common_script("scripts/http.tiny")
 add_common_script("scripts/page.tiny")
 
 add_route("/view/*", "scripts/view_page.tiny")
+add_route("/edit/*", "scripts/edit_page.tiny")
+add_route("/save/*", "scripts/save_page.tiny")

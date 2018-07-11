@@ -5,7 +5,7 @@
 #define REQUEST_METHOD_SIZE         64
 #define REQUEST_TARGET_SIZE         512
 #define REQUEST_VERSION_SIZE        64
-#define REQUEST_HEADER_NAME_SIZE    128
+#define REQUEST_HEADER_NAME_SIZE    256
 
 typedef struct
 {

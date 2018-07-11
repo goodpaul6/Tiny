@@ -4,6 +4,10 @@ struct Page {
 }
 
 func load_page(title: str): Page {
+    if !check_safe_title(title) {
+        return null
+    }
+
     filename := strcat("pages/", title, ".txt")
     body := get_file_contents(filename)
 
@@ -12,4 +16,23 @@ func load_page(title: str): Page {
     }
 
     return new Page{title, body}
+}
+
+func save_page(p: Page): bool {
+    filename := strcat("pages/", p.title, ".txt")
+    return file_put_contents(filename, p.body)
+}
+
+func check_safe_title(title: str): bool {
+    has_slash := false
+
+    for i := 0; i < strlen(title); i += 1 {
+        c := strchar(title, i)
+
+        if c == '/' || c == '.' || c == '~' {
+            return false
+        }
+    }
+
+    return true
 }

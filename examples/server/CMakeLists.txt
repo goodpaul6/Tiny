@@ -13,6 +13,7 @@ if(WIN32)
         src/requestparser.c
         src/request.c
         src/connloop.c
+        src/entities.c
         src/util.c)
 else()
     set(SOURCES

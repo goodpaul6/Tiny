@@ -1,0 +1,29 @@
+if get_request_method() != "POST" {
+    send_not_allowed("POST")
+    stop()
+}
+
+func save(title: str) {
+    if !check_safe_title(title) {
+        send_not_found()
+        return;
+    }
+
+    values := parse_form_values(get_request_body())
+    body := dict_get(values, "body")
+
+    if body == null {
+        send_http("400 Bad Request", "text/plain", "Missing form body.")
+        stop()
+    }
+
+    if save_page(new Page{title, buf(body)}) {
+        send_redirect(strcat("/view/", title), "302 Found")
+    } else {
+        send_http("500 Internal Server Error", "text/plain", "Failed to save page.")
+    }
+}
+
+title := substr(get_request_target(), strlen("/save/"), -1)
+
+call_wait("save", title)

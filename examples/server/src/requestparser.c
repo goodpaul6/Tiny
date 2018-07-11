@@ -114,6 +114,7 @@ int ParseRequest(RequestParser* p, Request* r, const char* buf, int len)
 
             if(buf[i] == '\n') {
                 if(strcmp(p->curHeader.name, "Content-Length") == 0) {
+					sb_push(p->curHeader.value, 0);
                     p->bodyBytesLeft = atoi(p->curHeader.value);
                 }
 
@@ -144,13 +145,18 @@ int ParseRequest(RequestParser* p, Request* r, const char* buf, int len)
 
         while(i < len) {
             if(p->bodyBytesLeft == 0) {
-                p->state = REQUEST_STATE_DONE;
                 break;
             }
 
             sb_push(r->body, buf[i]);
             p->bodyBytesLeft -= 1;
+			i += 1;
         }
+
+		if(p->bodyBytesLeft == 0) {
+			sb_push(r->body, 0);
+			p->state = REQUEST_STATE_DONE;
+		}
         
         return i;
     }

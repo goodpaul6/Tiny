@@ -1,8 +1,3 @@
-func send_http_not_allowed(allowed: str) {
-    sends("HTTP/1.1 405 Method Not Allowed\r\n")
-    sendf("Allow: %s\r\n", allowed)
-}
-
 func send_http(status: str, content_type: str, resp: str) {
     sendf("HTTP/1.1 %s\r\n", status)
     sendf("Content-Type: %s\r\n", content_type)
@@ -10,10 +5,15 @@ func send_http(status: str, content_type: str, resp: str) {
 }
 
 func send_http_buf(status: str, content_type: str, buf: buf) {    
-    sendf("HTTP/1.1 %s", status)
+    sendf("HTTP/1.1 %s\r\n", status)
     sendf("Content-Type: %s\r\n", content_type)
     sendf("Content-Length: %i\r\n\r\n", buf_len(buf))
     sendb(buf)
+}
+
+func send_not_allowed(allowed: str) {
+    sends("HTTP/1.1 405 Method Not Allowed\r\n")
+    sendf("Allow: %s\r\n", allowed)
 }
 
 func send_not_found() {
@@ -24,4 +24,8 @@ func send_not_found() {
 func send_internal_error(err: str) {
     send_http("500 Internal Server Error", "text/html",
         strcat("<h1>Internal Error</h1><div>", err, "</div>"))
+}
+
+func send_redirect(loc: str, status: str) {
+    sendf("HTTP/1.1 %s\r\nLocation: %s\r\n\r\n", status, loc)
 }

@@ -41,6 +41,8 @@ typedef struct
     int count;
 } WorkerData;
 
+extern const Tiny_NativeProp BufProp;
+
 static int DoCallWait(void* pData)
 {
     WorkerData* data = pData;
@@ -180,7 +182,19 @@ static TINY_FOREIGN_FUNCTION(GetRequestTarget)
 static TINY_FOREIGN_FUNCTION(GetRequestBody)
 {
     Context* ctx = thread->userdata;
-    return Tiny_NewConstString(ctx->req.body);
+
+    char** pBuf = malloc(sizeof(char*));
+	*pBuf = NULL;
+
+    size_t len = strlen(ctx->req.body);
+
+    char* start = sb_add(*pBuf, len);
+
+    for(int i = 0; i < len; ++i) {
+        start[i] = ctx->req.body[i];
+    } 
+
+    return Tiny_NewNative(thread, pBuf, &BufProp);
 }
 
 static TINY_FOREIGN_FUNCTION(Lib_GetHeaderValue)
@@ -213,6 +227,7 @@ static Tiny_State* CreateState(const Config* c, const char* filename)
     BindBuffer(state);
     BindIO(state);
     BindTemplateUtils(state);
+    BindHttpUtils(state);
 
     Tiny_BindFunction(state, "call_wait(str, ...): any", CallWait);
 
@@ -222,7 +237,7 @@ static Tiny_State* CreateState(const Config* c, const char* filename)
 
     Tiny_BindFunction(state, "get_request_method(): str", GetRequestMethod);
     Tiny_BindFunction(state, "get_request_target(): str", GetRequestTarget);
-    Tiny_BindFunction(state, "get_request_body(): str", GetRequestBody);
+    Tiny_BindFunction(state, "get_request_body(): buf", GetRequestBody);
     Tiny_BindFunction(state, "get_header_value(str): str", Lib_GetHeaderValue);
 
 	Tiny_BindFunction(state, "stop(): void", Stop);

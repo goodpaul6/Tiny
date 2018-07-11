@@ -76,6 +76,11 @@ void Tiny_ProtectFromGC(Tiny_Value value)
         if(obj->nat.prop && obj->nat.prop->protectFromGC)
             obj->nat.prop->protectFromGC(obj->nat.addr);
     }
+	else if (obj->type == TINY_VAL_STRUCT)
+	{
+		for(int i = 0; i < obj->ostruct.n; ++i)
+			Tiny_ProtectFromGC(obj->ostruct.fields[i]);
+	}
 
     obj->marked = 1;
 }
