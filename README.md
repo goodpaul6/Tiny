@@ -61,3 +61,8 @@ Notice how every entity in the game has a `Tiny_StateThread` encapsulating its e
 
 I got carried away and wrote a vim-like text editor using this language. 
 I wrote all the buffer manipulation and graphics code in C and then exposed an interface for the editor logic. Have a look at `examples/notepad`.
+
+### Multithreaded Web Server Example
+I created a webserver which is capable of handling a large amount of concurrent connections with a variety of web application
+development utilities (async processing, routing, templating). Have a look at `examples/server`. I followed golang's 
+"Writing Web Applications" tutorials which guides users through making a wiki and replicated that in tiny.
