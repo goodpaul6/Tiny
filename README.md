@@ -24,13 +24,13 @@ quit_op     :: "quit"
 while op != quit_op {
     op = input()
 
-    if strchar(op, 0) == plus_op { 
+    if stridx(op, 0) == plus_op { 
         array_push(stack, array_pop(stack) + array_pop(stack))
-    } else if strchar(op, 0) == minus_op {
+    } else if stridx(op, 0) == minus_op {
         array_push(stack, array_pop(stack) - array_pop(stack))
-    } else if strchar(op, 0) == mul_op {
+    } else if stridx(op, 0) == mul_op {
         array_push(stack, array_pop(stack) * array_pop(stack))
-    } else if strchar(op, 0) == div_op {
+    } else if stridx(op, 0) == div_op {
         array_push(stack, array_pop(stack) / array_pop(stack))
     } else if op == print_op {
         print(array_pop(stack))
