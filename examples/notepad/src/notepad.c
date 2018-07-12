@@ -38,7 +38,7 @@ int main(int argc, char** argv)
         UpdateEditor(&GEditor, screen);
         DrawEditor(screen, &GEditor);
         
-        tigrUpdate(screen); 
+        tigrUpdate(screen);
     }
     
     tigrFree(screen);

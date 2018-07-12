@@ -14,11 +14,18 @@
 
 typedef enum
 {
+    POWER_MULTI_SHOT,
+    NUM_POWERS
+} PowerupType;
+
+typedef enum
+{
     ENT_PLAYER,
     ENT_CHASER,
     ENT_BULLET,
     ENT_SPAWNER,
     ENT_HUD,
+    ENT_POWERUP,
     NUM_ENTITY_TYPES
 } EntityType;
 
@@ -280,7 +287,8 @@ int main(int argc, char** argv)
 		"scripts/chaser.tiny",
         "scripts/bullet.tiny",
         "scripts/spawner.tiny",
-        "scripts/hud.tiny"
+        "scripts/hud.tiny",
+        "scripts/powerup.tiny"
     };
 
     for(int i = 0; i < NUM_ENTITY_TYPES; ++i) {
@@ -291,16 +299,18 @@ int main(int argc, char** argv)
         Tiny_BindConstInt(EntityStates[i], "ENT_BULLET", ENT_BULLET);
         Tiny_BindConstInt(EntityStates[i], "ENT_SPAWNER", ENT_BULLET);
 
+        Tiny_BindConstInt(EntityStates[i], "POWER_MULTI_SHOT", POWER_MULTI_SHOT);
+
         Tiny_BindConstInt(EntityStates[i], "KEY_LEFT", TK_LEFT);
         Tiny_BindConstInt(EntityStates[i], "KEY_RIGHT", TK_RIGHT);
         Tiny_BindConstInt(EntityStates[i], "KEY_UP", TK_UP);
         Tiny_BindConstInt(EntityStates[i], "KEY_DOWN", TK_DOWN);
 
-		Tiny_RegisterType(EntityStates[i], "Ent");
+		Tiny_RegisterType(EntityStates[i], "ent");
 
         Tiny_BindFunction(EntityStates[i], "get_player_kills(): int", GetPlayerKills);
 
-        Tiny_BindFunction(EntityStates[i], "get_player(): Ent", GetPlayer);
+        Tiny_BindFunction(EntityStates[i], "get_player(): ent", GetPlayer);
         Tiny_BindFunction(EntityStates[i], "add_ent", LibAddEnt);
         Tiny_BindFunction(EntityStates[i], "add_bullet", AddBullet);
         Tiny_BindFunction(EntityStates[i], "is_key_down", IsKeyDown);

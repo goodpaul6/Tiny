@@ -1,0 +1,3 @@
+func update() {
+    draw_rect(get_x() - 4, get_y() - 4, 8, 8, 40, 35, 120)
+}
