@@ -8,7 +8,6 @@
 
 #include "tigr.h"
 #include "editor.h"
-#include "tinycthread.h"
 
 static Editor GEditor;
 static Tigr* screen;
