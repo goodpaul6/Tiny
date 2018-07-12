@@ -65,4 +65,4 @@ I wrote all the buffer manipulation and graphics code in C and then exposed an i
 ### Multithreaded Web Server Example
 I created a webserver which is capable of handling a large amount of concurrent connections with a variety of web application
 development utilities (async processing, routing, templating). Have a look at `examples/server`. I followed golang's 
-"Writing Web Applications" tutorials which guides users through making a wiki and replicated that in tiny.
+"Writing Web Applications" tutorial which guides users through making a wiki and replicated that in tiny.
