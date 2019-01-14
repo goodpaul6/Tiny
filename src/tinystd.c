@@ -13,6 +13,7 @@
 #include "t_mem.h"
 
 #ifdef _WIN32
+
 typedef int BOOL;
 typedef unsigned long DWORD;
 typedef long LONG;
@@ -618,20 +619,21 @@ static Tiny_Value Lib_Ceil(Tiny_StateThread* thread, const Tiny_Value* args, int
 	return Tiny_NewFloat(ceilf(Tiny_ToFloat(args[0])));
 }
 
+#ifdef _WIN32
 static Tiny_Value Lib_PerfCount(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	LARGE_INTEGER result;
-	QueryPerformanceCounter(&result);
+    LARGE_INTEGER result;
+    QueryPerformanceCounter(&result);
 
-	return Tiny_NewInt((int)result.QuadPart);
+    return Tiny_NewInt((int)result.QuadPart);
 }
 
 static Tiny_Value Lib_PerfFreq(Tiny_StateThread* thread, const Tiny_Value* args, int count)
 {
-	LARGE_INTEGER result;
-	QueryPerformanceFrequency(&result);
+    LARGE_INTEGER result;
+    QueryPerformanceFrequency(&result);
 
-	return Tiny_NewInt((int)result.QuadPart);
+    return Tiny_NewInt((int)result.QuadPart);
 }
 
 static Tiny_Value Lib_Sleep(Tiny_StateThread* thread, const Tiny_Value* args, int count)
@@ -639,6 +641,7 @@ static Tiny_Value Lib_Sleep(Tiny_StateThread* thread, const Tiny_Value* args, in
 	Sleep(Tiny_ToInt(args[0]));
 	return Tiny_Null;
 }
+#endif
 
 void Tiny_BindStandardArray(Tiny_State* state)
 {
@@ -705,9 +708,11 @@ void Tiny_BindStandardLib(Tiny_State* state)
 	Tiny_BindFunction(state, "floor(float): float", Lib_Floor);
 	Tiny_BindFunction(state, "ceil(float): float", Lib_Ceil);
 
+#ifdef _WIN32
 	Tiny_BindFunction(state, "perf_count(): int", Lib_PerfCount);
 	Tiny_BindFunction(state, "perf_freq(): int", Lib_PerfFreq);
 	Tiny_BindFunction(state, "sleep(int): void", Lib_Sleep);
+#endif
 
 	Tiny_BindFunction(state, "exit(int): void", Exit);
 }

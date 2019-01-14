@@ -15,6 +15,10 @@
 #include "tiny_util.h"
 #include "tiny_opcodes.h"
 
+#ifndef UCHAR_MAX
+#define UCHAR_MAX 255
+#endif
+
 // TODO(Apaar): Make a cstr type (for ConstStrings)
 // all str's can be used where a cstr is expected, but 
 // cstrs cannot be used where strs are expected.

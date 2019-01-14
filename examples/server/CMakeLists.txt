@@ -16,7 +16,7 @@ if(WIN32)
         src/util.c)
 else()
     set(SOURCES
-        src/serv_dummy.c)
+        src/main_unix.c)
 endif()
 
 add_executable(tiny_server ${SOURCES})
