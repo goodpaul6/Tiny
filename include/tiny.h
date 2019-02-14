@@ -106,25 +106,25 @@ Tiny_Value Tiny_NewNative(Tiny_StateThread* thread, void* ptr, const Tiny_Native
 
 #define Tiny_IsNull(value) (value.type == TINY_VAL_NULL)
 
-inline bool Tiny_ToBool(const Tiny_Value value)
+static inline bool Tiny_ToBool(const Tiny_Value value)
 {
     if(value.type != TINY_VAL_BOOL) return false;
     return value.boolean;
 }
 
-inline int Tiny_ToInt(const Tiny_Value value)
+static inline int Tiny_ToInt(const Tiny_Value value)
 {
     if(value.type != TINY_VAL_INT) return 0;
     return value.i;
 }
 
-inline float Tiny_ToFloat(const Tiny_Value value)
+static inline float Tiny_ToFloat(const Tiny_Value value)
 {
     if(value.type != TINY_VAL_FLOAT) return 0;
     return value.f;
 }
 
-inline float Tiny_ToNumber(const Tiny_Value value)
+static inline float Tiny_ToNumber(const Tiny_Value value)
 {
 	if (value.type == TINY_VAL_FLOAT) return value.f;
 	if (value.type != TINY_VAL_INT) return 0;
@@ -202,7 +202,7 @@ void Tiny_SetGlobal(Tiny_StateThread* thread, int globalIndex, Tiny_Value value)
 // the function call is over, the thread will be "done".
 Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const Tiny_Value* args, int count);
 
-inline bool Tiny_IsThreadDone(const Tiny_StateThread* thread)
+static inline bool Tiny_IsThreadDone(const Tiny_StateThread* thread)
 {
     return thread->pc < 0;
 }

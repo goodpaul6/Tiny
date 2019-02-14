@@ -936,7 +936,7 @@ static void DoPush(Tiny_StateThread* thread, Tiny_Value value)
     thread->stack[thread->sp++] = value;
 }
 
-inline Tiny_Value DoPop(Tiny_StateThread* thread)
+static inline Tiny_Value DoPop(Tiny_StateThread* thread)
 {	    
     return thread->stack[--thread->sp];
 }

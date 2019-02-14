@@ -20,6 +20,10 @@ if(WIN32)
     target_link_libraries(tiny PRIVATE dbghelp.lib)
 endif()
 
+if(UNIX)
+    target_link_libraries(tiny PRIVATE m)
+endif()
+
 target_include_directories(tiny PUBLIC include)
 
 add_subdirectory(examples)
