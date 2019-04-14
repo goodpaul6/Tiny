@@ -51,10 +51,6 @@ static void DeleteObject(Tiny_Object* obj)
         if (obj->nat.prop && obj->nat.prop->finalize)
             obj->nat.prop->finalize(obj->nat.addr);
     } 
-    else if(obj->type == TINY_VAL_STRUCT)
-    {
-        free(obj->ostruct.fields);
-    }
 
     free(obj);
 }
@@ -150,6 +146,8 @@ Tiny_Value Tiny_GetField(const Tiny_Value value, int index)
 
 static Tiny_Object* NewObject(Tiny_StateThread* thread, Tiny_ValueType type)
 {
+    assert(type != TINY_VAL_STRUCT);
+
     Tiny_Object* obj = emalloc(sizeof(Tiny_Object));
     
     obj->type = type;
@@ -159,6 +157,23 @@ static Tiny_Object* NewObject(Tiny_StateThread* thread, Tiny_ValueType type)
     
     thread->numObjects++;
     
+    return obj;
+}
+
+static Tiny_Object* NewStructObject(Tiny_StateThread* thread, Word n)
+{
+    assert(n >= 0);
+    Tiny_Object* obj = emalloc(sizeof(Tiny_Object) + sizeof(Tiny_Value) * n);
+
+    obj->type = TINY_VAL_STRUCT;
+    obj->next = thread->gcHead;
+    thread->gcHead = obj;
+    obj->marked = 0;
+	
+	obj->ostruct.n = n;
+
+    thread->numObjects++;
+
     return obj;
 }
 
@@ -1134,10 +1149,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             Word nFields = thread->state->program[thread->pc++];
             assert(nFields > 0);
 
-            Tiny_Object* obj = NewObject(thread, TINY_VAL_STRUCT);
-
-            obj->ostruct.n = nFields;
-            obj->ostruct.fields = malloc(sizeof(Tiny_Value) * nFields);
+            Tiny_Object* obj = NewStructObject(thread, nFields);
 
             memcpy(obj->ostruct.fields, &thread->stack[thread->sp - nFields], sizeof(Tiny_Value) * nFields);
             thread->sp -= nFields;

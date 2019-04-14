@@ -187,6 +187,8 @@ static TINY_FOREIGN_FUNCTION(ListDir)
         ArrayPush(a, &val);
     } while(FindNextFile(hFind, &data));
 
+	FindClose(hFind);
+
     return Tiny_NewNative(thread, a, &ArrayProp);
 #else
     return Tiny_Null;
