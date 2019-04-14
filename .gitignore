@@ -10,3 +10,4 @@ Release/*
 *.sln 
 *.tlog 
 build 
+bin 

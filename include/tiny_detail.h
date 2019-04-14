@@ -28,7 +28,7 @@ typedef struct Tiny_Object
         struct
         {
             Word n;
-            Tiny_Value* fields;
+            Tiny_Value fields[];
         } ostruct;
 	};
 } Tiny_Object;
