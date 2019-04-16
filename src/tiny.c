@@ -333,7 +333,7 @@ void Tiny_InitThread(Tiny_StateThread* thread, const Tiny_State* state)
     
     thread->retVal = Tiny_Null;
 
-    thread->indirStackSize = 0;
+    thread->fc = 0;
 
     thread->fileName = NULL;
     thread->lineNumber = -1;
@@ -411,7 +411,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
 {
     assert(thread->state && functionIndex >= 0);
 
-    int pc, fp, sp, indirStackSize;
+    int pc, fp, sp, fc;
 
     const char* fileName = thread->fileName;
 	int lineNumber = thread->lineNumber;
@@ -419,7 +419,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
     pc = thread->pc;
     fp = thread->fp;
     sp = thread->sp;
-    indirStackSize = thread->indirStackSize;
+    fc = thread->fc;
 
     Tiny_Value retVal = thread->retVal;
 
@@ -433,7 +433,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
     DoPushIndir(thread, count);
 
     // Keep executing until the indir stack is restored (i.e. function is done)
-    while (thread->indirStackSize > indirStackSize) {
+    while (thread->fc > fc) {
         ExecuteCycle(thread);
     }
 
@@ -442,7 +442,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread* thread, int functionIndex, const 
     thread->pc = pc;
     thread->fp = fp;
     thread->sp = sp;
-    thread->indirStackSize = indirStackSize;
+    thread->fc = fc;
 
     thread->fileName = fileName;
     thread->lineNumber = lineNumber;
@@ -992,28 +992,23 @@ static void DoRead(Tiny_StateThread* thread)
 
 static void DoPushIndir(Tiny_StateThread* thread, int nargs)
 {
-    assert(thread->indirStackSize + 3 <= TINY_THREAD_INDIR_SIZE);
+    assert(thread->fc < TINY_THREAD_MAX_CALL_DEPTH);
 
-    thread->indirStack[thread->indirStackSize++] = nargs;
-    thread->indirStack[thread->indirStackSize++] = thread->fp;
-    thread->indirStack[thread->indirStackSize++] = thread->pc;
-
+    thread->frames[thread->fc++] = (Tiny_Frame){ thread->pc, thread->fp, nargs };
     thread->fp = thread->sp;
 }
 
 static void DoPopIndir(Tiny_StateThread* thread)
 {
-    assert(thread->indirStackSize >= 3);
+    assert(thread->fc > 0);
 
     thread->sp = thread->fp;
 
-    int prevPc = thread->indirStack[--thread->indirStackSize];
-    int prevFp = thread->indirStack[--thread->indirStackSize];
-    int nargs = thread->indirStack[--thread->indirStackSize];
-    
-    thread->sp -= nargs;
-    thread->fp = prevFp;
-    thread->pc = prevPc;
+    Tiny_Frame frame = thread->frames[--thread->fc];
+   
+    thread->sp -= frame.nargs;
+    thread->fp = frame.fp;
+    thread->pc = frame.pc;
 }
 
 inline static bool ExpectBool(const Tiny_Value value)
