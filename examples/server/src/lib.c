@@ -232,6 +232,7 @@ static TINY_FOREIGN_FUNCTION(ParseFormValues)
     sb_push(*pBuf, 0);
 
     char* dec = DecodeURL(*pBuf);
+	char* startDec = dec;
 
 	char* name = NULL;
 	char* value = NULL;
@@ -280,6 +281,8 @@ static TINY_FOREIGN_FUNCTION(ParseFormValues)
         name = NULL;
         value = NULL;
     }
+
+	sb_free(startDec);
 
     return Tiny_NewNative(thread, d, &DictProp);
 }
