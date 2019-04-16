@@ -8,8 +8,8 @@
 #define TINY_THREAD_STACK_SIZE  128
 #endif
 
-#ifndef TINY_THREAD_INDIR_SIZE
-#define TINY_THREAD_INDIR_SIZE  256
+#ifndef TINY_THREAD_MAX_CALL_DEPTH
+#define TINY_THREAD_MAX_CALL_DEPTH  64
 #endif
 
 typedef struct Tiny_Object Tiny_Object;
@@ -57,6 +57,12 @@ typedef struct Tiny_Value
     };
 } Tiny_Value;
 
+typedef struct Tiny_Frame
+{
+    int pc, fp;
+    int nargs;
+} Tiny_Frame;
+
 typedef struct Tiny_StateThread
 {
     // Each thread stores a reference
@@ -76,8 +82,8 @@ typedef struct Tiny_StateThread
 
     Tiny_Value stack[TINY_THREAD_STACK_SIZE];
 
-    int indirStack[TINY_THREAD_INDIR_SIZE];
-    int indirStackSize;
+    int fc;
+    Tiny_Frame frames[TINY_THREAD_MAX_CALL_DEPTH];
 
     // These keep track of what file/line of source code
     // the instruction at the current PC originated from
