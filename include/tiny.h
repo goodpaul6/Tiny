@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <stdbool.h>
+#include <stdint.h>
 
 #ifndef TINY_THREAD_STACK_SIZE
 #define TINY_THREAD_STACK_SIZE  128
@@ -44,8 +45,6 @@ typedef enum
 
 typedef struct Tiny_Value
 {
-    Tiny_ValueType type;
-
     union
     {
         bool boolean;
@@ -55,6 +54,8 @@ typedef struct Tiny_Value
         void* addr;         // for TINY_VAL_LIGHT_NATIVE
         Tiny_Object* obj;
     };
+
+    uint8_t type;
 } Tiny_Value;
 
 typedef struct Tiny_Frame
