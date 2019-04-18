@@ -37,15 +37,15 @@ static Tiny_State* EntityStates[NUM_ENTITY_TYPES];
 typedef struct
 {
     int hp;
-    double x, y;
-    double velX, velY;
+    float x, y;
+    float velX, velY;
     bool playerBullet;
     Tiny_StateThread thread;
 } Entity;
 
 static Entity Ents[MAX_ENTITIES] = { 0 };
 
-static Entity* AddEnt(int hp, double x, double y, EntityType type)
+static Entity* AddEnt(int hp, float x, float y, EntityType type)
 {
     for(int i = 0; i < MAX_ENTITIES; ++i) {
         if(Ents[i].hp <= 0) {
@@ -100,16 +100,16 @@ static Tiny_Value AddBullet(Tiny_StateThread* thread, const Tiny_Value* args, in
 {
     assert(count == 3);
 
-    double x = Tiny_ToNumber(args[0]);
-    double y = Tiny_ToNumber(args[1]);
-    double angle = Tiny_ToNumber(args[2]) * (M_PI / 180);
+    float x = Tiny_ToNumber(args[0]);
+    float y = Tiny_ToNumber(args[1]);
+    float angle = Tiny_ToNumber(args[2]) * (float)(M_PI / 180);
 
     Entity* b = AddEnt(1, x, y, ENT_BULLET);
 
     if(b) {
         b->playerBullet = thread->state == EntityStates[ENT_PLAYER];
-        b->velX = 5 * cos(angle);
-        b->velY = 5 * sin(angle);
+        b->velX = 5 * cosf(angle);
+        b->velY = 5 * sinf(angle);
     }
 
     return Tiny_Null;
@@ -125,13 +125,13 @@ static Tiny_Value AccelAngle(Tiny_StateThread* thread, const Tiny_Value* args, i
 {
     assert(count == 2);
 
-    double angle = Tiny_ToNumber(args[0]) * (M_PI / 180);
-    double speed = Tiny_ToNumber(args[1]);
+    float angle = Tiny_ToNumber(args[0]) * (float)(M_PI / 180);
+    float speed = Tiny_ToNumber(args[1]);
 
     Entity* e = thread->userdata;
 
-    e->velX += cos(angle) * speed;
-    e->velY += sin(angle) * speed;
+    e->velX += cosf(angle) * speed;
+    e->velY += sinf(angle) * speed;
 
 	return Tiny_Null;
 }
@@ -152,15 +152,15 @@ static Tiny_Value AccelTowards(Tiny_StateThread* thread, const Tiny_Value* args,
 {
     assert(count == 2);
 
-    double speed = Tiny_ToNumber(args[1]);
+    float speed = Tiny_ToNumber(args[1]);
 
     Entity* e = thread->userdata;
     Entity* o = Tiny_ToAddr(args[0]);
 
-    double angle = atan2(o->y - e->y, o->x - e->x);
+    float angle = atan2f(o->y - e->y, o->x - e->x);
 
-    e->velX += cos(angle) * speed;
-    e->velY += sin(angle) * speed;
+    e->velX += cosf(angle) * speed;
+    e->velY += sinf(angle) * speed;
 
     return Tiny_Null;
 }
@@ -417,7 +417,7 @@ int main(int argc, char** argv)
                                 PlayerKills += 1;
                             }
                         } else {
-                            float angle = atan2(Ents[i].y - Ents[j].y, Ents[i].x - Ents[j].x);
+                            float angle = atan2f(Ents[i].y - Ents[j].y, Ents[i].x - Ents[j].x);
                             float repel = (10 - sqrtf(dist2));
 
                             float c = cosf(angle);
