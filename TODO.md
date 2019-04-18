@@ -1,7 +1,7 @@
 * Make sure VM bytecode instructions and data are aligned properly (DONE)
 
 * First class types (store a "type" which is just an integer in the VM)
-* Safer "any" type: must be explicitly converted
+* Safer "any" type: must be explicitly converted (DONE)
 
 * Once "any" is safe, we can have typed bytecode instructions; `OP_ADD_INT`, `OP_EQUAL_STRING` etc
 
