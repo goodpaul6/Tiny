@@ -11,7 +11,7 @@
 #define MAX_SYMBOL_NAME	256
 #endif
 
-#include "t_mem.h"
+#include "mem.h"
 
 #undef malloc
 #undef realloc

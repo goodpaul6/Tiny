@@ -8,9 +8,9 @@
 #include <math.h>
 
 #include "dict.h"
-#include "tiny_detail.h"
+#include "detail.h"
 
-#include "t_mem.h"
+#include "mem.h"
 
 #ifdef _WIN32
 

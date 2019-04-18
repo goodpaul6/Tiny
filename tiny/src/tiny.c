@@ -8,12 +8,12 @@
 #include <stdbool.h>
 
 #include "tiny.h"
-#include "tiny_detail.h"
+#include "detail.h"
 #include "stretchy_buffer.h"
-#include "tiny_lexer.h"
-#include "t_mem.h"
-#include "tiny_util.h"
-#include "tiny_opcodes.h"
+#include "lexer.h"
+#include "mem.h"
+#include "util.h"
+#include "opcodes.h"
 
 #ifndef UCHAR_MAX
 #define UCHAR_MAX 255

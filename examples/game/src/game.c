@@ -8,7 +8,7 @@
 
 #include "tigr.h"
 #include "tiny.h"
-#include "t_mem.h"
+#include "mem.h"
 
 #define MAX_ENTITIES 200
 

@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 
-#include "tiny_util.h"
+#include "util.h"
 
 char* Tiny_Strdup(const char* s)
 {

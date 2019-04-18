@@ -6,8 +6,8 @@
 #include "dict.h"
 
 #include "tiny.h"
-#include "tiny_detail.h"
-#include "t_mem.h"
+#include "detail.h"
+#include "mem.h"
 
 static void test_InitArrayEx(void)
 {
