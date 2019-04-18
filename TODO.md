@@ -1,4 +1,5 @@
-* Make sure VM bytecode instructions and data are aligned properly
+* Make sure VM bytecode instructions and data are aligned properly (DONE)
+
 * First class types (store a "type" which is just an integer in the VM)
 * Safer "any" type: must be explicitly converted
 
@@ -60,5 +61,13 @@ e.get(ItemComponent)
 
 Of course, if it's implemented at the tiny level, then generics must also be implemented at the C level:
 ```c
-Tiny_BindFunction(state, "get(entity, $t): t", Lib_GetComponent);
+// $$t means pass in the actual type value as well (so we can inspect it in the C code to get the appropriate component for example)
+Tiny_BindFunction(state, "get(entity, $$t): t", Lib_GetComponent);
+```
+
+```
+Tiny_RegisterType(state, "array($t)");
+
+// $t is matched with the t of the array passed in
+Tiny_BindFunction(state, "get(array($t), int): t");
 ```

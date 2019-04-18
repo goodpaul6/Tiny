@@ -9,7 +9,7 @@ func view() {
     titles := array()
 
     for i := 0; i < array_len(files); i += 1 {
-        s := array_get(files, i)
+        s := cast(array_get(files, i), str)
         k := strchr(s, '.')
 
         array_push(titles, substr(s, 0, k))
