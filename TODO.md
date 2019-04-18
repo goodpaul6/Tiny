@@ -1,5 +1,7 @@
 * Make sure VM bytecode instructions and data are aligned properly (DONE)
 
+* Refactor VM from compiler
+
 * First class types (store a "type" which is just an integer in the VM)
 * Safer "any" type: must be explicitly converted (DONE)
 
