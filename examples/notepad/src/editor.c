@@ -725,7 +725,7 @@ static void BindFunctions(Tiny_State* state)
 
     Tiny_BindFunction(state, "line_count(): int", Lib_LineCount);
     Tiny_BindFunction(state, "get_line(...): str", Lib_GetLine);
-    Tiny_BindFunction(state, "get_line_from", Lib_GetLineFrom);
+    Tiny_BindFunction(state, "get_line_from(...): str", Lib_GetLineFrom);
     Tiny_BindFunction(state, "set_line(...): void", Lib_SetLine);
     Tiny_BindFunction(state, "remove_line(...): void", Lib_RemoveLine);
     Tiny_BindFunction(state, "insert_empty_line(...): void", Lib_InsertEmptyLine);

@@ -1478,7 +1478,8 @@ typedef enum
     EXP_WHILE,
     EXP_FOR,
     EXP_DOT,
-    EXP_CONSTRUCTOR
+    EXP_CONSTRUCTOR,
+    EXP_CAST
 } ExprType;
 
 typedef struct sExpr
@@ -1565,6 +1566,12 @@ typedef struct sExpr
             Symbol* structTag;
             struct sExpr** args;
         } constructor;
+
+        struct
+        {
+            struct sExpr* value;
+            Symbol* tag;
+        } cast;
 
         struct sExpr* retExpr;
     };
@@ -2087,6 +2094,30 @@ static Expr* ParseFactor(Tiny_State* state)
             return exp;
         } break;
 
+        case TINY_TOK_CAST: {
+            Expr* exp = Expr_create(EXP_CAST, state);
+
+            GetNextToken(state);
+
+            ExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after cast");
+
+            GetNextToken(state);
+
+            exp->cast.value = ParseExpr(state);
+
+            ExpectToken(state, TINY_TOK_COMMA, "Expected ',' after cast value");
+
+            GetNextToken(state);
+
+            exp->cast.tag = ParseType(state);
+            
+            ExpectToken(state, TINY_TOK_CLOSEPAREN, "Expected ')' to match previous '(' after cast.");
+
+            GetNextToken(state);
+
+            return exp;
+        } break;
+
         default: break;
     }
 
@@ -2354,8 +2385,9 @@ static bool CompareTags(const Symbol* a, const Symbol* b)
     if(a->type == SYM_TAG_VOID) {
         return b->type == SYM_TAG_VOID;
     }
-    
-    if(a->type == SYM_TAG_ANY || b->type == SYM_TAG_ANY) {
+
+    // Can convert *to* any implicitly
+    if(b->type == SYM_TAG_ANY) {
         return true;
     }
 
@@ -2708,6 +2740,22 @@ static void ResolveTypes(Tiny_State* state, Expr* exp)
 
             exp->tag = exp->constructor.structTag;
         } break;
+    
+        case EXP_CAST: {
+            assert(exp->cast.value);
+            assert(exp->cast.tag);
+
+            ResolveTypes(state, exp->cast.value);
+            
+            // TODO(Apaar): Allow casting of int to float etc
+
+            // Only allow casting "any" values for now
+            if(exp->cast.value->tag != GetPrimTag(SYM_TAG_ANY)) {
+                ReportErrorE(state, exp->cast.value, "Attempted to cast a %s; only any is allowed.", GetTagName(exp->cast.value->tag));
+            }
+
+            exp->tag = exp->cast.tag;
+        } break;
     }
 }
 
@@ -2900,6 +2948,15 @@ static void CompileExpr(Tiny_State* state, Expr* exp)
 
             GenerateCode(state, TINY_OP_PUSH_STRUCT);
             GenerateCode(state, sb_count(exp->constructor.args));
+        } break;
+
+        case EXP_CAST: {
+            assert(exp->tag);
+            assert(exp->cast.value);
+
+            // TODO(Apaar): Once the cast actually does something, change this to generate casting opcodes
+            // (ex. OP_INT_TO_FLOAT, OP_FLOAT_TO_INT, etc)
+            CompileExpr(state, exp->cast.value);
         } break;
 
         case EXP_BINARY:
@@ -3392,6 +3449,10 @@ static void Expr_destroy(Expr* exp)
 
             sb_free(exp->constructor.args);
         } break;
+
+		case EXP_CAST: {
+			Expr_destroy(exp->cast.value);
+		} break;
 
         default: assert(false); break;
     }

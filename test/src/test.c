@@ -520,10 +520,10 @@ static void test_RevPolishCalc(void)
 		"op := \"\"\n"
 		"while op != \"quit\" {\n"
 		"op = my_input()\n"
-		"if stridx(op, 0) == '+' array_push(stack, array_pop(stack) + array_pop(stack))\n"
-		"else if stridx(op, 0) == '-' array_push(stack, array_pop(stack) - array_pop(stack))\n"
-		"else if stridx(op, 0) == '*' array_push(stack, array_pop(stack) * array_pop(stack))\n"
-		"else if stridx(op, 0) == '/' array_push(stack, array_pop(stack) / array_pop(stack))\n"
+		"if stridx(op, 0) == '+' array_push(stack, cast(array_pop(stack), float) + cast(array_pop(stack), float))\n"
+		"else if stridx(op, 0) == '-' array_push(stack, cast(array_pop(stack), float) - cast(array_pop(stack), float))\n"
+		"else if stridx(op, 0) == '*' array_push(stack, cast(array_pop(stack), float) * cast(array_pop(stack), float))\n"
+		"else if stridx(op, 0) == '/' array_push(stack, cast(array_pop(stack), float) / cast(array_pop(stack), float))\n"
 		"else if op != \"quit\" array_push(stack, ston(op)) }\n";
 
 	Tiny_CompileString(state, "test_rpn", code);

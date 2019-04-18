@@ -25,7 +25,7 @@ func pop_hop(): void {
         return;
     }
     
-    y := array_pop(hop_buffer)
+    y := cast(array_pop(hop_buffer), int)
     
     if array_len(unhop_buffer) >= max_hop_buffer_len {
         array_shift(unhop_buffer)
@@ -41,7 +41,7 @@ func pop_unhop(): void {
         return;
     }
     
-    y := array_pop(unhop_buffer) 
+    y := cast(array_pop(unhop_buffer), int)
      
     push_hop()
     
