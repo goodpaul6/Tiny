@@ -491,18 +491,34 @@ static void GenerateCode(Tiny_State* state, Word inst)
     sb_push(state->program, inst);
 }
 
-static void GenerateInt(Tiny_State* state, int value)
+static int GenerateInt(Tiny_State* state, int value)
 {
+    // TODO(Apaar): Don't hardcode alignment of int
+    int padding = 4 - sb_count(state->program) % 4;
+
+    for(int i = 0; i < padding; ++i) {
+        GenerateCode(state, TINY_OP_MISALIGNED_INSTRUCTION);
+    }
+
+    int pos = sb_count(state->program);
+
     Word* wp = (Word*)(&value);
-    for(int i = 0; i < 4; ++i)
+    for(int i = 0; i < sizeof(int); ++i) {
         GenerateCode(state, *wp++);
+    }
+
+    return pos;
 }
 
 static void GenerateIntAt(Tiny_State* state, int value, int pc)
 {
+    // Must be aligned
+    assert(pc % 4 == 0);
+
     Word* wp = (Word*)(&value);
-    for(int i = 0; i < 4; ++i)
+    for(int i = 0; i < 4; ++i) {
         state->program[pc + i] = *wp++;
+    }
 }
 
 static int RegisterNumber(float value)
@@ -939,6 +955,9 @@ void Tiny_BindConstString(Tiny_State* state, const char* name, const char* strin
 static int ReadInteger(Tiny_StateThread* thread)
 {
     assert(thread->state);
+
+    // Move PC up to the next 4 aligned thing
+	thread->pc += 4 - thread->pc % 4;
 
     int val = *(int*)(&thread->state->program[thread->pc]);
     thread->pc += sizeof(int) / sizeof(Word);
@@ -1437,6 +1456,11 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             int line = ReadInteger(thread);
 
             thread->lineNumber = line;
+        } break;
+
+        case TINY_OP_MISALIGNED_INSTRUCTION: {
+            // TODO(Apaar): Proper runtime error
+            assert(false);
         } break;
     }
 
@@ -3217,8 +3241,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
         case EXP_PROC:
         {
             GenerateCode(state, TINY_OP_GOTO);
-            int skipGotoPc = sb_count(state->program);
-            GenerateInt(state, 0);
+            int skipGotoPc = GenerateInt(state, 0);
             
             state->functionPcs[exp->proc.decl->func.index] = sb_count(state->program);
             
@@ -3229,8 +3252,9 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
             GenerateCode(state, TINY_OP_PUSH_NULL_N);
             GenerateCode(state, (Word)sb_count(exp->proc.decl->func.locals));
             
-            if (exp->proc.body)
+            if (exp->proc.body) {
                 CompileStatement(state, exp->proc.body);
+            }
 
             GenerateCode(state, TINY_OP_RETURN);
             GenerateIntAt(state, sb_count(state->program), skipGotoPc);
@@ -3241,15 +3265,13 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
             CompileExpr(state, exp->ifx.cond);
             GenerateCode(state, TINY_OP_GOTOZ);
             
-            int skipGotoPc = sb_count(state->program);
-            GenerateInt(state, 0);
+            int skipGotoPc = GenerateInt(state, 0);
             
             if(exp->ifx.body)
                 CompileStatement(state, exp->ifx.body);
             
             GenerateCode(state, TINY_OP_GOTO);
-            int exitGotoPc = sb_count(state->program);
-            GenerateInt(state, 0);
+            int exitGotoPc = GenerateInt(state, 0);
 
             GenerateIntAt(state, sb_count(state->program), skipGotoPc);
 
@@ -3266,8 +3288,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
             CompileExpr(state, exp->whilex.cond);
             
             GenerateCode(state, TINY_OP_GOTOZ);
-            int skipGotoPc = sb_count(state->program);
-            GenerateInt(state, 0);
+            int skipGotoPc = GenerateInt(state, 0);
             
             if(exp->whilex.body)
                 CompileStatement(state, exp->whilex.body);
@@ -3286,8 +3307,7 @@ static void CompileStatement(Tiny_State* state, Expr* exp)
             CompileExpr(state, exp->forx.cond);
 
             GenerateCode(state, TINY_OP_GOTOZ);
-            int skipGotoPc = sb_count(state->program);
-            GenerateInt(state, 0);
+            int skipGotoPc = GenerateInt(state, 0);
 
             if (exp->forx.body)
                 CompileStatement(state, exp->forx.body);
