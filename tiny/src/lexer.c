@@ -2,8 +2,8 @@
 #include <stdbool.h>
 #include <string.h>
 
-#include "tiny_util.h"
-#include "tiny_lexer.h"
+#include "util.h"
+#include "lexer.h"
 #include "stretchy_buffer.h"
 
 static void ResetLexeme(Tiny_Lexer* l)

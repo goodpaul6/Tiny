@@ -2,7 +2,7 @@
 
 #include <stdarg.h>
 
-#include "tiny_tokens.h"
+#include "tokens.h"
 
 char* Tiny_Strdup(const char* s);
 

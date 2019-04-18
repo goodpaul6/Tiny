@@ -1,7 +1,7 @@
 #pragma once
 
 #include "tiny.h"
-#include "tiny_lexer.h"
+#include "lexer.h"
 
 #define MAX_NUMBERS     512
 #define MAX_STRINGS     512
