@@ -494,7 +494,7 @@ static void GenerateCode(Tiny_State* state, Word inst)
 static int GenerateInt(Tiny_State* state, int value)
 {
     // TODO(Apaar): Don't hardcode alignment of int
-    int padding = 4 - sb_count(state->program) % 4;
+	int padding = (sb_count(state->program) % 4 == 0) ? 0 : (4 - sb_count(state->program) % 4);
 
     for(int i = 0; i < padding; ++i) {
         GenerateCode(state, TINY_OP_MISALIGNED_INSTRUCTION);
@@ -957,7 +957,7 @@ static int ReadInteger(Tiny_StateThread* thread)
     assert(thread->state);
 
     // Move PC up to the next 4 aligned thing
-	thread->pc += 4 - thread->pc % 4;
+	thread->pc += (thread->pc % 4 == 0) ? 0 : (4 - thread->pc % 4);
 
     int val = *(int*)(&thread->state->program[thread->pc]);
     thread->pc += sizeof(int) / sizeof(Word);
@@ -1079,8 +1079,7 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             ++thread->pc;
             
 			thread->stack[thread->sp].type = TINY_VAL_INT;
-			thread->stack[thread->sp].i = *(int*)(&thread->state->program[thread->pc]);
-			thread->pc += 4;
+			thread->stack[thread->sp].i = ReadInteger(thread);
 			thread->sp += 1;
 		} break;
 
@@ -1110,16 +1109,6 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
 			thread->stack[thread->sp].i = thread->state->program[thread->pc];
 			thread->sp += 1;
 			thread->pc += 1;
-		} break;
-
-		case TINY_OP_PUSH_SHORT:
-		{
-			++thread->pc;
-
-			thread->stack[thread->sp].type = TINY_VAL_INT;
-			thread->stack[thread->sp].i = *(short*)(&thread->state->program[thread->pc]);
-			thread->sp += 1;
-			thread->pc += 2;
 		} break;
 
 		case TINY_OP_PUSH_FLOAT:
@@ -1200,12 +1189,6 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             vstruct.obj->ostruct.fields[i] = val;
         } break;
         
-        case TINY_OP_POP:
-        {
-            DoPop(thread);
-            ++thread->pc;
-		} break;
-
 #define BIN_OP(OP, operator) case TINY_OP_##OP: { \
 			Tiny_Value val2 = DoPop(thread); \
 			Tiny_Value val1 = DoPop(thread); \
@@ -1462,6 +1445,10 @@ static bool ExecuteCycle(Tiny_StateThread* thread)
             // TODO(Apaar): Proper runtime error
             assert(false);
         } break;
+
+		default: {
+			assert(false);
+		} break;
     }
 
     // Only collect garbage in between iterations
@@ -2735,14 +2722,6 @@ static void GeneratePushInt(Tiny_State* state, int iValue)
 	} else if (iValue >= -128 && iValue <= 127) {
 		GenerateCode(state, TINY_OP_PUSH_CHAR);
 		GenerateCode(state, (Word)iValue);
-	} else if(iValue >= -32768 && iValue <= 32767) {
-        GenerateCode(state, TINY_OP_PUSH_SHORT);	
-
-		short sValue = (short)iValue;
-		Word* wp = (Word*)(&sValue);
-
-        GenerateCode(state, wp[0]);
-		GenerateCode(state, wp[1]);
 	} else {
 		GenerateCode(state, TINY_OP_PUSH_INT);
 		GenerateInt(state, iValue);

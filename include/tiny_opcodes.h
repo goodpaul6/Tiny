@@ -16,7 +16,6 @@ enum
     TINY_OP_PUSH_0,
     TINY_OP_PUSH_1,
     TINY_OP_PUSH_CHAR,
-    TINY_OP_PUSH_SHORT,
 
 	TINY_OP_PUSH_FLOAT,
     // If the float is in the first 0xff constants, use this opcode
@@ -30,8 +29,6 @@ enum
 
     TINY_OP_STRUCT_GET,
     TINY_OP_STRUCT_SET,
-
-    TINY_OP_POP,
 
     TINY_OP_ADD,
     TINY_OP_SUB,
