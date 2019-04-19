@@ -1,59 +1,155 @@
+#include <assert.h>
 #include <ctype.h>
 #include <stdbool.h>
 #include <string.h>
 
-#include "util.h"
-#include "lexer.h"
-#include "stretchy_buffer.h"
+typedef size_t TokenPos;
 
-static void ResetLexeme(Tiny_Lexer* l)
+typedef enum
 {
-    if(l->lexeme) stb__sbn(l->lexeme) = 0;
+    TOK_OPENPAREN,
+    TOK_CLOSEPAREN,
+    TOK_OPENCURLY,
+    TOK_CLOSECURLY,
+
+    TOK_PLUS,
+    TOK_MINUS,
+    TOK_STAR,
+    TOK_SLASH,
+    TOK_PERCENT,
+    TOK_GT,
+    TOK_LT,
+    TOK_EQUAL,
+    TOK_BANG,
+    TOK_AND,
+    TOK_OR,
+    TOK_COMMA,
+    TOK_SEMI,
+    TOK_COLON,
+    TOK_DOT,
+
+    TOK_LOG_AND,                   // &&
+    TOK_LOG_OR,                    // ||
+
+    TOK_DECLARE,               // :=
+    TOK_DECLARECONST,          // ::
+
+    TOK_PLUSEQUAL,             // +=
+    TOK_MINUSEQUAL,            // -=
+    TOK_STAREQUAL,              // *=
+    TOK_SLASHEQUAL,              // /=
+    TOK_PERCENTEQUAL,              // %=
+    TOK_OREQUAL,               // |=
+    TOK_ANDEQUAL,              // &=
+
+    TOK_EQUALS,
+    TOK_NOTEQUALS,
+    TOK_LTE,
+    TOK_GTE,
+
+    TOK_NULL,
+    TOK_BOOL,
+    TOK_CHAR,
+    TOK_INT,
+    TOK_FLOAT,
+    TOK_STRING,
+
+    TOK_IDENT,
+
+    TOK_IF,
+    TOK_ELSE,
+    TOK_WHILE,
+    TOK_FOR,
+    TOK_RETURN,
+    TOK_FUNC,
+    TOK_FOREIGN,
+    TOK_STRUCT,
+    TOK_NEW,
+    TOK_CAST,
+
+    TOK_EOF,
+
+    TOK_ERROR
+} TokenType;
+
+typedef struct Lexer
+{
+    Tiny_Context* ctx;
+
+    const char* fileName;
+    int lineNumber;
+
+    const char* src;    
+    size_t len;
+
+    TokenPos pos;
+
+    int last;
+
+    // Buffer
+    char* lexeme;
+
+    char* errorMessage;
+
+    union
+    {
+        bool bValue;
+        int iValue;
+        float fValue;
+    };
+} Lexer;
+
+static int GetChar(Lexer* l)
+{
+    return l->pos >= l->len ? 0 : l->src[l->pos++];
 }
 
-static int GetChar(Tiny_Lexer* l)
-{
-    if(l->src[l->pos]) return l->src[l->pos++];
-    return 0;
-}
-
-inline static int Peek(Tiny_Lexer* l)
+static int Peek(Lexer* l)
 {
     return l->src[l->pos];
 }
 
-static void ReportError(Tiny_Lexer* l, const char* s, ...)
+static void InitLexer(Lexer* l, Tiny_Context* ctx, const char* fileName, const char* src, size_t len) 
 {
-    va_list args;
+    l->ctx = ctx;
 
-    va_start(args, s);
-    Tiny_ReportErrorV(l->fileName, l->src, l->pos, s, args);
-    va_end(args);
-
-    exit(1);
-}
-
-void Tiny_InitLexer(Tiny_Lexer* l, const char* fileName, const char* src) 
-{
     l->fileName = fileName;
-    l->src = src;
-
     l->lineNumber = 1;
+
+    l->src = src;
+    l->len = len;
+
     l->pos = 0;
 
     l->last = ' ';
-    l->lexeme = NULL;
+
+    l->errorMessage = NULL;
+
+    INIT_BUF(l->lexeme, ctx);
 }
 
-Tiny_TokenKind Tiny_GetToken(Tiny_Lexer* l)
+#define LEXER_ERROR(l, fmt, ...) (((l)->errorMessage = MemPrintf(msg, __VA_ARGS__)), TOK_ERROR)
+
+static void ClearLexerError(Lexer* l)
 {
+    if(l->errorMessage) {
+        TFree(l->ctx, l->errorMessage);
+        l->errorMessage = NULL;
+    }
+}
+
+static TokenType GetToken(Lexer* l)
+{
+    // Make sure that error has been handled
+    assert(!l->errorMessage);
+
     while(isspace(l->last)) {
         if(l->last == '\n') l->lineNumber++;
         l->last = GetChar(l);
     }
 
     if(l->last == 0) {
-        return TINY_TOK_EOF;
+        return TOK_EOF;
 	}
 
 	if (l->last == '/' && Peek(l) == '/') {
@@ -66,18 +162,18 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer* l)
             l->lineNumber += 1;
         }
 
-		return Tiny_GetToken(l);
+		return GetToken(l);
 	}
 
 #define MATCH2(s, tok) do { \
     if(l->last == s[0] && Peek(l) == s[1]) { \
-		ResetLexeme(l); \
-		sb_push(l->lexeme, s[0]); \
-		sb_push(l->lexeme, s[1]); \
-		sb_push(l->lexeme, 0); \
+		BUF_CLEAR(l->lexeme); \
+		BUF_PUSH(l->lexeme, s[0]); \
+		BUF_PUSH(l->lexeme, s[1]); \
+		BUF_PUSH(l->lexeme, 0); \
         l->pos += 1; \
 		l->last = GetChar(l); \
-        return TINY_TOK_##tok; \
+        return TOK_##tok; \
     } \
 } while(0)
 
@@ -103,11 +199,11 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer* l)
 
 #define MATCH(c, tok) do { \
     if(l->last == c) { \
-		ResetLexeme(l); \
-		sb_push(l->lexeme, c); \
-		sb_push(l->lexeme, 0); \
+		BUF_CLEAR(l->lexeme); \
+		BUF_PUSH(l->lexeme, c); \
+		BUF_PUSH(l->lexeme, 0); \
         l->last = GetChar(l); \
-        return TINY_TOK_##tok; \
+        return TOK_##tok; \
     } \
 } while(0)
 
@@ -132,54 +228,54 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer* l)
     MATCH('.', DOT);
 
     if(isalpha(l->last)) {
-        ResetLexeme(l);
+        BUF_CLEAR(l->lexeme);
 
         while(isalnum(l->last) || l->last == '_') {
-            sb_push(l->lexeme, l->last);
+            BUF_PUSH(l->lexeme, l->last);
             l->last = GetChar(l);
         }
 
-        sb_push(l->lexeme, 0);
+        BUF_PUSH(l->lexeme, 0);
 
-        if(strcmp(l->lexeme, "null") == 0) return TINY_TOK_NULL;
+        if(strcmp(l->lexeme, "null") == 0) return TOK_NULL;
 
         if(strcmp(l->lexeme, "true") == 0) {
             l->bValue = true;
-            return TINY_TOK_BOOL;
+            return TOK_BOOL;
         }
 
         if(strcmp(l->lexeme, "false") == 0) {
             l->bValue = false;
-            return TINY_TOK_BOOL;
+            return TOK_BOOL;
         }
 
-        if(strcmp(l->lexeme, "if") == 0) return TINY_TOK_IF;
-        if(strcmp(l->lexeme, "func") == 0) return TINY_TOK_FUNC;
-        if(strcmp(l->lexeme, "foreign") == 0) return TINY_TOK_FOREIGN;
-        if(strcmp(l->lexeme, "return") == 0) return TINY_TOK_RETURN;
-        if(strcmp(l->lexeme, "while") == 0) return TINY_TOK_WHILE;
-        if(strcmp(l->lexeme, "for") == 0) return TINY_TOK_FOR;
-        if(strcmp(l->lexeme, "else") == 0) return TINY_TOK_ELSE;
-        if(strcmp(l->lexeme, "struct") == 0) return TINY_TOK_STRUCT;
-		if(strcmp(l->lexeme, "new") == 0) return TINY_TOK_NEW;
-        if(strcmp(l->lexeme, "cast") == 0) return TINY_TOK_CAST;
+        if(strcmp(l->lexeme, "if") == 0) return TOK_IF;
+        if(strcmp(l->lexeme, "func") == 0) return TOK_FUNC;
+        if(strcmp(l->lexeme, "foreign") == 0) return TOK_FOREIGN;
+        if(strcmp(l->lexeme, "return") == 0) return TOK_RETURN;
+        if(strcmp(l->lexeme, "while") == 0) return TOK_WHILE;
+        if(strcmp(l->lexeme, "for") == 0) return TOK_FOR;
+        if(strcmp(l->lexeme, "else") == 0) return TOK_ELSE;
+        if(strcmp(l->lexeme, "struct") == 0) return TOK_STRUCT;
+		if(strcmp(l->lexeme, "new") == 0) return TOK_NEW;
+        if(strcmp(l->lexeme, "cast") == 0) return TOK_CAST;
 
-        return TINY_TOK_IDENT;
+        return TOK_IDENT;
     }
 
     if(isdigit(l->last)) {
-        ResetLexeme(l);
+        BUF_CLEAR(l->lexeme);
 
         bool isFloat = false;
 
         while(isdigit(l->last) || (l->last == '.' && !isFloat)) {
             if(l->last == '.') isFloat = true;
 
-            sb_push(l->lexeme, l->last);
+            BUF_PUSH(l->lexeme, l->last);
             l->last = GetChar(l);
         }
 
-        sb_push(l->lexeme, 0);
+        BUF_PUSH(l->lexeme, 0);
 
         if(isFloat) {
             l->fValue = strtof(l->lexeme, NULL);
@@ -187,7 +283,7 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer* l)
             l->iValue = strtol(l->lexeme, NULL, 10);
         }
 
-        return isFloat ? TINY_TOK_FLOAT : TINY_TOK_INT;
+        return isFloat ? TOK_FLOAT : TOK_INT;
     }
 
 #define CHECK_ESCAPE() do { \
@@ -214,38 +310,38 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer* l)
         l->last = GetChar(l);
 
         if(l->last != '\'') {
-            ReportError(l, "Expected ' to close previous '.");
+            return LEXER_ERROR(l, "Expected ' to close previous '.");
         }
 
 		l->last = GetChar(l);
 
-        return TINY_TOK_CHAR;
+        return TOK_CHAR;
     }
 
     if(l->last == '"') {
-        ResetLexeme(l);
+        BUF_CLEAR(l->lexeme);
         
         l->last = GetChar(l);
 
         while(l->last != '"') {
             CHECK_ESCAPE();
 
-            sb_push(l->lexeme, l->last);
+            BUF_PUSH(l->lexeme, l->last);
             l->last = GetChar(l);
         }
 
-        sb_push(l->lexeme, 0);
+        BUF_PUSH(l->lexeme, 0);
 
         l->last = GetChar(l);
 
-        return TINY_TOK_STRING;
+        return TOK_STRING;
     }
 
-    ReportError(l, "Unexpected character '%c'.", l->last);
-    return -1;
+    return LEXER_ERROR(l, "Unexpected character '%c'.", l->last);
 }
 
-void Tiny_DestroyLexer(Tiny_Lexer* l)
+static void DestroyLexer(Lexer* l)
 {
-    sb_free(l->lexeme);
+    DESTROY_BUF(l->lexeme);
+    ClearLexerError(l);
 }

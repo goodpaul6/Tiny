@@ -1,6 +1,9 @@
 // Core functions
 
+#include <assert.h>
 #include <string.h>
+#include <stdio.h>
+#include <stdarg.h>
 
 #include "context.h"
 
@@ -425,4 +428,24 @@ inline static bool StringPoolEqual(const char* a, const char* b)
 #else
     return a == b;
 #endif
+}
+
+static char* MemPrintf(Tiny_Context* ctx, const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+
+    size_t n = 1 + vsnprintf(NULL, 0, fmt, args);
+
+    va_end(args);
+
+    char* str = TMalloc(ctx, n);
+
+    va_start(args, fmt);
+
+    vsnprintf(str, n, fmt, args);
+
+    va_end(args);
+
+    return str;
 }
