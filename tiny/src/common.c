@@ -96,7 +96,7 @@ static void InitArena(Arena* arena, Tiny_Context* ctx)
 static void* ArenaAlloc(Arena* arena, size_t size)
 {
     if(!arena->tail || size > (arena->tail->size - arena->tail->used)) {
-        ArenaPage* page = CreateArenaPage(arena->snow, size);
+        ArenaPage* page = CreateArenaPage(arena->ctx, size);
 
         if(!arena->tail) {
             arena->head = arena->tail = page;
