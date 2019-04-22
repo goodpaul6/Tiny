@@ -187,7 +187,7 @@ static Typetag* InternStructTypetag(TypetagPool* pool, const char** names, Typet
     Typetag* type = AllocTypetag(pool, TYPETAG_STRUCT);
 
     BUF_PUSH(pool->buffers, names);
-    BUF_PUSH(pool->types, types);
+    BUF_PUSH(pool->buffers, types);
 
     type->tstruct.names = names;
     type->tstruct.types = types;

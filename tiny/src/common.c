@@ -430,6 +430,35 @@ inline static bool StringPoolEqual(const char* a, const char* b)
 #endif
 }
 
+typedef struct ConstPool
+{
+    float* numbers;
+} ConstPool;
+
+static void InitConstPool(ConstPool* np, Tiny_Context* ctx)
+{
+    INIT_BUF(np->numbers, ctx);
+}
+
+static int RegisterNumber(ConstPool* np, float f)
+{
+    int c = BUF_LEN(np->numbers);
+
+    for(int i = 0; i < c; ++i) {
+        if(np->numbers[i] == f) {
+            return i;
+        }
+    }
+
+    BUF_PUSH(np->numbers, f);
+    return c;
+}
+
+static void DestroyConstPool(ConstPool* np)
+{
+    DESTROY_BUF(np->numbers);
+}
+
 static char* MemPrintf(Tiny_Context* ctx, const char* fmt, ...)
 {
     va_list args;

@@ -37,7 +37,7 @@ typedef struct Sym
                 bool bValue;
                 int iValue;
                 int fIndex;
-                int sIndex;
+                const char* str;
             };
         } constant;
 
@@ -199,6 +199,12 @@ static Sym* ReferenceVar(Symbols* s, const char* name)
 
 static Sym* DeclareVar(Symbols* sym, const char* name, TokenPos pos, bool arg)
 {
+    Sym* r = ReferenceVar(sym, name);
+
+    if(r && r->type == SYM_VAR && r->var.func == sym->func) {
+        return SYMBOLS_ERROR(s, "Attempted to declare a variable '%s' with the same name as another variable in the same scope.", name);
+    }
+
     Sym* s = AllocSym(sym, SYM_VAR, name, pos);
 
     if(sym->func) {

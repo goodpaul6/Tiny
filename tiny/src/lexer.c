@@ -3,7 +3,9 @@
 #include <stdbool.h>
 #include <string.h>
 
-typedef size_t TokenPos;
+typedef uint32_t TokenPos;
+
+// TODO(Apaar): Translate token pos to line number given src
 
 typedef enum
 {
@@ -128,7 +130,7 @@ static void InitLexer(Lexer* l, Tiny_Context* ctx, const char* fileName, const c
     INIT_BUF(l->lexeme, ctx);
 }
 
-#define LEXER_ERROR(l, fmt, ...) (((l)->errorMessage = MemPrintf(msg, __VA_ARGS__)), TOK_ERROR)
+#define LEXER_ERROR(l, fmt, ...) (((l)->errorMessage = MemPrintf((fmt), __VA_ARGS__)), TOK_ERROR)
 
 static void ClearLexerError(Lexer* l)
 {
