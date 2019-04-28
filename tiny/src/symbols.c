@@ -45,8 +45,6 @@ typedef struct Sym
         {
             int index;
 
-            struct Sym* outerFunc;
-
             // Buffers
             struct Sym** args;
             struct Sym** locals;
@@ -306,6 +304,18 @@ static Sym* RegisterType(Symbols* sym, const char* name, TokenPos pos)
     BUF_PUSH(sym->types, s);
 
     return s;
+}
+
+// TODO(Apaar): Use a Map to store symbols eventually
+static const char* GetTypeName(Symbols* sym, const Typetag* type)
+{
+    for(int i = 0; i < BUF_LEN(sym->types); ++i) {
+        if(type == sym->types[i].type) {
+            return sym->types[i].name;
+        }
+    }
+
+    return NULL;
 }
 
 static void ClearSymbolsError(Symbols* s)

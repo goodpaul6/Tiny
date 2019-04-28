@@ -195,6 +195,35 @@ static Typetag* InternStructTypetag(TypetagPool* pool, const char** names, Typet
     return type;
 }
 
+// 'a' is src type, 'b' is target type
+static bool CompareTypes(const Typetag* a, const Typetag* b)
+{
+    if(a->type == TYPETAG_VOID) {
+        return b->type == TYPETAG_VOID;
+    }
+
+    // Can convert *to* 'any' implicitly
+    if(b->type == TYPETAG_ANY) {
+        return true;
+    }
+
+    return a == b;
+}
+
+// Returns -1 if it doesn't exist
+static int GetFieldIndex(const Typetag* s, const char* name)
+{
+    assert(s->type == TYPETAG_STRUCT);
+
+    for(int i = 0; i < BUF_LEN(s->tstruct.names); ++i) {
+        if(StringPoolEqual(name, s->tstruct.names[i])) {
+            return i;
+        }
+    }
+
+    return -1;
+}
+
 static void DestroyTypetagPool(TypetagPool* pool)
 {
     for(int i = 0; i < BUF_LEN(pool->buffers); ++i) {

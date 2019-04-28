@@ -433,9 +433,9 @@ static AST* ParseFactor(Parser* p)
 
             const char* typeName = StringPoolInsert(p->sp, p->l.lexeme);
 
-            ast->constructor.structTag = RegisterType(p->sym, typeName);
+            ast->constructor.structSym = RegisterType(p->sym, typeName);
 
-            if(!ast->constructor.structTag) {
+            if(!ast->constructor.structSym) {
                 PARSER_ERROR_LONGJMP(p);
             }
 
