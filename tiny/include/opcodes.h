@@ -2,56 +2,60 @@
 
 enum
 {
-    TINY_OP_PUSH_NULL,
+    // Add an integer to the stack pointer
+    TINY_OP_SP_ADD,
 
-    // Pushes N null values onto the stack (where n <= 0xff)
-    TINY_OP_PUSH_NULL_N,
+    TINY_OP_PUSH_NULL,
 
     TINY_OP_PUSH_TRUE,
     TINY_OP_PUSH_FALSE,
 
 	TINY_OP_PUSH_INT,
-     
-    // Fast integer ops
-    TINY_OP_PUSH_0,
-    TINY_OP_PUSH_1,
+
     TINY_OP_PUSH_CHAR,
 
 	TINY_OP_PUSH_FLOAT,
-    // If the float is in the first 0xff constants, use this opcode
-    TINY_OP_PUSH_FLOAT_FF,
-
     TINY_OP_PUSH_STRING,
-    // If the string is in the first 0xff constants, use this opcode
-    TINY_OP_PUSH_STRING_FF,
 
     TINY_OP_PUSH_STRUCT,
 
     TINY_OP_STRUCT_GET,
     TINY_OP_STRUCT_SET,
 
-    TINY_OP_ADD,
-    TINY_OP_SUB,
-    TINY_OP_MUL,
-    TINY_OP_DIV,
-    TINY_OP_MOD,
-    TINY_OP_OR,
-    TINY_OP_AND,
-    TINY_OP_LT,
-    TINY_OP_LTE,
-    TINY_OP_GT,
-    TINY_OP_GTE,
+    TINY_OP_ADD_I,
+    TINY_OP_SUB_I,
+    TINY_OP_MUL_I,
+    TINY_OP_DIV_I,
+    TINY_OP_MOD_I,
+    TINY_OP_OR_I,
+    TINY_OP_AND_I,
 
-    TINY_OP_ADD1,
-    TINY_OP_SUB1,
+    TINY_OP_LT_I,
+    TINY_OP_LTE_I,
+    TINY_OP_GT_I,
+    TINY_OP_GTE_I,
+
+    TINY_OP_ADD1_I,
+    TINY_OP_SUB1_I,
+
+    TINY_OP_ADD_F,
+    TINY_OP_SUB_F,
+    TINY_OP_MUL_F,
+    TINY_OP_DIV_F,
+    
+    TINY_OP_LT_F,
+    TINY_OP_LTE_F,
+    TINY_OP_GT_F,
+    TINY_OP_GTE_F,
+
+    TINY_OP_ADD1_F,
+    TINY_OP_SUB1_F,
 
     TINY_OP_EQU,
 
     TINY_OP_LOG_NOT,
     TINY_OP_LOG_AND,
     TINY_OP_LOG_OR,
-
-    TINY_OP_PRINT,
 
     TINY_OP_SET,
     TINY_OP_GET,

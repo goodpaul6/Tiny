@@ -1,5 +1,7 @@
 #include <setjmp.h>
 
+#include "stringpool.h"
+
 // Parser and parsing functions
 
 // Note that if there is an error while parsing, all the code parsed up to that point
@@ -12,7 +14,7 @@ typedef struct Parser
     Tiny_Context* ctx;
     Arena arena;
 
-    StringPool* sp;
+    Tiny_StringPool* sp;
     Symbols* sym;
     TypetagPool* tp;
     ConstPool* cp;
@@ -31,7 +33,7 @@ typedef struct Parser
     void** buffers;
 } Parser;
 
-static void InitParser(Parser* p, Tiny_Context* ctx, const char* fileName, const char* src, size_t len, StringPool* sp, Symbols* sym, TypetagPool* tp, ConstPool* cp)
+static void InitParser(Parser* p, Tiny_Context* ctx, const char* fileName, const char* src, size_t len, Tiny_StringPool* sp, Symbols* sym, TypetagPool* tp, ConstPool* cp)
 {
     p->ctx = ctx;
 
@@ -129,7 +131,7 @@ static AST* ParseFunc(Parser* p)
 
     EXPECT_TOKEN(p, TOK_IDENT, "Function name must be identifier!");
 
-    const char* funcName = StringPoolInsert(p->sp, p->l.lexeme);
+    const char* funcName = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
     ast->proc.decl = DeclareFunc(p->sym, funcName);
 
@@ -151,7 +153,7 @@ static AST* ParseFunc(Parser* p)
     while(p->curTok != TOK_CLOSEPAREN) {
         EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier in function parameter list");
 
-        const char* name = StringPoolInsert(p->sp, p->l.lexeme);
+        const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
         Sym* arg = DeclareVar(p->sym, name, p->l.pos, true);
 
@@ -218,7 +220,7 @@ static Sym* ParseStruct(Parser* p)
 
     EXPECT_TOKEN_RETURN_NULL(p, TOK_IDENT, "Expected identifier after 'struct'.");
 
-    const char* name = StringPoolInsert(p->sp, p->l.lexeme);
+    const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
     Sym* s = RegisterType(p->sym, name, pos);
 
@@ -255,7 +257,7 @@ static Sym* ParseStruct(Parser* p)
             PARSER_ERROR(p, "Too many fields in struct.");
         }
 
-        const char* name = StringPoolInsert(p->sp, p->l.lexeme);
+        const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
         for(int i = 0; i < count; ++i) {
             if(names[i] == name) {
@@ -334,7 +336,7 @@ static AST* ParseFactor(Parser* p)
         } break;
 
         case TOK_IDENT: {
-            const char* name = StringPoolInsert(p->sp, p->l.lexeme);
+            const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
             GetNextToken(p);
 
@@ -355,7 +357,7 @@ static AST* ParseFactor(Parser* p)
                 EXPECT_TOKEN_RETURN_NULL(p, TOK_IDENT, "Expected identifier after '.'");
 
                 a->dot.lhs = ast;
-                a->dot.field = StringPoolInsert(p->sp, p->l.lexeme);
+                a->dot.field = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
                 GetNextToken(p);
 
@@ -407,7 +409,7 @@ static AST* ParseFactor(Parser* p)
 
         case TOK_STRING: {
             AST* ast = AllocAST(p, AST_STRING);
-            ast->str = StringPoolInsert(p->sp, p->l.lexeme);
+            ast->str = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
             GetNextToken(p);
 
@@ -431,7 +433,7 @@ static AST* ParseFactor(Parser* p)
 
             GetNextToken(p);
 
-            const char* typeName = StringPoolInsert(p->sp, p->l.lexeme);
+            const char* typeName = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
             ast->constructor.structSym = RegisterType(p->sym, typeName);
 
@@ -593,7 +595,7 @@ static AST* ParseStatement(Parser* p)
         case TOK_OPENCURLY: return ParseBlock(p);
         
         case TOK_IDENT: {
-            const char* name = StringPoolInsert(p->sp, p->l.lexeme);
+            const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
             TokenPos pos = p->l.pos;
 
             GetNextToken(p);
@@ -615,7 +617,7 @@ static AST* ParseStatement(Parser* p)
                 EXPECT_TOKEN_RETURN_NULL(p, TOK_IDENT, "Expected identifier after '.'");
 
                 a->dot.lhs = lhs;
-                a->dot.field = StringPoolInsert(p->sp, p->l.lexeme);
+                a->dot.field = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
                 GetNextToken(p);
 
