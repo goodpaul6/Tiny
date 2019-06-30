@@ -1,15 +1,15 @@
-* Make sure VM bytecode instructions and data are aligned properly (DONE)
-
+# Todo
 * Refactor VM from compiler
 
 * First class types (store a "type" which is just an integer in the VM)
-* Safer "any" type: must be explicitly converted (DONE)
 
 * Once "any" is safe, we can have typed bytecode instructions; `OP_ADD_INT`, `OP_EQUAL_STRING` etc
 
 * Function overloading
 
 * "Method" sugar (first argument to func matches type of x => x.func())
+
+* Do not `exit` anywhere in the library; user code must be able to handle errors
 
 * Less haphazard allocation: Allow the user to supply a malloc, use Arenas
 
@@ -74,3 +74,7 @@ Tiny_RegisterType(state, "array($t)");
 // $t is matched with the t of the array passed in
 Tiny_BindFunction(state, "get(array($t), int): t");
 ```
+
+# Done
+* Make sure VM bytecode instructions and data are aligned properly
+* Safer "any" type: must be explicitly converted
