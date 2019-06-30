@@ -8,6 +8,7 @@
 * Once "any" is safe, we can have typed bytecode instructions; `OP_ADD_INT`, `OP_EQUAL_STRING` etc
 
 * Function overloading
+
 * "Method" sugar (first argument to func matches type of x => x.func())
 
 * Less haphazard allocation: Allow the user to supply a malloc, use Arenas
