@@ -1,4 +1,3 @@
-#include "common.h"
 #include "map.h"
 
 void Tiny_InitMap(Tiny_Map* map, Tiny_Context* ctx)
@@ -41,7 +40,7 @@ static void MapGrow(Tiny_Map* map, size_t newCap)
     *map = newMap;
 }
 
-static void MapInsert(Map* map, uint64_t key, void* value)
+void Tiny_MapInsert(Map* map, uint64_t key, void* value)
 {
     assert(key);
 
@@ -119,4 +118,3 @@ void Tiny_DestroyMap(Map* map)
     TFree(map->ctx, map->keys);
     TFree(map->ctx, map->values);
 }
-

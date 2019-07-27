@@ -1,4 +1,3 @@
-#include "common.h"
 #include "stringpool.h"
 
 void Tiny_InitStringPool(Tiny_StringPool* sp, Tiny_Context* ctx)
@@ -24,6 +23,7 @@ const char* Tiny_StringPoolInsertLen(Tiny_StringPool* sp, const char* str, size_
 
     newStr->key = key;
     newStr->refCount = 0;
+    newStr->len = len;
 
     memcpy(newStr->str, str, len);
     newStr->str[len] = '\0';

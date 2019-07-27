@@ -8,7 +8,7 @@ typedef struct Tiny_Map
 
     size_t cap, used;
 
-    size_t* keys;
+    uint64_t* keys;
     void** values;
 } Tiny_Map;
 

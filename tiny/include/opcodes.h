@@ -2,26 +2,31 @@
 
 enum
 {
-    // Add an integer to the stack pointer
-    TINY_OP_SP_ADD,
+    // Moves the stack by the number of values that follows this (uint8_t)
+    // For creating room on the stack
+    TINY_OP_ADD_SP,
 
+    // Value pushing ops
     TINY_OP_PUSH_NULL,
-
     TINY_OP_PUSH_TRUE,
     TINY_OP_PUSH_FALSE,
+    TINY_OP_PUSH_C,
+	TINY_OP_PUSH_I,
+    TINY_OP_PUSH_I_0,
+	TINY_OP_PUSH_F,
+    TINY_OP_PUSH_F_0,
 
-	TINY_OP_PUSH_INT,
+    // uintptr_t after this instruction is pointer to the pooled string in the
+    // Tiny_State owner. 
+    // TODO(Apaar): This makes serializing the bytecode more difficult; before
+    // serializing, iterate through the StringPool map and convert the pointers to
+    // indices. 
+    TINY_OP_PUSH_S,
 
-    TINY_OP_PUSH_CHAR,
+    // TODO(Apaar): Structs; should probably just be an TINY_OP_ALLOC followed by the
+    // struct size. All allocations should end up in the GC heap
 
-	TINY_OP_PUSH_FLOAT,
-    TINY_OP_PUSH_STRING,
-
-    TINY_OP_PUSH_STRUCT,
-
-    TINY_OP_STRUCT_GET,
-    TINY_OP_STRUCT_SET,
-
+    // Integer ops
     TINY_OP_ADD_I,
     TINY_OP_SUB_I,
     TINY_OP_MUL_I,
@@ -30,14 +35,15 @@ enum
     TINY_OP_OR_I,
     TINY_OP_AND_I,
 
+    TINY_OP_ADD1_I,
+    TINY_OP_SUB1_I,
+
     TINY_OP_LT_I,
     TINY_OP_LTE_I,
     TINY_OP_GT_I,
     TINY_OP_GTE_I,
 
-    TINY_OP_ADD1_I,
-    TINY_OP_SUB1_I,
-
+    // Float ops
     TINY_OP_ADD_F,
     TINY_OP_SUB_F,
     TINY_OP_MUL_F,
@@ -48,32 +54,30 @@ enum
     TINY_OP_GT_F,
     TINY_OP_GTE_F,
 
-    TINY_OP_ADD1_F,
-    TINY_OP_SUB1_F,
+    // Equality ops
+    TINY_OP_EQU_B,
+    TINY_OP_EQU_C,
+    TINY_OP_EQU_I,
+    TINY_OP_EQU_F,
+    TINY_OP_EQU_S,
 
-    TINY_OP_EQU,
-
-    TINY_OP_LOG_NOT,
+    // Bool ops
     TINY_OP_LOG_AND,
     TINY_OP_LOG_OR,
-
-    TINY_OP_SET,
-    TINY_OP_GET,
+    TINY_OP_LOG_NOT,
     
-    TINY_OP_READ,
-
+    // Jumps 
     TINY_OP_GOTO,
-    TINY_OP_GOTOZ,
+    TINY_OP_GOTO_FALSE,
 
-    TINY_OP_CALL,
-    TINY_OP_RETURN,
-    TINY_OP_RETURN_VALUE,
+    // Calls
+    TINY_OP_CALL,       
 
-    TINY_OP_CALLF,
+    // TODO(Apaar): TINY_OP_CALL_F
 
-    TINY_OP_GETLOCAL,
-    TINY_OP_SETLOCAL,
-
+    // Return ops
+    TINY_OP_RET,
+    TINY_OP_RETVAL,
     TINY_OP_GET_RETVAL,
 
     TINY_OP_HALT,

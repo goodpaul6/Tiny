@@ -8,6 +8,7 @@ typedef struct Tiny_String
 {
     uint64_t key;
     int refCount;
+    size_t len;
     char str[];
 } Tiny_String;
 
@@ -19,8 +20,8 @@ typedef struct Tiny_StringPool
 
 void Tiny_InitStringPool(Tiny_StringPool* sp, Tiny_Context* ctx);
 
-void Tiny_StringPoolInsertLen(Tiny_StringPool* sp, const char* str, size_t len);
-void Tiny_StringPoolInsert(Tiny_StringPool* sp, const char* s);
+const char* Tiny_StringPoolInsertLen(Tiny_StringPool* sp, const char* str, size_t len);
+const char* Tiny_StringPoolInsert(Tiny_StringPool* sp, const char* s);
 
 Tiny_String* Tiny_GetString(const char* str);
 
@@ -47,5 +48,3 @@ inline bool Tiny_StringPoolEqual(const char* a, const char* b)
     return a == b;
 #endif
 }
-
-

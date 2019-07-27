@@ -4,9 +4,53 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
+#include <stdalign.h>
 
-#include "common.h"
 #include "context.h"
+
+#define MIN(x, y) ((x) <= (y) ? (x) : (y))
+#define MAX(x, y) ((x) >= (y) ? (x) : (y))
+
+#define ALIGN_DOWN(n, a) ((n) & ~((a) - 1))
+#define ALIGN_UP(n, a) ALIGN_DOWN((n) + (a) - 1, (a))
+#define ALIGN_DOWN_PTR(p, a) ((void *)ALIGN_DOWN((uintptr_t)(p), (a)))
+#define ALIGN_UP_PTR(p, a) ((void *)ALIGN_UP((uintptr_t)(p), (a)))
+
+inline static void* TMalloc(Tiny_Context* ctx, size_t size)
+{
+    return ctx->alloc(ctx->data, NULL, size);
+}
+
+inline static void* TRealloc(Tiny_Context* ctx, void* mem, size_t newSize)
+{
+    return ctx->alloc(ctx->data, mem, newSize);
+}
+
+inline static void TFree(Tiny_Context* ctx, void* mem)
+{
+    ctx->alloc(ctx->data, mem, 0);
+}
+
+inline static uint64_t HashUint64(uint64_t x)
+{
+    x *= 0xff51afd7ed558ccd;
+    x ^= x >> 32;
+    return x;
+}
+
+inline static uint64_t HashBytes(const void* ptr, size_t len)
+{
+    uint64_t x = 0xcbf29ce484222325;
+    const char *buf = (const char *)ptr;
+
+    for (size_t i = 0; i < len; i++) {
+        x ^= buf[i];
+        x *= 0x100000001b3;
+        x ^= x >> 32;
+    }
+
+    return x;
+}
 
 // Arena allocator
 
@@ -141,147 +185,6 @@ static void* BufGrow(void* b, size_t newLen, size_t elemSize)
     newHeader->cap = newCap;
 
     return newHeader->data;
-}
-
-// A string pool that allows for garbage collection via refcounting.
-
-typedef struct String
-{
-    uint64_t key;
-    int refCount;
-    char str[];
-} String;
-
-typedef struct StringPool
-{
-    Tiny_Context* ctx;
-    Map map;
-} StringPool;
-
-static void InitStringPool(StringPool* sp, Tiny_Context* ctx)
-{
-    sp->ctx = ctx;
-    InitMap(&sp->map, ctx);
-}
-
-static const char* StringPoolInsertLen(StringPool* sp, const char* str, size_t len)
-{
-    uint64_t h = HashBytes(str, len);
-
-    // Empty strings hash to 1
-    uint64_t key = h ? h : 1;
-
-    String* prevStr = MapGet(&sp->map, key);
-
-    if(prevStr) {
-        return prevStr->str;
-    }
-
-    String* newStr = SMalloc(sp->ctx, offsetof(String, str) + len + 1);
-
-    newStr->key = key;
-    newStr->refCount = 0;
-
-    memcpy(newStr->str, str, len);
-    newStr->str[len] = '\0';
-
-    return newStr->str;
-}
-
-static const char* StringPoolInsert(StringPool* sp, const char* str)
-{
-    return StringPoolInsertLen(sp, str, strlen(str));
-}
-
-static String* GetString(const char* str)
-{
-    return (String*)((char*)str - offsetof(String, str));
-}
-
-static uint64_t GetStringKey(const char* str)
-{
-    return GetString(str)->key;
-}
-
-// Call this when a string is marked.
-static void StringPoolRetain(StringPool* sp, const char* str)
-{
-    (void)sp;
-
-    String* g = GetString(str);
-    g->refCount += 1;
-}
-
-// Call this when a string is sweeped (destroyed).
-static void StringPoolRelease(StringPool* sp, const char* str)
-{
-    String* g = GetString(str);
-
-    // Must have been retained in order to be released like this
-    assert(g->refCount >= 0);
-
-    g->refCount -= 1;
-
-    if(g->refCount <= 0) {
-        String* removed = MapRemove(&sp->map, g->key);
-        assert(g == removed);
-
-        TFree(sp->ctx, g);
-    }
-}
-
-static void DestroyStringPool(StringPool* sp)
-{
-    for(size_t i = 0; i < sp->map.cap; ++i) {
-        if(sp->map.keys[i]) {
-            TFree(sp->ctx, sp->map.values[i]);
-        }
-    }
-
-    DestroyMap(&sp->map);    
-}
-
-inline static bool StringPoolEqual(const char* a, const char* b)
-{
-#ifndef NDEBUG
-    if(strcmp(a, b) == 0) {
-        assert(a == b);
-        return true;
-    }
-
-    return false;
-#else
-    return a == b;
-#endif
-}
-
-typedef struct ConstPool
-{
-    float* numbers;
-} ConstPool;
-
-static void InitConstPool(ConstPool* np, Tiny_Context* ctx)
-{
-    INIT_BUF(np->numbers, ctx);
-}
-
-static int RegisterNumber(ConstPool* np, float f)
-{
-    int c = BUF_LEN(np->numbers);
-
-    for(int i = 0; i < c; ++i) {
-        if(np->numbers[i] == f) {
-            return i;
-        }
-    }
-
-    BUF_PUSH(np->numbers, f);
-    return c;
-}
-
-static void DestroyConstPool(ConstPool* np)
-{
-    DESTROY_BUF(np->numbers);
 }
 
 static char* MemPrintf(Tiny_Context* ctx, const char* fmt, ...)

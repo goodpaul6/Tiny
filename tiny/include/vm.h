@@ -9,8 +9,6 @@
 // semantics; then reference semantics can be done using a 'ref' type maybe. Too much for
 // now though. Stick to reference semantics for struct instances.
 
-#include "stringpool.h"
-
 #ifndef TINY_THREAD_STACK_SIZE
 #define TINY_THREAD_STACK_SIZE  1024
 #endif
@@ -19,11 +17,11 @@
 #define TINY_THREAD_MAX_CALL_DEPTH  64
 #endif
 
+typedef struct Tiny_StringPool Tiny_StringPool;
+
 typedef struct Tiny_State Tiny_State;
 
 typedef struct Tiny_Object Tiny_Object;
-
-typedef const char** Tiny_ArgPtr;
 
 typedef enum Tiny_ValueType
 {
@@ -33,24 +31,35 @@ typedef enum Tiny_ValueType
     TINY_VAL_INT,
     TINY_VAL_FLOAT,
     TINY_VAL_STRING,
-    TINY_VAL_NATIVE,
-    TINY_VAL_LIGHT_NATIVE,
-    TINY_VAL_STRUCT
+    TINY_VAL_POINTER
 } Tiny_ValueType;
+
+typedef union {
+    bool b;
+    char c;
+    int i;
+    float f;
+    const char* s;
+    void* p;
+} Tiny_Value;
 
 typedef struct Tiny_Frame
 {
-    int pc;
+    uint8_t* pc;
     char* fp;
-    char* spBeforeArgs;
+    uint8_t nargs;
 } Tiny_Frame;
 
 typedef struct Tiny_StateThread
 {
     Tiny_Context* ctx;
-    Tiny_StringPool stringPool;    
-
     const Tiny_State* state;
+
+    // Multiple threads could share the same StringPool; however,
+    // since StringPool is not thread-safe, all the StateThreads which
+    // share it must execute on the same OS thread or their execution
+    // should be synchronized.
+    Tiny_StringPool* stringPool;    
 
     // The garbage collection and heap is thread-local 
     Tiny_Object* gcHead;
@@ -60,15 +69,18 @@ typedef struct Tiny_StateThread
     // Global vars are owned by each thread
     char* globals;
 
-    char* pc;
+    uint8_t* pc;
     char* sp;
     char* fp;
+    
+    // Last returned value
+    Tiny_Value retVal;
 
     char stack[TINY_THREAD_STACK_SIZE];
 
     int fc;
     Tiny_Frame frames[TINY_THREAD_MAX_CALL_DEPTH];
- 
+     
     // These keep track of what file/line of source code
     // the instruction at the current PC originated from
     const char* fileName;
@@ -78,9 +90,6 @@ typedef struct Tiny_StateThread
     void* userdata;
 } Tiny_StateThread;
 
-// Basically when the user is given a function and they have to retrieve arguments out, they
-// must do so in order.
-
 void Tiny_InitThread(Tiny_StateThread* thread, Tiny_Context* ctx, const Tiny_State* state);
 
 void Tiny_PushBool(Tiny_StateThread* thread, bool b);
@@ -88,17 +97,6 @@ void Tiny_PushChar(Tiny_StateThread* thread, char c);
 void Tiny_PushInt(Tiny_StateThread* thread, int i);
 void Tiny_PushFloat(Tiny_StateThread* thread, float f);
 void Tiny_PushString(Tiny_StateThread* thread, const char* str, size_t len);
-
-// TODO(Apaar): Figure out how native pointers are tagged
-void Tiny_PushNative(Tiny_StateThread* thread, void* p, const void* tag);
-
-bool Tiny_ReadBool(Tiny_ArgPtr p);
-char Tiny_ReadChar(Tiny_ArgPtr p);
-int Tiny_ReadInt(Tiny_ArgPtr p);
-float Tiny_ReadFloat(Tiny_ArgPtr p);
-const char* Tiny_ReadString(Tiny_ArgPtr p);
-void* Tiny_ReadNative(Tiny_ArgPtr p, const void** tag);
-void* Tiny_ReadLightNative(Tiny_ArgPtr p);
 
 void Tiny_CallFunction(Tiny_StateThread* thread);
 
