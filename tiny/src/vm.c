@@ -1,4 +1,5 @@
 #include "state.h"
+#include "opcodes.h"
 #include "vm.h"
 
 static void PushValue(Tiny_StateThread* thread, Tiny_Value value)

@@ -2,8 +2,6 @@
 
 #include <stdarg.h>
 
-#include "tokens.h"
-
 char* Tiny_Strdup(const char* s);
 
 int Tiny_TranslatePosToLineNumber(const char* src, Tiny_TokenPos pos);

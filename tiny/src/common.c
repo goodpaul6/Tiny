@@ -4,7 +4,7 @@
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
-#include <stdalign.h>
+#include <stdint.h>
 
 #include "context.h"
 
@@ -15,6 +15,9 @@
 #define ALIGN_UP(n, a) ALIGN_DOWN((n) + (a) - 1, (a))
 #define ALIGN_DOWN_PTR(p, a) ((void *)ALIGN_DOWN((uintptr_t)(p), (a)))
 #define ALIGN_UP_PTR(p, a) ((void *)ALIGN_UP((uintptr_t)(p), (a)))
+
+#define ARENA_PAGE_SIZE 4096
+#define ARENA_ALIGNMENT	8
 
 inline static void* TMalloc(Tiny_Context* ctx, size_t size)
 {
@@ -75,11 +78,11 @@ static ArenaPage* CreateArenaPage(Tiny_Context* ctx, size_t size)
 {
     ArenaPage* page = TMalloc(ctx, sizeof(ArenaPage));
 
-    size = ALIGN_UP(MAX(SNOW_ARENA_PAGE_SIZE, size), SNOW_ARENA_ALIGNMENT);
+	size = ALIGN_UP(MAX(ARENA_PAGE_SIZE, size), ARENA_ALIGNMENT);
 
     page->data = TMalloc(ctx, size);
 
-    assert(page->data == ALIGN_DOWN_PTR(page->data, SNOW_ARENA_ALIGNMENT));
+    assert(page->data == ALIGN_DOWN_PTR(page->data, ARENA_ALIGNMENT));
 
     page->size = size;
     page->used = 0;
@@ -109,9 +112,9 @@ static void* ArenaAlloc(Arena* arena, size_t size)
     }
 
     void* ptr = &arena->tail->data[arena->tail->used];
-    arena->tail->used = ALIGN_UP(arena->tail->used + size, SNOW_ARENA_ALIGNMENT);
+    arena->tail->used = ALIGN_UP(arena->tail->used + size, ARENA_ALIGNMENT);
 
-    assert(ptr == ALIGN_DOWN_PTR(ptr, SNOW_ARENA_ALIGNMENT));
+    assert(ptr == ALIGN_DOWN_PTR(ptr, ARENA_ALIGNMENT));
 
     return ptr;
 }

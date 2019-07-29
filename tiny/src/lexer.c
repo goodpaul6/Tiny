@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <string.h>
 
 typedef uint32_t TokenPos;
@@ -130,7 +131,7 @@ static void InitLexer(Lexer* l, Tiny_Context* ctx, const char* fileName, const c
     INIT_BUF(l->lexeme, ctx);
 }
 
-#define LEXER_ERROR(l, fmt, ...) (((l)->errorMessage = MemPrintf((fmt), __VA_ARGS__)), TOK_ERROR)
+#define LEXER_ERROR(l, fmt, ...) (((l)->errorMessage = MemPrintf((l)->ctx, (fmt), __VA_ARGS__)), TOK_ERROR)
 
 static void ClearLexerError(Lexer* l)
 {
@@ -189,7 +190,7 @@ static TokenType GetToken(Lexer* l)
     MATCH2("-=", MINUSEQUAL);
     MATCH2("*=", STAREQUAL);
     MATCH2("/=", SLASHEQUAL);
-    MATCH2("+=", PERCENTEQUAL);
+    MATCH2("%=", PERCENTEQUAL);
     MATCH2("|=", OREQUAL);
     MATCH2("&=", ANDEQUAL);
 

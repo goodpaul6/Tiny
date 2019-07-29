@@ -1,8 +1,8 @@
-set(SOURCES
-    src/test.c)
+function(tiny_test source)
+    get_filename_component(name ${source} NAME_WE)
+    add_executable("tiny_${name}" ${source})
+    target_include_directories("tiny_${name}" PRIVATE ../tiny/include)
+    target_include_directories("tiny_${name}" PRIVATE ../tiny/src)
+endfunction()
 
-add_executable(tiny_test ${SOURCES})
-
-target_include_directories(tiny_test PRIVATE include)
-
-target_link_libraries(tiny_test tiny)
+tiny_test(src/test_lexer.c)
