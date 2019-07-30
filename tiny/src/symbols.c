@@ -302,7 +302,7 @@ static Sym* RegisterType(Symbols* sym, const char* name, TokenPos pos)
 
     BUF_PUSH(sym->types, s);
 
-    return s;
+	return s->typetag;
 }
 
 // TODO(Apaar): Use a Map to store symbols eventually

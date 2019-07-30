@@ -282,9 +282,9 @@ static Sym* ParseStruct(Parser* p)
 			PARSER_ERROR(p, "Expected ':' after field name.");
 		}
 
-        Typetag* type = ParseType(p);
+        Sym* typeSym = ParseType(p);
 
-        BUF_PUSH(types, type);
+		BUF_PUSH(types, typeSym->typetag);
     }
 
     GetNextToken(p);
