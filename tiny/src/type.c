@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdbool.h>
 
 // Type system
 
@@ -58,7 +59,7 @@ typedef struct TypetagPool
     // to the start of the buffers' memory because Typetags
     // are immutable and so these should never be realloc'd
     // and thus moved.
-    void* buffers;
+    void** buffers;
 } TypetagPool;
 
 static void InitTypetagPool(TypetagPool* pool, Tiny_Context* ctx)
@@ -85,21 +86,21 @@ static Typetag* GetPrimitiveTypetag(TypetagPool* pool, TypetagType type)
         { TYPETAG_ANY },
     };
 
-    return tags[type];
+    return &tags[type];
 }
 
 static Typetag* AllocTypetag(TypetagPool* pool, TypetagType type)
 {
-    Typetag* type = ArenaAlloc(&pool->arena, sizeof(Typetag));
-    type->type = type;
+    Typetag* tag = ArenaAlloc(&pool->arena, sizeof(Typetag));
+    tag->type = type;
 
-    return type;
+    return tag;
 }
 
 static Typetag* InternFuncTypetag(TypetagPool* pool, Typetag** args, Typetag* ret, bool varargs)
 {
     for(int i = 0; i < BUF_LEN(pool->types); ++i) {
-        Typetag* type = pool->types[i];
+        Typetag* type = &pool->types[i];
 
         if(type->type != TYPETAG_FUNC) {
             continue;
@@ -134,7 +135,7 @@ static Typetag* InternFuncTypetag(TypetagPool* pool, Typetag** args, Typetag* re
 
     Typetag* type = AllocTypetag(pool, TYPETAG_FUNC);
 
-    BUF_PUSH(pool->buffers, args);
+	BUF_PUSH(pool->buffers, args);
 
     type->func.args = args;
     type->func.ret = ret;
@@ -146,7 +147,7 @@ static Typetag* InternFuncTypetag(TypetagPool* pool, Typetag** args, Typetag* re
 static Typetag* InternStructTypetag(TypetagPool* pool, const char** names, Typetag** types)
 {
     for(int i = 0; i < BUF_LEN(pool->types); ++i) {
-        Typetag* type = pool->types[i];
+        Typetag* type = &pool->types[i];
 
         if(type->type != TYPETAG_STRUCT) {
             continue;
@@ -160,7 +161,7 @@ static Typetag* InternStructTypetag(TypetagPool* pool, const char** names, Typet
         bool match = true;
 
         for(int i = 0; i < BUF_LEN(names); ++i) {
-            if(!StringPoolEqual(type->tstruct.names[i], names[i])) {
+            if(!Tiny_StringPoolEqual(type->tstruct.names[i], names[i])) {
                 match = false;
                 break;
             }
@@ -186,7 +187,7 @@ static Typetag* InternStructTypetag(TypetagPool* pool, const char** names, Typet
 
     Typetag* type = AllocTypetag(pool, TYPETAG_STRUCT);
 
-    BUF_PUSH(pool->buffers, names);
+	BUF_PUSH(pool->buffers, (void*)names);
     BUF_PUSH(pool->buffers, types);
 
     type->tstruct.names = names;
@@ -216,7 +217,7 @@ static int GetFieldIndex(const Typetag* s, const char* name)
     assert(s->type == TYPETAG_STRUCT);
 
     for(int i = 0; i < BUF_LEN(s->tstruct.names); ++i) {
-        if(StringPoolEqual(name, s->tstruct.names[i])) {
+        if(Tiny_StringPoolEqual(name, s->tstruct.names[i])) {
             return i;
         }
     }

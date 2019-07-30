@@ -1,3 +1,4 @@
+#include <math.h>
 #include <assert.h>
 
 #include "context.c"
@@ -73,7 +74,7 @@ int main(int argc, char** argv)
     assert(lexer.iValue == 1);
 
     EXPECT(TOK_FLOAT);
-    assert((lexer.fValue - 1.5f) < 0.001f);
+    assert(fabsf(lexer.fValue - 1.5f) < 0.001f);
 
     EXPECT(TOK_STRING);
     assert(strcmp(lexer.lexeme, "hello, world") == 0);

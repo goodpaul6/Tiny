@@ -104,16 +104,20 @@ typedef struct Tiny_State
     uint8_t* code;
 } Tiny_State;
 
-static int RegisterNumber(Tiny_State* state, float f)
+static void InitState(Tiny_State* state, Tiny_Context* ctx)
 {
-    int c = BUF_LEN(state->numbers);
+    state->ctx = ctx;
 
-    for(int i = 0; i < c; ++i) {
-        if(state->numbers[i] == f) {
-            return i;
-        }
-    }
+    Tiny_InitStringPool(&state->sp, ctx);
 
-    BUF_PUSH(state->numbers, f);
-    return c;
+    INIT_BUF(state->numbers, ctx);
+    INIT_BUF(state->code, ctx);
+}
+
+static void DestroyState(Tiny_State* state)
+{
+    DESTROY_BUF(state->code);
+    DESTROY_BUF(state->numbers);
+
+    Tiny_DestroyStringPool(&state->sp);
 }

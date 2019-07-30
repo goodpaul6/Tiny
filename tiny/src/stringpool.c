@@ -1,3 +1,4 @@
+#include "map.h"
 #include "stringpool.h"
 
 void Tiny_InitStringPool(Tiny_StringPool* sp, Tiny_Context* ctx)
@@ -13,13 +14,13 @@ const char* Tiny_StringPoolInsertLen(Tiny_StringPool* sp, const char* str, size_
     // Empty strings hash to 1
     uint64_t key = h ? h : 1;
 
-    String* prevStr = MapGet(&sp->map, key);
+    Tiny_String* prevStr = Tiny_MapGet(&sp->map, key);
 
     if(prevStr) {
         return prevStr->str;
     }
 
-    String* newStr = TMalloc(sp->ctx, offsetof(Tiny_String, str) + len + 1);
+    Tiny_String* newStr = TMalloc(sp->ctx, offsetof(Tiny_String, str) + len + 1);
 
     newStr->key = key;
     newStr->refCount = 0;
@@ -38,7 +39,7 @@ const char* Tiny_StringPoolInsert(Tiny_StringPool* sp, const char* str)
 
 Tiny_String* Tiny_GetString(const char* str)
 {
-    return (Tiny_String*)((char*)str - offsetof(String, str));
+    return (Tiny_String*)((char*)str - offsetof(Tiny_String, str));
 }
 
 // Call this when a string is marked.

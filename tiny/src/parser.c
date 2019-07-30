@@ -1,4 +1,5 @@
 #include <setjmp.h>
+#include <assert.h>
 
 #include "stringpool.h"
 
@@ -17,7 +18,7 @@ typedef struct Parser
     Tiny_StringPool* sp;
     Symbols* sym;
     TypetagPool* tp;
-    ConstPool* cp;
+    float** numbers;
 
     Lexer l;
     TokenType curTok;
@@ -30,17 +31,19 @@ typedef struct Parser
     // store so we can clear them out in one go. It's a pointer to their
     // pointer because once they are resized, the actual buffer start pointer
     // might move
-    void** buffers;
+    void*** buffers;
 } Parser;
 
-static void InitParser(Parser* p, Tiny_Context* ctx, const char* fileName, const char* src, size_t len, Tiny_StringPool* sp, Symbols* sym, TypetagPool* tp, ConstPool* cp)
+static void InitParser(Parser* p, Tiny_Context* ctx, const char* fileName, const char* src, size_t len, Tiny_StringPool* sp, Symbols* sym, TypetagPool* tp, float** numbers)
 {
+    assert(*numbers);
+
     p->ctx = ctx;
 
     p->sp = sp;
     p->sym = sym;
     p->tp = tp;
-    p->cp = cp;
+    p->numbers = numbers;
 
     InitArena(&p->arena, ctx);
     InitLexer(&p->l, ctx, fileName, src, len);
@@ -64,7 +67,7 @@ static AST* ParseStatement(Parser* p);
 
 
 #define PARSER_ERROR(p, fmt, ...) do { \
-    (p)->errorMessage = MemPrintf((fmt), __VA_ARGS__); \
+    (p)->errorMessage = MemPrintf((p)->ctx, (fmt), __VA_ARGS__); \
     PARSER_ERROR_LONGJMP(p); \
 } while(0)
 
@@ -107,14 +110,14 @@ static TokenType GetNextToken(Parser* p)
     } \
 } while(0)
 
-static Typetag* ParseType(Parser* p)
+static Sym* ParseType(Parser* p)
 {
 	EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier for typename.");
 
-	Typetag* t = RegisterType(state, state->l.lexeme);
-	GetNextToken(state);
+	Sym* s = RegisterType(p->sym, p->l.lexeme, p->l.pos);
+	GetNextToken(p);
 
-	return t;
+	return s;
 }
 
 static AST* ParseFunc(Parser* p)
@@ -133,7 +136,7 @@ static AST* ParseFunc(Parser* p)
 
     const char* funcName = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
-    ast->proc.decl = DeclareFunc(p->sym, funcName);
+	ast->proc.decl = DeclareFunc(p->sym, funcName, p->l.pos);
 
     if(!ast->proc.decl) {
         PARSER_ERROR_LONGJMP(p);
@@ -271,11 +274,13 @@ static Sym* ParseStruct(Parser* p)
 
         GetNextToken(p);
 
-        if(!EAT_TOKEN(p, TOK_COLON, "Expected ':' after field name.")) {
-            DESTROY_BUF(names);
-            DESTROY_BUF(types);
-            return NULL;
-        }
+		if(p->curTok == TOK_COLON) {
+			GetNextToken(p);
+		} else {
+			DESTROY_BUF(names);
+			DESTROY_BUF(types);
+			PARSER_ERROR(p, "Expected ':' after field name.");
+		}
 
         Typetag* type = ParseType(p);
 
@@ -315,6 +320,20 @@ static AST* ParseCall(Parser* p, const char* name)
 
     GetNextToken(p);
     return ast;
+}
+
+static int RegisterNumber(Parser* p, float f)
+{
+    int c = BUF_LEN(*p->numbers);
+
+    for(int i = 0; i < c; ++i) {
+        if((*p->numbers)[i] == f) {
+            return i;
+        }
+    }
+
+    BUF_PUSH(*p->numbers, f);
+    return c;
 }
 
 static AST* ParseFactor(Parser* p)
@@ -491,15 +510,15 @@ static int GetTokenPrec(int tok)
     int prec = -1;
 
     switch(tok) {
-        case TINY_TOK_STAR: case TINY_TOK_SLASH: case TINY_TOK_PERCENT: case TINY_TOK_AND: case TINY_TOK_OR: prec = 5; break;
+        case TOK_STAR: case TOK_SLASH: case TOK_PERCENT: case TOK_AND: case TOK_OR: prec = 5; break;
 
-        case TINY_TOK_PLUS: case TINY_TOK_MINUS:                prec = 4; break;
+        case TOK_PLUS: case TOK_MINUS:                prec = 4; break;
 
-        case TINY_TOK_LTE: case TINY_TOK_GTE:
-        case TINY_TOK_EQUALS: case TINY_TOK_NOTEQUALS:
-        case TINY_TOK_LT: case TINY_TOK_GT:                prec = 3; break;
+        case TOK_LTE: case TOK_GTE:
+        case TOK_EQUALS: case TOK_NOTEQUALS:
+        case TOK_LT: case TOK_GT:                prec = 3; break;
 
-        case TINY_TOK_LOG_AND: case TINY_TOK_LOG_OR:        prec = 2; break;
+        case TOK_LOG_AND: case TOK_LOG_OR:        prec = 2; break;
     }
 
     return prec;

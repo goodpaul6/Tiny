@@ -1,3 +1,6 @@
+#include <stdbool.h>
+#include <stddef.h>
+
 #include "map.h"
 
 void Tiny_InitMap(Tiny_Map* map, Tiny_Context* ctx)
@@ -17,7 +20,7 @@ static void MapGrow(Tiny_Map* map, size_t newCap)
         newCap = 16;
     }
 
-    Map newMap = {
+    Tiny_Map newMap = {
         map->ctx,
 
         newCap, 0,
@@ -31,16 +34,16 @@ static void MapGrow(Tiny_Map* map, size_t newCap)
 
     for(size_t i = 0; i < map->cap; ++i) {
         if(map->keys[i]) {
-            MapInsert(&newMap, map->keys[i], map->values[i]);
+            Tiny_MapInsert(&newMap, map->keys[i], map->values[i]);
         }
     }
 
-    DestroyMap(map);
+    Tiny_DestroyMap(map);
 
     *map = newMap;
 }
 
-void Tiny_MapInsert(Map* map, uint64_t key, void* value)
+void Tiny_MapInsert(Tiny_Map* map, uint64_t key, void* value)
 {
     assert(key);
 
@@ -67,7 +70,7 @@ void Tiny_MapInsert(Map* map, uint64_t key, void* value)
     }
 }
 
-void* Tiny_MapGet(Map* map, uint64_t key)
+void* Tiny_MapGet(Tiny_Map* map, uint64_t key)
 {
     if(map->used == 0) {
         return NULL;
@@ -90,10 +93,10 @@ void* Tiny_MapGet(Map* map, uint64_t key)
 }
 
 // Returns the removed value
-void* Tiny_MapRemove(Map* map, uint64_t key)
+void* Tiny_MapRemove(Tiny_Map* map, uint64_t key)
 {
     if(map->used == 0) {
-        return;
+		return NULL;
     }
 
     size_t i = HashUint64(key);
@@ -113,7 +116,7 @@ void* Tiny_MapRemove(Map* map, uint64_t key)
     return NULL;
 }
 
-void Tiny_DestroyMap(Map* map)
+void Tiny_DestroyMap(Tiny_Map* map)
 {
     TFree(map->ctx, map->keys);
     TFree(map->ctx, map->values);

@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdint.h>
+
 typedef struct Tiny_Context Tiny_Context;
 
 typedef struct Tiny_Map

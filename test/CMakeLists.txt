@@ -6,3 +6,4 @@ function(tiny_test source)
 endfunction()
 
 tiny_test(src/test_lexer.c)
+tiny_test(src/test_parser.c)

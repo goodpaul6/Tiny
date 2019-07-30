@@ -58,7 +58,7 @@ typedef struct Sym
 
             Typetag* type;
 
-            Tiny_ForeignFunction callee;
+			// TODO(Apaar): Add field to store the actual callee function pointer
         } foreignFunc;
 
         // If this is NULL, that means the type hasn't been defined yet.
@@ -86,24 +86,24 @@ typedef struct Symbols
 
 static Sym* AllocSym(Symbols* s, SymType type, const char* name, TokenPos pos);
 
-static void InitSymbols(Symbols* s, Tiny_Context* ctx, StringPool* sp, TypetagPool* tp)
+static void InitSymbols(Symbols* s, Tiny_Context* ctx, Tiny_StringPool* sp, TypetagPool* tp)
 {
     s->ctx = ctx;
 
     InitArena(&s->arena, ctx);
 
-    INIT_BUF(s->types);
-    INIT_BUF(s->globals);
-    INIT_BUF(s->functions);
+    INIT_BUF(s->types, ctx);
+    INIT_BUF(s->globals, ctx);
+    INIT_BUF(s->functions, ctx);
 
     const char* primitiveTypetagNames[TYPETAG_ANY + 1] = {
-        StringPoolInsert(sp, "void"),
-        StringPoolInsert(sp, "bool"), 
-        StringPoolInsert(sp, "char"), 
-        StringPoolInsert(sp, "int"), 
-        StringPoolInsert(sp, "float"), 
-        StringPoolInsert(sp, "str"), 
-        StringPoolInsert(sp, "any")
+        Tiny_StringPoolInsert(sp, "void"),
+        Tiny_StringPoolInsert(sp, "bool"), 
+        Tiny_StringPoolInsert(sp, "char"), 
+        Tiny_StringPoolInsert(sp, "int"), 
+        Tiny_StringPoolInsert(sp, "float"), 
+        Tiny_StringPoolInsert(sp, "str"), 
+        Tiny_StringPoolInsert(sp, "any")
     };
 
     for(int i = 0; i <= TYPETAG_ANY; ++i) {
@@ -165,7 +165,7 @@ static Sym* ReferenceVar(Symbols* s, const char* name)
 
             assert(sym->type == SYM_VAR);
 
-            if(sym->var.reachable && StringPoolEqual(sym->name, name)) {
+            if(sym->var.reachable && Tiny_StringPoolEqual(sym->name, name)) {
                 return sym;
             }
         }
@@ -176,7 +176,7 @@ static Sym* ReferenceVar(Symbols* s, const char* name)
             assert(sym->type == SYM_VAR);
             assert(sym->var.reachable == true);
 
-            if(StringPoolEqual(sym->name, name)) {
+            if(Tiny_StringPoolEqual(sym->name, name)) {
                 return sym;
             }
         }
@@ -186,7 +186,7 @@ static Sym* ReferenceVar(Symbols* s, const char* name)
         Sym* sym = s->globals[i];
 
         if(sym->type == SYM_VAR || sym->type == SYM_CONST) {
-            if(StringPoolEqual(sym->name, name)) {
+            if(Tiny_StringPoolEqual(sym->name, name)) {
                 return sym;
             }
         }
@@ -200,7 +200,7 @@ static Sym* DeclareVar(Symbols* sym, const char* name, TokenPos pos, bool arg)
     Sym* r = ReferenceVar(sym, name);
 
     if(r && r->type == SYM_VAR && r->var.func == sym->func) {
-        return SYMBOLS_ERROR(s, "Attempted to declare a variable '%s' with the same name as another variable in the same scope.", name);
+		return SYMBOLS_ERROR(sym, "Attempted to declare a variable '%s' with the same name as another variable in the same scope.", name);
     }
 
     Sym* s = AllocSym(sym, SYM_VAR, name, pos);
@@ -215,7 +215,7 @@ static Sym* DeclareVar(Symbols* sym, const char* name, TokenPos pos, bool arg)
 
     s->var.scope = sym->scope;
     s->var.index = -1;
-    s->var.func = func;
+    s->var.func = sym->func;
     s->var.reachable = true;
     s->var.type = NULL;
 
@@ -249,7 +249,7 @@ static Sym* ReferenceFunc(Symbols* s, const char* name)
         Sym* sym = s->functions[i];
 
         if((sym->type == SYM_FUNC || sym->type == SYM_FOREIGN_FUNC) &&
-           StringPoolEqual(sym->name, name)) {
+           Tiny_StringPoolEqual(sym->name, name)) {
             return sym;
         }
     }
@@ -263,15 +263,15 @@ static Sym* DeclareFunc(Symbols* sym, const char* name, TokenPos pos)
 
     s->func.index = -1;
     
-    BUF_INIT(s->func.args);
-    BUF_INIT(s->func.locals);
+	INIT_BUF(s->func.args, sym->ctx);
+	INIT_BUF(s->func.locals, sym->ctx);
 
     BUF_PUSH(sym->functions, s);
 
     return s;
 }
 
-static Sym* BindFunction(Symbols* sym, const char* name, Typetag* type, Tiny_ForeignFunction callee)
+static Sym* BindFunction(Symbols* sym, const char* name, Typetag* type)
 {
     Sym* prevFunc = ReferenceFunc(sym, name);
 
@@ -279,11 +279,10 @@ static Sym* BindFunction(Symbols* sym, const char* name, Typetag* type, Tiny_For
         return SYMBOLS_ERROR(sym, "There is already a function bound to name '%s'.", name);
     }
 
-    Sym* s = AllocSym(SYM_FOREIGN_FUNC, name, 0);
+    Sym* s = AllocSym(sym, SYM_FOREIGN_FUNC, name, 0);
 
     s->foreignFunc.index = -1;
     s->foreignFunc.type = type;
-    s->foreignFunc.callee = callee;
 
     BUF_PUSH(sym->functions, s);
 
@@ -293,7 +292,7 @@ static Sym* BindFunction(Symbols* sym, const char* name, Typetag* type, Tiny_For
 static Sym* RegisterType(Symbols* sym, const char* name, TokenPos pos)
 {
     for(int i = 0; i < BUF_LEN(sym->types); ++i) {
-        if(StringPoolEqual(sym->types[i].name, name)) {
+        if(Tiny_StringPoolEqual(sym->types[i]->name, name)) {
             return sym->types[i];
         }
     }
@@ -310,8 +309,8 @@ static Sym* RegisterType(Symbols* sym, const char* name, TokenPos pos)
 static const char* GetTypeName(Symbols* sym, const Typetag* type)
 {
     for(int i = 0; i < BUF_LEN(sym->types); ++i) {
-        if(type == sym->types[i].type) {
-            return sym->types[i].name;
+        if(type == sym->types[i]->typetag) {
+            return sym->types[i]->name;
         }
     }
 
@@ -328,6 +327,15 @@ static void ClearSymbolsError(Symbols* s)
 static void DestroySymbols(Symbols* s)
 {
     ClearSymbolsError(s);
+
+	for(int i = 0; i < BUF_LEN(s->functions); ++i) {
+		Sym* sym = s->functions[i];
+
+		assert(sym->type == SYM_FUNC || sym->type == SYM_FOREIGN_FUNC);
+
+		DESTROY_BUF(sym->func.args);
+		DESTROY_BUF(sym->func.locals);
+	}
 
     DESTROY_BUF(s->functions);
     DESTROY_BUF(s->globals);
