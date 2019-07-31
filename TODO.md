@@ -4,6 +4,7 @@
 * First class types (store a "type" which is just an integer in the VM)
 
 * Once "any" is safe, we can have typed bytecode instructions; `OP_ADD_INT`, `OP_EQUAL_STRING` etc
+    * Untagged values
 
 * Function overloading
 
