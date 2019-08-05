@@ -110,9 +110,18 @@ static TokenType GetNextToken(Parser* p)
     } \
 } while(0)
 
-static Sym* ParseType(Parser* p)
+static Typetag* ParseType(Parser* p)
 {
 	EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier for typename.");
+
+    Sym* s = FindTypeSym(p->sym, p->l.lexeme, p->l.pos);
+    
+    if(!s) {
+        // Create a name typetag for later lookup
+    }
+
+    GetNextToken(p);
+
 
 	Sym* s = RegisterType(p->sym, p->l.lexeme, p->l.pos);
 	GetNextToken(p);
@@ -221,17 +230,13 @@ static Sym* ParseStruct(Parser* p)
 
     GetNextToken(p);
 
-    EXPECT_TOKEN_RETURN_NULL(p, TOK_IDENT, "Expected identifier after 'struct'.");
+    EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier after 'struct'.");
 
     const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
-    Sym* s = RegisterType(p->sym, name, pos);
+	Sym* s = FindTypeSym(p->sym, name, pos);
 
-    if(!s) {
-        PARSER_ERROR_LONGJMP(p);
-    }
-
-    if(s->typetag) {
+    if(s) {
         PARSER_ERROR(p, "Attempted to define struct '%s' multiple times.", name);
     }
 

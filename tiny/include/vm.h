@@ -10,7 +10,7 @@
 // now though. Stick to reference semantics for struct instances.
 
 #ifndef TINY_THREAD_STACK_SIZE
-#define TINY_THREAD_STACK_SIZE  1024
+#define TINY_THREAD_STACK_SIZE  256
 #endif
 
 #ifndef TINY_THREAD_MAX_CALL_DEPTH
@@ -66,8 +66,8 @@ typedef struct Tiny_StateThread
     int numObjects;
     int maxNumObjects;
 
-    // Global vars are owned by each thread
-    char* globals;
+    // Global vars are owned by each vm
+    Tiny_Value* globals;
 
     uint8_t* pc;
     char* sp;
@@ -76,7 +76,7 @@ typedef struct Tiny_StateThread
     // Last returned value
     Tiny_Value retVal;
 
-    char stack[TINY_THREAD_STACK_SIZE];
+    Tiny_Value stack[TINY_THREAD_STACK_SIZE];
 
     int fc;
     Tiny_Frame frames[TINY_THREAD_MAX_CALL_DEPTH];
@@ -88,18 +88,4 @@ typedef struct Tiny_StateThread
 
     // Userdata pointer. Set to NULL when InitThread is called. Use it for whatever you want
     void* userdata;
-} Tiny_StateThread;
-
-void Tiny_InitThread(Tiny_StateThread* thread, Tiny_Context* ctx, const Tiny_State* state);
-
-void Tiny_PushBool(Tiny_StateThread* thread, bool b);
-void Tiny_PushChar(Tiny_StateThread* thread, char c);
-void Tiny_PushInt(Tiny_StateThread* thread, int i);
-void Tiny_PushFloat(Tiny_StateThread* thread, float f);
-void Tiny_PushString(Tiny_StateThread* thread, const char* str, size_t len);
-
-void Tiny_CallFunction(Tiny_StateThread* thread);
-
-void Tiny_Run(Tiny_StateThread* thread);
-
-void Tiny_DestroyThread(Tiny_StateThread* thread);
+} Tiny_VM;

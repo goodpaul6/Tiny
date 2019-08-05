@@ -2,125 +2,125 @@
 #include "opcodes.h"
 #include "vm.h"
 
-static void PushValue(Tiny_StateThread* thread, Tiny_Value value)
+static void PushValue(Tiny_VM* vm, Tiny_Value value)
 {
-    *(Tiny_Value*)thread->sp = value;
-    thread->sp += sizeof(Tiny_Value);
+    *(Tiny_Value*)vm->sp = value;
+    vm->sp += sizeof(Tiny_Value);
 }
 
-static Tiny_Value PopValue(Tiny_StateThread* thread) 
+static Tiny_Value PopValue(Tiny_VM* vm) 
 {
-    thread->sp -= sizeof(Tiny_Value);
-    return *(Tiny_Value*)thread->sp;
+    vm->sp -= sizeof(Tiny_Value);
+    return *(Tiny_Value*)vm->sp;
 }
 
-static void PushNull(Tiny_StateThread* thread)
+static void PushNull(Tiny_VM* vm)
 {
     Tiny_Value v = { .p = NULL };
-    PushValue(thread, v);
+    PushValue(vm, v);
 }
 
-static void PushBool(Tiny_StateThread* thread, bool b)
+static void PushBool(Tiny_VM* vm, bool b)
 {
     Tiny_Value v = { .b = b };
-    PushValue(thread, v);
+    PushValue(vm, v);
 }
 
-static void PushChar(Tiny_StateThread* thread, char c)
+static void PushChar(Tiny_VM* vm, char c)
 {
     Tiny_Value v = { .c = c };
-    PushValue(thread, v);
+    PushValue(vm, v);
 }
 
-static void PushInt(Tiny_StateThread* thread, int i)
+static void PushInt(Tiny_VM* vm, int i)
 {
     Tiny_Value v = { .i = i };
-    PushValue(thread, v);
+    PushValue(vm, v);
 }
 
-static void PushFloat(Tiny_StateThread* thread, float f)
+static void PushFloat(Tiny_VM* vm, float f)
 {
     Tiny_Value v = { .f = f };
-    PushValue(thread, v);
+    PushValue(vm, v);
 }
 
-static void PushString(Tiny_StateThread* thread, const char* str, size_t len)
+static void PushString(Tiny_VM* vm, const char* str, size_t len)
 {
-    const char* s = Tiny_StringPoolInsertLen(thread->stringPool, str, len);
+    const char* s = Tiny_StringPoolInsertLen(vm->stringPool, str, len);
 
     Tiny_Value v = { .s = s };
-    PushValue(thread, v);
+    PushValue(vm, v);
 }
 
-static void PopFrame(Tiny_StateThread* thread)
+static void PopFrame(Tiny_VM* vm)
 {
-    assert(thread->fc > 0);
+    assert(vm->fc > 0);
 
-    thread->fc -= 1;
-    thread->pc = thread->frames[thread->fc].pc;
-    thread->sp = thread->fp;
-    thread->fp = thread->frames[thread->fc].fp;
+    vm->fc -= 1;
+    vm->pc = vm->frames[vm->fc].pc;
+    vm->sp = vm->fp;
+    vm->fp = vm->frames[vm->fc].fp;
 
-    thread->sp -= thread->frames[thread->fc] * sizeof(Tiny_Value);
+    vm->sp -= vm->frames[vm->fc] * sizeof(Tiny_Value);
 }
 
-static void ExecuteCycle(Tiny_StateThread* thread)
+static void ExecuteCycle(Tiny_VM* vm)
 {
-    switch(*thread->pc++) {
+    switch(*vm->pc++) {
         case TINY_OP_ADD_SP: {
-            thread->sp += sizeof(Tiny_Value) * (*thread->pc++);
+            vm->sp += sizeof(Tiny_Value) * (*vm->pc++);
         } break;
 
         case TINY_OP_PUSH_NULL: {
-            PushNull(thread);
+            PushNull(vm);
         } break;
 
         case TINY_OP_PUSH_TRUE: {
-            PushBool(thread, true);
+            PushBool(vm, true);
         } break;
 
         case TINY_OP_PUSH_FALSE: {
-            PushBool(thread, false);
+            PushBool(vm, false);
         } break;
         
         case TINY_OP_PUSH_C: {
-            PushChar(thread, *thread->pc++);
+            PushChar(vm, *vm->pc++);
         } break;
 
         case TINY_OP_PUSH_I: {
-            thread->pc = ALIGN_UP_PTR(thread->pc, alignof(int));
-            PushInt(thread, *(int*)thread->pc);
-            thread->pc += sizeof(int);
+            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(int));
+            PushInt(vm, *(int*)vm->pc);
+            vm->pc += sizeof(int);
         } break;
 
         case TINY_OP_PUSH_I_0: {
-            PushInt(thread, 0);
+            PushInt(vm, 0);
         } break;
 
         case TINY_OP_PUSH_F: {
-            thread->pc = ALIGN_UP_PTR(thread->pc, alignof(int));
-            PushFloat(thread, thread->state->numbers[*(int*)thread->pc]);
-            thread->pc += sizeof(int);
+            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(int));
+            PushFloat(vm, vm->state->numbers[*(int*)vm->pc]);
+            vm->pc += sizeof(int);
         } break;
 
         case TINY_OP_PUSH_F_0: {
-            PushFloat(thread, 0);
+            PushFloat(vm, 0);
         } break;
 
         case TINY_OP_PUSH_S: {
-            thread->pc = ALIGN_UP_PTR(thread->pc, alignof(uintptr_t));
-            uintptr_t ps = *(uintptr_t*)thread->pc;
-            thread->pc += sizeof(uintptr_t);
+            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(uintptr_t));
+            uintptr_t ps = *(uintptr_t*)vm->pc;
+            vm->pc += sizeof(uintptr_t);
 
             const Tiny_String* s = Tiny_GetString((const char*)ps);
-            PushString(thread, s->str, s->len);
+            PushString(vm, s->str, s->len);
         } break;
 
 #define ARITH_OP(type, name, operator, push) \
         case name: { \
-            Tiny_Value b = PopValue(thread); \
-            Tiny_Value a = PopValue(thread); \
-            push(thread, a.type operator b.type); \
+            Tiny_Value b = PopValue(vm); \
+            Tiny_Value a = PopValue(vm); \
+            push(vm, a.type operator b.type); \
         } break;
 
 #define INT_OP(name, operator) \
@@ -153,11 +153,11 @@ static void ExecuteCycle(Tiny_StateThread* thread)
         INT_OP(TINY_OP_AND_I, &)
 
         case TINY_OP_ADD1_I: {
-            *(int*)(thread->sp - sizeof(int)) += 1;
+            *(int*)(vm->sp - sizeof(int)) += 1;
         } break;
 
         case TINY_OP_SUB1_I: {
-            *(int*)(thread->sp - sizeof(int)) -= 1;
+            *(int*)(vm->sp - sizeof(int)) -= 1;
         } break;
 
         INT_CMP_OP(TINY_OP_LT_I, <)
@@ -193,56 +193,56 @@ static void ExecuteCycle(Tiny_StateThread* thread)
 #undef ARITH_OP
 
         case TINY_OP_LOG_NOT: {
-            bool b = PopValue(thread).b;
-            PushBool(thread, !b);
+            bool b = PopValue(vm).b;
+            PushBool(vm, !b);
         } break;
 
         case TINY_OP_GOTO: {
-            thread->pc = ALIGN_UP_PTR(thread->pc, alignof(int));
-            int dest = *(int*)thread->pc;
-            thread->pc = thread->state->code + dest;
+            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(int));
+            int dest = *(int*)vm->pc;
+            vm->pc = vm->state->code + dest;
         } break;
 
         case TINY_OP_GOTO_FALSE: {
-            thread->pc = ALIGN_UP_PTR(thread->pc, alignof(int));
-            int dest = *(int*)thread->pc;
-            thread->pc += sizeof(int);
+            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(int));
+            int dest = *(int*)vm->pc;
+            vm->pc += sizeof(int);
 
-            bool b = PopValue(thread).b;
+            bool b = PopValue(vm).b;
             if(!b) {
-                thread->pc = thread->state->code + dest;
+                vm->pc = vm->state->code + dest;
             }
         } break;
 
         case TINY_OP_CALL: {
-            uint8_t nargs = *thread->pc++;
-            thread->pc = ALIGN_UP_PTR(thread->pc, alignof(int));
-            int dest = *(int*)thread->pc;
-            thread->pc += sizeof(int);
+            uint8_t nargs = *vm->pc++;
+            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(int));
+            int dest = *(int*)vm->pc;
+            vm->pc += sizeof(int);
 
-            assert(thread->fc < TINY_THREAD_MAX_CALL_DEPTH);
+            assert(vm->fc < TINY_THREAD_MAX_CALL_DEPTH);
 
-            thread->frames[thread->fc++] = (Tiny_Frame){ thread->pc, thread->fp, nargs };
-            thread->fp = thread->sp;
+            vm->frames[vm->fc++] = (Tiny_Frame){ vm->pc, vm->fp, nargs };
+            vm->fp = vm->sp;
 
-            thread->pc = thread->state->code + dest;
+            vm->pc = vm->state->code + dest;
         } break;
 
         case TINY_OP_RET: {
-            PopFrame(thread);
+            PopFrame(vm);
         } break;
 
         case TINY_OP_RETVAL: {
-            thread->retval = PopValue(thread);
-            PopFrame(thread);
+            vm->retval = PopValue(vm);
+            PopFrame(vm);
         } break;
 
         case TINY_OP_GET_RETVAL: {
-            PushValue(thread, thread->retval);
+            PushValue(vm, vm->retval);
         } break;
 
         case TINY_OP_HALT: {
-            thread->pc = NULL;
+            vm->pc = NULL;
         } break;
 
         case TINY_OP_FILE: {
@@ -261,10 +261,10 @@ static void ExecuteCycle(Tiny_StateThread* thread)
     }
 }
 
-void Tiny_Run(Tiny_StateThread* thread)
+void Tiny_Run(Tiny_VM* vm)
 {
-    thread->pc = thread->state->code;
-    while(thread->pc) {
-        ExecuteCycle(thread);
+    vm->pc = vm->state->code;
+    while(vm->pc) {
+        ExecuteCycle(vm);
     }
 }

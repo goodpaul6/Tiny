@@ -16,7 +16,8 @@ typedef enum TypetagType
     TYPETAG_ANY,
     TYPETAG_FOREIGN,
     TYPETAG_FUNC,
-    TYPETAG_STRUCT
+    TYPETAG_STRUCT,
+    TYPETAG_NAME
 } TypetagType;
 
 typedef struct Typetag
@@ -28,9 +29,9 @@ typedef struct Typetag
         struct
         {
             // Buffer
-            Typetag** args;
+            struct Typetag** args;
 
-            Typetag* ret;
+            struct Typetag* ret;
 
             bool varargs;
         } func;
@@ -41,8 +42,11 @@ typedef struct Typetag
             const char** names;
 
             // Buffer
-            Typetag** types;
+            struct Typetag** types;
         } tstruct;
+
+        // Resolved later via the symbol table
+        const char* name;
     };
 } Typetag;
 
@@ -141,6 +145,8 @@ static Typetag* InternFuncTypetag(TypetagPool* pool, Typetag** args, Typetag* re
     type->func.ret = ret;
     type->func.varargs = varargs;
 
+    BUF_PUSH(pool->types, type);
+
     return type;
 }
 
@@ -193,7 +199,33 @@ static Typetag* InternStructTypetag(TypetagPool* pool, const char** names, Typet
     type->tstruct.names = names;
     type->tstruct.types = types;
 
+    BUF_PUSH(pool->types, type);
+
     return type;
+}
+
+static Typetag* InternNameTypetag(const TypetagPool* pool, const char* name)
+{
+    for(int i = 0; i < BUF_LEN(pool->types); ++i) {
+        Typetag* type = pool->types[i];
+        if(type->type == TYPETAG_NAME && type->name == name) {
+            return type;
+        }
+    }
+
+    Typetag* type = AllocTypetag(pool, TYPETAG_NAME);
+    type->name = name;
+
+    BUF_PUSH(pool->types, type);
+
+    return type;
+}
+
+static bool IsPrimitiveType(const Typetag* tag)
+{
+    return a->type != TYPETAG_ANY 
+        && a->type != TYPETAG_STRUCT 
+        && a->type != TYPETAG_STR;
 }
 
 // 'a' is src type, 'b' is target type

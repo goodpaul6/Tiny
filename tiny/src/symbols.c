@@ -25,12 +25,12 @@ typedef struct Sym
             struct Sym* func;
             bool reachable;
 
-            Typetag* type;
+			Typespec* type;
         } var;
 
         struct
         {
-            Typetag* type;
+            Typespec* type;
 
             union
             {
@@ -49,21 +49,18 @@ typedef struct Sym
             struct Sym** args;
             struct Sym** locals;
 
-            Typetag* type;
+            Typespec* type;
         } func;
 
         struct
         {
             int index;
 
-            Typetag* type;
+            Typespec* type;
 
 			// TODO(Apaar): Add field to store the actual callee function pointer
         } foreignFunc;
 
-        // If this is NULL, that means the type hasn't been defined yet.
-        // We will iterate through the symbol table and check to make sure
-        // no such types exist before compiling.
         Typetag* typetag;
     };
 } Sym;
@@ -289,7 +286,7 @@ static Sym* BindFunction(Symbols* sym, const char* name, Typetag* type)
     return s;
 }
 
-static Sym* RegisterType(Symbols* sym, const char* name, TokenPos pos)
+static Sym* FindTypeSym(Symbols* sym, const char* name)
 {
     for(int i = 0; i < BUF_LEN(sym->types); ++i) {
         if(Tiny_StringPoolEqual(sym->types[i]->name, name)) {
@@ -297,12 +294,19 @@ static Sym* RegisterType(Symbols* sym, const char* name, TokenPos pos)
         }
     }
 
-    Sym* s = AllocSym(sym, SYM_TYPE, name, pos);
-    s->typetag = NULL;
+	return NULL;
+}
 
-    BUF_PUSH(sym->types, s);
+static Sym* DefineTypeSym(Symbols* sym, const char* name, TokenPos pos, Typetag* typetag)
+{
+	assert(FindTypeSym(sym, name) == NULL);
 
-	return s->typetag;
+	Sym* s = AllocSym(sym, SYM_TYPE, name, pos);
+	s->typetag = typetag;
+
+	BUF_PUSH(sym->types, s);
+
+	return s;
 }
 
 // TODO(Apaar): Use a Map to store symbols eventually
