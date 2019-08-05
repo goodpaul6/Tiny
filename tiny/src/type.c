@@ -55,7 +55,7 @@ typedef struct TypetagPool
     Tiny_Context* ctx;
     Arena arena;
 
-    Typetag* types;
+    Typetag** types;
 
     // Buffer
     // Stores other buffers that are to be destroyed when the
@@ -104,7 +104,7 @@ static Typetag* AllocTypetag(TypetagPool* pool, TypetagType type)
 static Typetag* InternFuncTypetag(TypetagPool* pool, Typetag** args, Typetag* ret, bool varargs)
 {
     for(int i = 0; i < BUF_LEN(pool->types); ++i) {
-        Typetag* type = &pool->types[i];
+        Typetag* type = pool->types[i];
 
         if(type->type != TYPETAG_FUNC) {
             continue;
@@ -153,7 +153,7 @@ static Typetag* InternFuncTypetag(TypetagPool* pool, Typetag** args, Typetag* re
 static Typetag* InternStructTypetag(TypetagPool* pool, const char** names, Typetag** types)
 {
     for(int i = 0; i < BUF_LEN(pool->types); ++i) {
-        Typetag* type = &pool->types[i];
+        Typetag* type = pool->types[i];
 
         if(type->type != TYPETAG_STRUCT) {
             continue;
@@ -204,7 +204,7 @@ static Typetag* InternStructTypetag(TypetagPool* pool, const char** names, Typet
     return type;
 }
 
-static Typetag* InternNameTypetag(const TypetagPool* pool, const char* name)
+static Typetag* InternNameTypetag(TypetagPool* pool, const char* name)
 {
     for(int i = 0; i < BUF_LEN(pool->types); ++i) {
         Typetag* type = pool->types[i];
@@ -223,9 +223,9 @@ static Typetag* InternNameTypetag(const TypetagPool* pool, const char* name)
 
 static bool IsPrimitiveType(const Typetag* tag)
 {
-    return a->type != TYPETAG_ANY 
-        && a->type != TYPETAG_STRUCT 
-        && a->type != TYPETAG_STR;
+    return tag->type != TYPETAG_ANY 
+        && tag->type != TYPETAG_STRUCT 
+        && tag->type != TYPETAG_STR;
 }
 
 // 'a' is src type, 'b' is target type

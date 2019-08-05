@@ -25,12 +25,12 @@ typedef struct Sym
             struct Sym* func;
             bool reachable;
 
-			Typespec* type;
+			Typetag* type;
         } var;
 
         struct
         {
-            Typespec* type;
+            Typetag* type;
 
             union
             {
@@ -49,14 +49,14 @@ typedef struct Sym
             struct Sym** args;
             struct Sym** locals;
 
-            Typespec* type;
+            Typetag* type;
         } func;
 
         struct
         {
             int index;
 
-            Typespec* type;
+            Typetag* type;
 
 			// TODO(Apaar): Add field to store the actual callee function pointer
         } foreignFunc;

@@ -3,6 +3,8 @@
 
 #include "map.h"
 
+#define TOMBSTONE	((uint64_t)-1)
+
 void Tiny_InitMap(Tiny_Map* map, Tiny_Context* ctx)
 {
     map->ctx = ctx;
@@ -56,7 +58,7 @@ void Tiny_MapInsert(Tiny_Map* map, uint64_t key, void* value)
     while(true) {
         i %= map->cap;
 
-        if(!map->keys[i]) {
+        if(!map->keys[i] || map->keys[i] == TOMBSTONE) {
             map->keys[i] = key;
             map->values[i] = value;
             map->used++;
@@ -70,10 +72,10 @@ void Tiny_MapInsert(Tiny_Map* map, uint64_t key, void* value)
     }
 }
 
-void* Tiny_MapGet(Tiny_Map* map, uint64_t key)
+static int MapGetIndex(Tiny_Map* map, uint64_t key)
 {
     if(map->used == 0) {
-        return NULL;
+		return -1;
     }
 
     size_t i = HashUint64(key);    
@@ -81,39 +83,41 @@ void* Tiny_MapGet(Tiny_Map* map, uint64_t key)
     while(true) {
         i %= map->cap;
         if(map->keys[i] == key) {
-            return map->values[i];
+            return (int)i;
         } else if(!map->keys[i]) {
-            return NULL;
+            return -1;
         }
 
         i += 1;
     }
 
-    return NULL;
+    return -1;
+}
+
+void* Tiny_MapGet(Tiny_Map* map, uint64_t key)
+{
+	int i = MapGetIndex(map, key);
+
+	if(i < 0) {
+		return NULL;
+	}
+
+	return map->values[i];
 }
 
 // Returns the removed value
 void* Tiny_MapRemove(Tiny_Map* map, uint64_t key)
 {
-    if(map->used == 0) {
+	int i = MapGetIndex(map, key);
+
+	if(i < 0) {
 		return NULL;
-    }
+	}
 
-    size_t i = HashUint64(key);
+	map->keys[i] = TOMBSTONE;
+	--map->used;
 
-    while(true) {
-        i %= map->cap;
-        if(map->keys[i] == key) {
-            map->keys[i] = 0;
-            return map->values[i];
-        } else if(!map->keys[i]) {
-            return NULL;
-        }
-
-        i += 1;
-    }
-
-    return NULL;
+	return map->values[i];
 }
 
 void Tiny_DestroyMap(Tiny_Map* map)

@@ -80,6 +80,7 @@ static AST* AllocAST(Parser* p, ASTType type)
     }
 
     ast->type = type;
+	ast->tag = NULL;
     ast->pos = p->l.pos;
 
     return ast;
@@ -112,21 +113,22 @@ static TokenType GetNextToken(Parser* p)
 
 static Typetag* ParseType(Parser* p)
 {
-	EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier for typename.");
+    EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier for typename.");
 
-    Sym* s = FindTypeSym(p->sym, p->l.lexeme, p->l.pos);
-    
-    if(!s) {
-        // Create a name typetag for later lookup
+	const char* typeName = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
+
+	Sym* s = FindTypeSym(p->sym, typeName);
+
+    if(s) {
+        GetNextToken(p);
+        return s->typetag;
     }
 
+    // Create a name typetag for later lookup
+    Typetag* type = InternNameTypetag(p->tp, typeName);
     GetNextToken(p);
 
-
-	Sym* s = RegisterType(p->sym, p->l.lexeme, p->l.pos);
-	GetNextToken(p);
-
-	return s;
+    return type;
 }
 
 static AST* ParseFunc(Parser* p)
@@ -201,11 +203,11 @@ static AST* ParseFunc(Parser* p)
 
     ast->proc.decl->func.type = InternFuncTypetag(p->tp, argTypes, retType, false);
 
-    PushScope(p);
+	PushScope(p->sym);
     
     ast->proc.body = ParseStatement(p);
 
-    PopScope(p);
+	PopScope(p->sym);
 
     p->sym->func = NULL;
 
@@ -234,15 +236,15 @@ static Sym* ParseStruct(Parser* p)
 
     const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
-	Sym* s = FindTypeSym(p->sym, name, pos);
+	Sym* s = FindTypeSym(p->sym, name);
 
     if(s) {
-        PARSER_ERROR(p, "Attempted to define struct '%s' multiple times.", name);
+		PARSER_ERROR(p, "Struct name same as previously defined type '%s'.", name);
     }
 
     GetNextToken(p);
 
-    EAT_TOKEN_RETURN_NULL(p, TOK_OPENCURLY, "Expected '{' after struct name.");
+    EAT_TOKEN(p, TOK_OPENCURLY, "Expected '{' after struct name.");
 
     const char** names = NULL;
     Typetag** types = NULL;
@@ -251,13 +253,13 @@ static Sym* ParseStruct(Parser* p)
     INIT_BUF(types, p->ctx);
 
     while(p->curTok != TOK_CLOSECURLY) {
-        if(!EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier in struct fields.")) {
+		if(p->curTok != TOK_IDENT) {
             DESTROY_BUF(names);
             DESTROY_BUF(types);
-            return NULL;
+			PARSER_ERROR(p, "Expected identifier in struct fields.");
         }
 
-        int count = BUF_LEN(names);
+		size_t count = BUF_LEN(names);
 
         if(count >= UCHAR_MAX) {
             DESTROY_BUF(names);
@@ -275,7 +277,7 @@ static Sym* ParseStruct(Parser* p)
             }
         }
 
-        BUF_PUSH(names, name);
+        BUF_PUSH((char**)names, (char*)name);
 
         GetNextToken(p);
 
@@ -287,9 +289,9 @@ static Sym* ParseStruct(Parser* p)
 			PARSER_ERROR(p, "Expected ':' after field name.");
 		}
 
-        Sym* typeSym = ParseType(p);
+        Typetag* type = ParseType(p);
 
-		BUF_PUSH(types, typeSym->typetag);
+		BUF_PUSH(types, type);
     }
 
     GetNextToken(p);
@@ -305,7 +307,7 @@ static AST* ParseCall(Parser* p, const char* name)
 
     AST* ast = AllocAST(p, AST_CALL);
 
-    PARSER_INIT_BUF(ast->call.args, p->ctx);
+	PARSER_INIT_BUF(ast->call.args, p);
 
     GetNextToken(p);
 
@@ -329,7 +331,7 @@ static AST* ParseCall(Parser* p, const char* name)
 
 static int RegisterNumber(Parser* p, float f)
 {
-    int c = BUF_LEN(*p->numbers);
+    int c = (int)BUF_LEN(*p->numbers);
 
     for(int i = 0; i < c; ++i) {
         if((*p->numbers)[i] == f) {
@@ -378,7 +380,7 @@ static AST* ParseFactor(Parser* p)
 
                 GetNextToken(p);
 
-                EXPECT_TOKEN_RETURN_NULL(p, TOK_IDENT, "Expected identifier after '.'");
+                EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier after '.'");
 
                 a->dot.lhs = ast;
                 a->dot.field = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
@@ -424,7 +426,7 @@ static AST* ParseFactor(Parser* p)
 
         case TOK_FLOAT: {
             AST* ast = AllocAST(p, AST_INT);
-            ast->fIndex = RegisterNumber(p->cp, p->l.fValue);
+            ast->fIndex = RegisterNumber(p, p->l.fValue);
 
             GetNextToken(p);
 
@@ -447,7 +449,7 @@ static AST* ParseFactor(Parser* p)
 
             ast->paren = ParseExpr(p);
 
-            EAT_TOKEN_RETURN_NULL(p, TOK_CLOSEPAREN, "Expected ')' to match previous '('.");
+            EAT_TOKEN(p, TOK_CLOSEPAREN, "Expected ')' to match previous '('.");
 
             return ast;
         } break;
@@ -459,15 +461,11 @@ static AST* ParseFactor(Parser* p)
 
             const char* typeName = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
 
-            ast->constructor.structSym = RegisterType(p->sym, typeName);
-
-            if(!ast->constructor.structSym) {
-                PARSER_ERROR_LONGJMP(p);
-            }
+			ast->constructor.type = ParseType(p);
 
             GetNextToken(p);
 
-            EAT_TOKEN_RETURN_NULL(p, TOK_OPENCURLY, "Expected '{' after struct name.");
+            EAT_TOKEN(p, TOK_OPENCURLY, "Expected '{' after struct name.");
 
             PARSER_INIT_BUF(ast->constructor.args, p);
 
@@ -493,12 +491,12 @@ static AST* ParseFactor(Parser* p)
 
             GetNextToken(p);
 
-            EAT_TOKEN_RETURN_NULL(p, TOK_OPENPAREN, "Expected '(' after 'cast'.");
+            EAT_TOKEN(p, TOK_OPENPAREN, "Expected '(' after 'cast'.");
 
             ast->cast.value = ParseExpr(p);
             ast->cast.tag = ParseType(p);
 
-            EAT_TOKEN_RETURN_NULL(p, TOK_CLOSEPAREN, "Expected ')' to match previous '(' after cast.");
+            EAT_TOKEN(p, TOK_CLOSEPAREN, "Expected ')' to match previous '(' after cast.");
 
             return ast;
         } break;
@@ -597,15 +595,15 @@ static AST* ParseIf(Parser* p)
 
     ast->ifx.cond = ParseExpr(p);
 
-    PushScope(p);
+	PushScope(p->sym);
     ast->ifx.body = ParseStatement(p);
-    PopScope(p);
+    PopScope(p->sym);
     
     if(p->curTok == TOK_ELSE) {
         GetNextToken(p);
-        PushScope(p);
+        PushScope(p->sym);
         ast->ifx.alt = ParseStatement(p);
-        PopScope(p);
+        PopScope(p->sym);
     } else {
         ast->ifx.alt = NULL;
     }
@@ -638,7 +636,7 @@ static AST* ParseStatement(Parser* p)
 
                 GetNextToken(p);
 
-                EXPECT_TOKEN_RETURN_NULL(p, TOK_IDENT, "Expected identifier after '.'");
+                EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier after '.'");
 
                 a->dot.lhs = lhs;
                 a->dot.field = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
@@ -661,7 +659,7 @@ static AST* ParseStatement(Parser* p)
                     GetNextToken(p);
                     lhs->id.sym->var.type = ParseType(p);
 
-                    EXPECT_TOKEN_RETURN_NULL(p, TOK_EQUAL, "Expected '=' after typename.");
+                    EXPECT_TOKEN(p, TOK_EQUAL, "Expected '=' after typename.");
 
                     op = TOK_EQUAL;
                 }
@@ -725,9 +723,9 @@ static AST* ParseStatement(Parser* p)
 
             ast->whilex.cond = ParseExpr(p);
 
-            PushScope(p);
+            PushScope(p->sym);
             ast->whilex.body = ParseStatement(p);
-            PopScope(p);
+            PopScope(p->sym);
 
             return ast;
         } break;
@@ -737,21 +735,21 @@ static AST* ParseStatement(Parser* p)
 
             GetNextToken(p);
 
-            PushScope(p);
+            PushScope(p->sym);
 
             ast->forx.init = ParseStatement(p);
             
-            EAT_TOKEN_RETURN_NULL(p, TOK_SEMI, "Expected ';' after for initializer.");
+            EAT_TOKEN(p, TOK_SEMI, "Expected ';' after for initializer.");
 
             ast->forx.cond = ParseExpr(p);
 
-            EAT_TOKEN_RETURN_NULL(p, TOK_SEMI, "Expected ';' after for condition.");
+            EAT_TOKEN(p, TOK_SEMI, "Expected ';' after for condition.");
 
             ast->forx.step = ParseStatement(p);
 
             ast->forx.body = ParseStatement(p);
 
-            PopScope(p);
+            PopScope(p->sym);
 
             return ast;
         } break;
@@ -771,7 +769,7 @@ static AST* ParseStatement(Parser* p)
                 return ast;
             }
 
-            if(p->sym->func.type->func.ret->type == TYPETAG_VOID) {
+            if(p->sym->func->func.type->func.ret->type == TYPETAG_VOID) {
                 PARSER_ERROR(p, "Attempted to return value from function which is supposed to return nothing (void).");
             }
 
@@ -779,7 +777,13 @@ static AST* ParseStatement(Parser* p)
 
             return ast;
         } break;
+
+		default: {
+			PARSER_ERROR(p, "Unexpected token.");
+		} break;
     }
+
+	return NULL;
 }
 
 static AST** ParseProgram(Parser* p)

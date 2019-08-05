@@ -24,19 +24,19 @@ int main(int argc, char** argv)
     Tiny_Context ctx = { NULL, Tiny_DefaultAlloc };
 
     float* numbers = NULL;
-    INIT_BUF(numbers, ctx);
+    INIT_BUF(numbers, &ctx);
 
     Tiny_StringPool sp;
-    Tiny_InitStringPool(&sp, ctx);
+    Tiny_InitStringPool(&sp, &ctx);
 
     TypetagPool tp;
-    InitTypetagPool(&tp, ctx);
+    InitTypetagPool(&tp, &ctx);
 
-    Symbols s;
-    InitSymbols(&s, ctx, &sp, &tp);
+	Symbols sym;
+    InitSymbols(&sym, &ctx, &sp, &tp);
 
     Parser p;
-    InitParser(&p, ctx, "test_parser.c", s, strlen(s), &sp, &sym, &tp, &numbers);
+    InitParser(&p, &ctx, "test_parser.c", s, strlen(s), &sp, &sym, &tp, &numbers);
     
     AST** asts = ParseProgram(&p);
 

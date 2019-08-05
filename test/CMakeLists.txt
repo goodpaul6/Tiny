@@ -5,5 +5,6 @@ function(tiny_test source)
     target_include_directories("tiny_${name}" PRIVATE ../tiny/src)
 endfunction()
 
+tiny_test(src/test_map.c)
 tiny_test(src/test_lexer.c)
 tiny_test(src/test_parser.c)

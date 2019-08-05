@@ -107,7 +107,7 @@ typedef struct AST
 
         struct
         {
-            Sym* structSym;
+            Typetag* type;
             struct AST** args;
         } constructor;
 
