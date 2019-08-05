@@ -40,10 +40,8 @@ static void InitResolver(Resolver* r, Tiny_Context* ctx, StringPool* sp, Symbols
     r->errorMessage = NULL;
 }
 
-static void ResolveTypes(void* data, AST* ast)
+static void ResolveTypes(Resolver* r, AST* ast)
 {
-    Resolver* r = data;
-
     if(ast->tag) {
         return;
     }
@@ -109,6 +107,10 @@ static void ResolveTypes(void* data, AST* ast)
 
             assert(func->type == SYM_FUNC || func->type == SYM_FOREIGN_FUNC);
 
+            for(int i = 0; i < BUF_LEN(ast->call.args); ++i) {
+                ResolveTypes(r, ast->call.args[i]);
+            }
+
             Typetag* funcType = NULL;
 
             if(func->type == SYM_FUNC) {
@@ -140,6 +142,9 @@ static void ResolveTypes(void* data, AST* ast)
         case AST_BINARY: {
             switch(ast->binary.op) {
                 case TOK_PLUS: case TOK_MINUS: case TOK_STAR: case TOK_SLASH: {
+                    ResolveTypes(r, ast->binary.lhs);
+                    ResolveTypes(r, ast->binary.rhs);
+
                     bool iLhs = ast->binary.lhs->tag->type == TYPETAG_INT;
                     bool iRhs = ast->binary.rhs->tag->type == TYPETAG_INT;
 
@@ -157,6 +162,9 @@ static void ResolveTypes(void* data, AST* ast)
                 } break;
 
                 case TOK_AND: case TOK_OR: case TOK_PERCENT: {
+                    ResolveTypes(r, ast->binary.lhs);
+                    ResolveTypes(r, ast->binary.rhs);
+
                     bool iLhs = ast->binary.lhs->tag->type == TYPETAG_INT;
                     bool iRhs = ast->binary.rhs->tag->type == TYPETAG_INT;
 
@@ -170,6 +178,9 @@ static void ResolveTypes(void* data, AST* ast)
                 } break;
 
                 case TOK_LOG_AND: case TOK_LOG_OR: {
+                    ResolveTypes(r, ast->binary.lhs);
+                    ResolveTypes(r, ast->binary.rhs);
+
                     bool bLhs = ast->binary.lhs->tag->type == TYPETAG_BOOL;
                     bool bRhs = ast->binary.lhs->tag->type == TYPETAG_BOOL;
 
@@ -183,6 +194,9 @@ static void ResolveTypes(void* data, AST* ast)
                 } break;
 
                 case TOK_GT: case TOK_LT: case TOK_GTE: case TOK_LTE: {
+                    ResolveTypes(ast->binary.lhs);
+                    ResolveTypes(ast->binary.rhs);
+
                     // TODO(Apaar): Refactor this; it's identical to the TOK_PLUS/MINUS
                     // stuff above
                     bool iLhs = ast->binary.lhs->tag->type == TYPETAG_INT;
@@ -201,6 +215,9 @@ static void ResolveTypes(void* data, AST* ast)
                 } break;
 
                 case TOK_EQUALS: case TOK_NOTEQUALS: {
+                    ResolveTypes(r, ast->binary.lhs);
+                    ResolveTypes(r, ast->binary.rhs);
+
                     if(ast->binary.lhs->tag->type == TYPETAG_VOID ||
                        ast->binary.rhs->tag->type == TYPETAG_VOID) {
                         RESOLVER_ERROR_AST(r, ast, "Attempted to check for equality with void. This is not allowed.");
