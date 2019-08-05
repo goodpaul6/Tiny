@@ -3,8 +3,6 @@
 
 #include "map.h"
 
-#define TOMBSTONE	((uint64_t)-1)
-
 void Tiny_InitMap(Tiny_Map* map, Tiny_Context* ctx)
 {
     map->ctx = ctx;
@@ -58,7 +56,7 @@ void Tiny_MapInsert(Tiny_Map* map, uint64_t key, void* value)
     while(true) {
         i %= map->cap;
 
-        if(!map->keys[i] || map->keys[i] == TOMBSTONE) {
+        if(!map->keys[i] || map->keys[i] == TINY_MAP_TOMBSTONE_KEY) {
             map->keys[i] = key;
             map->values[i] = value;
             map->used++;
@@ -114,7 +112,7 @@ void* Tiny_MapRemove(Tiny_Map* map, uint64_t key)
 		return NULL;
 	}
 
-	map->keys[i] = TOMBSTONE;
+	map->keys[i] = TINY_MAP_TOMBSTONE_KEY;
 	--map->used;
 
 	return map->values[i];

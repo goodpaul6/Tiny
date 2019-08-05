@@ -6,5 +6,6 @@ function(tiny_test source)
 endfunction()
 
 tiny_test(src/test_map.c)
+tiny_test(src/test_stringpool.c)
 tiny_test(src/test_lexer.c)
 tiny_test(src/test_parser.c)

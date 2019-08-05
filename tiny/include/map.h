@@ -2,6 +2,8 @@
 
 #include <stdint.h>
 
+#define TINY_MAP_TOMBSTONE_KEY  ((uint64_t)-1)
+
 typedef struct Tiny_Context Tiny_Context;
 
 typedef struct Tiny_Map

@@ -44,5 +44,7 @@ int main(int argc, char** argv)
         assert(!p);
     }
 
+    Tiny_DestroyMap(&map);
+
     return 0;
 }
