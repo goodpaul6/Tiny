@@ -71,7 +71,7 @@ void Tiny_StringPoolRelease(Tiny_StringPool* sp, const char* str)
 void Tiny_DestroyStringPool(Tiny_StringPool* sp)
 {
     for(size_t i = 0; i < sp->map.cap; ++i) {
-        if(sp->map.keys[i]) {
+        if(sp->map.keys[i] && sp->map.keys[i] != TINY_MAP_TOMBSTONE_KEY) {
             TFree(sp->ctx, sp->map.values[i]);
         }
     }
