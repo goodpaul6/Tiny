@@ -14,12 +14,29 @@
 
 int main(int argc, char** argv)
 {
-    const char* s =  
-        "x := 10.0\n"
-        "y := 20.0\n"
-        "func add_xy(a: float, b: float): float {\n"
-        "   return a + b + x + y; \n"
-        "}\n";
+	const char* s =
+		"x := add(null, false, true, 'a', 10, 20.0, \"hello\",\n"
+		"         10 + (20 * 30) - 40 > 10)\n"
+		"{\n"
+		"   test(1, 3)\n"
+		"   test(1, 2)\n"
+		"}\n"
+		"func test(x: int, y: int) :int {\n"
+		"   if x < -(10 + 20) || y > 10 {\n"
+		"       return x + y\n"
+		"   } else return 0\n"
+		"   return;\n"
+		"}\n"
+		"while true {\n"
+		"   for i := 0; i < 1000; i += 1 {\n"
+		"       print(cast(i.x.y.z, int))\n"
+		"       i.x.y.z = new Struct{i * 1000}\n"
+		"   }\n"
+		"}\n"
+		"struct Struct {\n"
+		"   x: int\n"
+		"}\n";
+
 
     Tiny_Context ctx = { NULL, Tiny_DefaultAlloc };
 
@@ -40,17 +57,13 @@ int main(int argc, char** argv)
     
     AST** asts = ParseProgram(&p);
 
-    assert(asts[0]->type == AST_BINARY);
-    assert(asts[0]->binary.op == TOK_DECLARE);
-    assert(asts[0]->binary.lhs->type == AST_ID);
-    assert(asts[0]->binary.rhs->type == AST_FLOAT);
-    assert(fabsf(numbers[asts[0]->binary.rhs->fIndex] - 10.0f) < 0.002f);
+	assert(asts);
 
-    assert(asts[1]->type == AST_BINARY);
-    assert(asts[1]->binary.op == TOK_DECLARE);
-    assert(asts[1]->binary.lhs->type == AST_ID);
-    assert(asts[1]->binary.rhs->type == AST_FLOAT);
-    assert(fabsf(numbers[asts[1]->binary.rhs->fIndex] - 20.0f) < 0.002f);
+    // TODO(Apaar): Find a good way to confirm everything is of the expected type
+    // Maybe make a tree of types and then recursively visit the ast confirming everything
+    // is as expected.
+
+    DestroyParser(&p);
 
     return 0;
 }

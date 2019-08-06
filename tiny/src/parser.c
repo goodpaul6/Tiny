@@ -23,6 +23,7 @@ typedef struct Parser
     Lexer l;
     TokenType curTok;
 
+	AST** asts;
     char* errorMessage;
 
     jmp_buf topLevelEnv;
@@ -296,7 +297,7 @@ static Sym* ParseStruct(Parser* p)
 
     GetNextToken(p);
 
-    s->typetag = InternStructTypetag(p->tp, names, types);
+	DefineTypeSym(p->sym, name, pos, InternStructTypetag(p->tp, names, types));
 
     return s;
 }
@@ -355,8 +356,9 @@ static AST* ParseFactor(Parser* p)
 
         case TOK_BOOL: {
             AST* ast = AllocAST(p, AST_BOOL);
-
             ast->boolean = p->l.bValue;
+
+			GetNextToken(p);
 
             return ast;
         } break;
@@ -425,7 +427,7 @@ static AST* ParseFactor(Parser* p)
         } break;
 
         case TOK_FLOAT: {
-            AST* ast = AllocAST(p, AST_INT);
+			AST* ast = AllocAST(p, AST_FLOAT);
             ast->fIndex = RegisterNumber(p, p->l.fValue);
 
             GetNextToken(p);
@@ -459,13 +461,9 @@ static AST* ParseFactor(Parser* p)
 
             GetNextToken(p);
 
-            const char* typeName = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
-
 			ast->constructor.type = ParseType(p);
 
-            GetNextToken(p);
-
-            EAT_TOKEN(p, TOK_OPENCURLY, "Expected '{' after struct name.");
+            EAT_TOKEN(p, TOK_OPENCURLY, "Expected '{' after type name in new.");
 
             PARSER_INIT_BUF(ast->constructor.args, p);
 
@@ -494,6 +492,9 @@ static AST* ParseFactor(Parser* p)
             EAT_TOKEN(p, TOK_OPENPAREN, "Expected '(' after 'cast'.");
 
             ast->cast.value = ParseExpr(p);
+
+			EAT_TOKEN(p, TOK_COMMA, "Expected ',' after cast value.");
+
             ast->cast.tag = ParseType(p);
 
             EAT_TOKEN(p, TOK_CLOSEPAREN, "Expected ')' to match previous '(' after cast.");
@@ -711,6 +712,8 @@ static AST* ParseStatement(Parser* p)
             ast->binary.lhs = lhs;
             ast->binary.rhs = rhs;
             ast->binary.op = op;
+
+			return ast;
         } break;
         
         case TOK_FUNC: return ParseFunc(p);  
@@ -795,20 +798,19 @@ static AST** ParseProgram(Parser* p)
 
     GetNextToken(p);
 
-    AST** asts;
-
-    PARSER_INIT_BUF(asts, p);
+    PARSER_INIT_BUF(p->asts, p);
 
     while(p->curTok != TOK_EOF) {
         if(p->curTok == TOK_STRUCT) {
             ParseStruct(p);
         } else {
             AST* ast = ParseStatement(p);
-            BUF_PUSH(asts, ast);
+			assert(ast);
+            BUF_PUSH(p->asts, ast);
         }
     }
 
-    return asts;
+    return p->asts;
 }
 
 static void ClearParserError(Parser* p)
@@ -823,7 +825,7 @@ static void DestroyParser(Parser* p)
     ClearParserError(p);
 
     for(int i = 0; i < BUF_LEN(p->buffers); ++i) {
-        DESTROY_BUF(p->buffers[i]);
+        DESTROY_BUF(*p->buffers[i]);
     }
 
     DestroyLexer(&p->l);
