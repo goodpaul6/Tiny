@@ -5,8 +5,13 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdint.h>
+#include <stddef.h>
 
 #include "context.h"
+
+#ifdef _MSC_VER
+#define alignof(type) (__alignof(type))
+#endif
 
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
@@ -153,6 +158,7 @@ typedef struct
 
 #define BUF_RESERVE(b, n)       ((n) <= BUF_CAP(b) ? 0 : ((b) = BufGrow((b), (n), sizeof(*(b)))))
 #define BUF_PUSH(b, v)          (BUF_RESERVE((b), BUF_LEN(b) + 1), (b)[BUF_HEADER(b)->len++] = (v))
+#define BUF_ADD(b, n)           (BUF_RESERVE((b), BUF_LEN(b) + (n)), (BUF_LEN(b) += (n)), (&(b)[BUF_LEN(b) - (n)]))
 #define BUF_POP(b)              (b[--BUF_HEADER(b)->len])
 #define BUF_CLEAR(b)            (BUF_HEADER(b)->len = 0)
 
