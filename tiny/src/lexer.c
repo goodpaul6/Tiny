@@ -131,15 +131,17 @@ static void InitLexer(Lexer* l, Tiny_Context* ctx, const char* fileName, const c
     INIT_BUF(l->lexeme, ctx);
 }
 
-#define LEXER_ERROR(l, fmt, ...) (((l)->errorMessage = MemPrintf((l)->ctx, (fmt), __VA_ARGS__)), TOK_ERROR)
-
-static void ClearLexerError(Lexer* l)
+static void DestroyLexer(Lexer* l)
 {
     if(l->errorMessage) {
         TFree(l->ctx, l->errorMessage);
         l->errorMessage = NULL;
     }
+
+    DESTROY_BUF(l->lexeme);
 }
+
+#define LEXER_ERROR(l, fmt, ...) (((l)->errorMessage = MemPrintf((l)->ctx, (fmt), __VA_ARGS__)), TOK_ERROR)
 
 static TokenType GetToken(Lexer* l)
 {
@@ -343,8 +345,3 @@ static TokenType GetToken(Lexer* l)
     return LEXER_ERROR(l, "Unexpected character '%c'.", l->last);
 }
 
-static void DestroyLexer(Lexer* l)
-{
-    DESTROY_BUF(l->lexeme);
-    ClearLexerError(l);
-}

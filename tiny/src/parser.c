@@ -10,20 +10,27 @@
 // the user would discard the entire compilation unit on such a result since the
 // entire unit might be unusable at that point.
 
+// TODO(Apaar): Parser will own symbols, types and string pool. The parser will
+// belong to a state, and will be reused for parsing all code for a given state.
+// If there is an error, basically the entire state needs to be discarded, and that's
+// fine.
+
 typedef struct Parser
 {
     Tiny_Context* ctx;
     Arena arena;
 
-    Tiny_StringPool* sp;
-    Symbols* sym;
-    TypetagPool* tp;
-    float** numbers;
+    Tiny_StringPool sp;
+    Symbols sym;
+    TypetagPool tp;
 
     Lexer l;
     TokenType curTok;
 
 	AST** asts;
+
+    // If this is NULL but 'Parse' still returned false, then there is likely a 
+    // lexer error
     char* errorMessage;
 
     jmp_buf topLevelEnv;
@@ -35,29 +42,39 @@ typedef struct Parser
     void*** buffers;
 } Parser;
 
-static void InitParser(Parser* p, Tiny_Context* ctx, const char* fileName, const char* src, size_t len, Tiny_StringPool* sp, Symbols* sym, TypetagPool* tp, float** numbers)
-{
-    assert(*numbers);
-
-    p->ctx = ctx;
-
-    p->sp = sp;
-    p->sym = sym;
-    p->tp = tp;
-    p->numbers = numbers;
-
-    InitArena(&p->arena, ctx);
-    InitLexer(&p->l, ctx, fileName, src, len);
-
-    p->errorMessage = NULL;
-
-    INIT_BUF(p->buffers, ctx);
-}
-
 #define PARSER_INIT_BUF(b, p) do { \
     INIT_BUF(b, (p)->ctx); \
     BUF_PUSH((p)->buffers, (void*)(&(b))); \
 } while(0)
+
+static void InitParser(Parser* p, Tiny_Context* ctx)
+{
+    p->ctx = ctx;
+
+    Tiny_InitStringPool(&p->sp, ctx);
+    InitTypetagPool(&p->tp, ctx);
+    InitSymbols(&p->sym, ctx, &p->sp, &p->tp);
+
+    InitArena(&p->arena, ctx);
+    p->errorMessage = NULL;
+
+    INIT_BUF(p->buffers, ctx);
+
+    PARSER_INIT_BUF(p->asts, p);
+}
+
+static void DestroyParser(Parser* p)
+{
+    if(p->errorMessage) {
+        TFree(p->ctx, p->errorMessage);
+    }
+
+    for(int i = 0; i < BUF_LEN(p->buffers); ++i) {
+        DESTROY_BUF(*p->buffers[i]);
+    }
+
+    DestroyArena(&p->arena);
+}
 
 static AST* ParseExpr(Parser* p);
 static AST* ParseStatement(Parser* p);
@@ -65,7 +82,6 @@ static AST* ParseStatement(Parser* p);
 #define PARSER_ERROR_LONGJMP(p) do { \
     longjmp((p)->topLevelEnv, 1); \
 } while(0)
-
 
 #define PARSER_ERROR(p, fmt, ...) do { \
     (p)->errorMessage = MemPrintf((p)->ctx, (fmt), __VA_ARGS__); \
@@ -116,9 +132,9 @@ static Typetag* ParseType(Parser* p)
 {
     EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier for typename.");
 
-	const char* typeName = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
+	const char* typeName = Tiny_StringPoolInsert(&p->sp, p->l.lexeme);
 
-	Sym* s = FindTypeSym(p->sym, typeName);
+	Sym* s = FindTypeSym(&p->sym, typeName);
 
     if(s) {
         GetNextToken(p);
@@ -126,7 +142,7 @@ static Typetag* ParseType(Parser* p)
     }
 
     // Create a name typetag for later lookup
-    Typetag* type = InternNameTypetag(p->tp, typeName);
+    Typetag* type = InternNameTypetag(&p->tp, typeName);
     GetNextToken(p);
 
     return type;
@@ -136,8 +152,8 @@ static AST* ParseFunc(Parser* p)
 {
     assert(p->curTok == TOK_FUNC);
 
-    if(p->sym->func) {
-        PARSER_ERROR(p, "Attempted to define a function inside of function '%s'.", p->sym->func->name);
+    if(p->sym.func) {
+        PARSER_ERROR(p, "Attempted to define a function inside of function '%s'.", p->sym.func->name);
     }
 
     AST* ast = AllocAST(p, AST_PROC);
@@ -146,15 +162,15 @@ static AST* ParseFunc(Parser* p)
 
     EXPECT_TOKEN(p, TOK_IDENT, "Function name must be identifier!");
 
-    const char* funcName = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
+    const char* funcName = Tiny_StringPoolInsert(&p->sp, p->l.lexeme);
 
-	ast->proc.decl = DeclareFunc(p->sym, funcName, p->l.pos);
+	ast->proc.decl = DeclareFunc(&p->sym, funcName, p->l.pos);
 
     if(!ast->proc.decl) {
         PARSER_ERROR_LONGJMP(p);
     }
     
-    p->sym->func = ast->proc.decl;
+    p->sym.func = ast->proc.decl;
 
     GetNextToken(p);
 
@@ -168,9 +184,9 @@ static AST* ParseFunc(Parser* p)
     while(p->curTok != TOK_CLOSEPAREN) {
         EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier in function parameter list");
 
-        const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
+        const char* name = Tiny_StringPoolInsert(&p->sp, p->l.lexeme);
 
-        Sym* arg = DeclareVar(p->sym, name, p->l.pos, true);
+        Sym* arg = DeclareVar(&p->sym, name, p->l.pos, true);
 
         if(!arg) {
             PARSER_ERROR_LONGJMP(p);
@@ -196,21 +212,21 @@ static AST* ParseFunc(Parser* p)
     GetNextToken(p);
 
     if(p->curTok != TOK_COLON) {
-        retType = GetPrimitiveTypetag(p->tp, TYPETAG_VOID);
+        retType = GetPrimitiveTypetag(&p->tp, TYPETAG_VOID);
     } else {
         GetNextToken(p);
         retType = ParseType(p);
     }
 
-    ast->proc.decl->func.type = InternFuncTypetag(p->tp, argTypes, retType, false);
+    ast->proc.decl->func.type = InternFuncTypetag(&p->tp, argTypes, retType, false);
 
-	PushScope(p->sym);
+	PushScope(&p->sym);
     
     ast->proc.body = ParseStatement(p);
 
-	PopScope(p->sym);
+	PopScope(&p->sym);
 
-    p->sym->func = NULL;
+    p->sym.func = NULL;
 
     if(!ast->proc.body) {
         return NULL;
@@ -225,8 +241,8 @@ static AST* ParseFunc(Parser* p)
 
 static Sym* ParseStruct(Parser* p)
 {
-    if(p->sym->func) {
-        PARSER_ERROR(p, "Attempted to declare struct inside func '%s'. Can't do that bruh.", p->sym->func->name);
+    if(p->sym.func) {
+        PARSER_ERROR(p, "Attempted to declare struct inside func '%s'. Can't do that bruh.", p->sym.func->name);
     }
 
     TokenPos pos = p->l.pos;
@@ -235,9 +251,9 @@ static Sym* ParseStruct(Parser* p)
 
     EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier after 'struct'.");
 
-    const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
+    const char* name = Tiny_StringPoolInsert(&p->sp, p->l.lexeme);
 
-	Sym* s = FindTypeSym(p->sym, name);
+	Sym* s = FindTypeSym(&p->sym, name);
 
     if(s) {
 		PARSER_ERROR(p, "Struct name same as previously defined type '%s'.", name);
@@ -268,7 +284,7 @@ static Sym* ParseStruct(Parser* p)
             PARSER_ERROR(p, "Too many fields in struct.");
         }
 
-        const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
+        const char* name = Tiny_StringPoolInsert(&p->sp, p->l.lexeme);
 
         for(int i = 0; i < count; ++i) {
             if(names[i] == name) {
@@ -297,7 +313,7 @@ static Sym* ParseStruct(Parser* p)
 
     GetNextToken(p);
 
-	DefineTypeSym(p->sym, name, pos, InternStructTypetag(p->tp, names, types));
+	DefineTypeSym(&p->sym, name, pos, InternStructTypetag(&p->tp, names, types));
 
     return s;
 }
@@ -330,20 +346,6 @@ static AST* ParseCall(Parser* p, const char* name)
     return ast;
 }
 
-static int RegisterNumber(Parser* p, float f)
-{
-    int c = (int)BUF_LEN(*p->numbers);
-
-    for(int i = 0; i < c; ++i) {
-        if((*p->numbers)[i] == f) {
-            return i;
-        }
-    }
-
-    BUF_PUSH(*p->numbers, f);
-    return c;
-}
-
 static AST* ParseFactor(Parser* p)
 {
     switch(p->curTok) {
@@ -364,7 +366,7 @@ static AST* ParseFactor(Parser* p)
         } break;
 
         case TOK_IDENT: {
-            const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
+            const char* name = Tiny_StringPoolInsert(&p->sp, p->l.lexeme);
 
             GetNextToken(p);
 
@@ -375,7 +377,7 @@ static AST* ParseFactor(Parser* p)
             AST* ast = AllocAST(p, AST_ID);
 
             ast->id.name = name;
-            ast->id.sym = ReferenceVar(p->sym, name);
+            ast->id.sym = ReferenceVar(&p->sym, name);
 
             while(p->curTok == TOK_DOT) {
                 AST* a = AllocAST(p, AST_DOT);
@@ -385,7 +387,7 @@ static AST* ParseFactor(Parser* p)
                 EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier after '.'");
 
                 a->dot.lhs = ast;
-                a->dot.field = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
+                a->dot.field = Tiny_StringPoolInsert(&p->sp, p->l.lexeme);
 
                 GetNextToken(p);
 
@@ -428,7 +430,7 @@ static AST* ParseFactor(Parser* p)
 
         case TOK_FLOAT: {
 			AST* ast = AllocAST(p, AST_FLOAT);
-            ast->fIndex = RegisterNumber(p, p->l.fValue);
+            ast->fValue = p->l.fValue;
 
             GetNextToken(p);
 
@@ -437,7 +439,7 @@ static AST* ParseFactor(Parser* p)
 
         case TOK_STRING: {
             AST* ast = AllocAST(p, AST_STRING);
-            ast->str = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
+            ast->str = Tiny_StringPoolInsert(&p->sp, p->l.lexeme);
 
             GetNextToken(p);
 
@@ -596,15 +598,15 @@ static AST* ParseIf(Parser* p)
 
     ast->ifx.cond = ParseExpr(p);
 
-	PushScope(p->sym);
+	PushScope(&p->sym);
     ast->ifx.body = ParseStatement(p);
-    PopScope(p->sym);
+    PopScope(&p->sym);
     
     if(p->curTok == TOK_ELSE) {
         GetNextToken(p);
-        PushScope(p->sym);
+        PushScope(&p->sym);
         ast->ifx.alt = ParseStatement(p);
-        PopScope(p->sym);
+        PopScope(&p->sym);
     } else {
         ast->ifx.alt = NULL;
     }
@@ -618,7 +620,7 @@ static AST* ParseStatement(Parser* p)
         case TOK_OPENCURLY: return ParseBlock(p);
         
         case TOK_IDENT: {
-            const char* name = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
+            const char* name = Tiny_StringPoolInsert(&p->sp, p->l.lexeme);
             TokenPos pos = p->l.pos;
 
             GetNextToken(p);
@@ -629,7 +631,7 @@ static AST* ParseStatement(Parser* p)
 
             AST* lhs = AllocAST(p, AST_ID);
 
-            lhs->id.sym = ReferenceVar(p->sym, name);
+            lhs->id.sym = ReferenceVar(&p->sym, name);
             lhs->id.name = name;
 
             while(p->curTok == TOK_DOT) {
@@ -640,7 +642,7 @@ static AST* ParseStatement(Parser* p)
                 EXPECT_TOKEN(p, TOK_IDENT, "Expected identifier after '.'");
 
                 a->dot.lhs = lhs;
-                a->dot.field = Tiny_StringPoolInsert(p->sp, p->l.lexeme);
+                a->dot.field = Tiny_StringPoolInsert(&p->sp, p->l.lexeme);
 
                 GetNextToken(p);
 
@@ -654,7 +656,7 @@ static AST* ParseStatement(Parser* p)
                     PARSER_ERROR(p, "Left hand side of declaration must be an identifier.");
                 }
 
-                lhs->id.sym = DeclareVar(p->sym, name, pos, false);
+                lhs->id.sym = DeclareVar(&p->sym, name, pos, false);
 
                 if(op == TOK_COLON) {
                     GetNextToken(p);
@@ -682,23 +684,23 @@ static AST* ParseStatement(Parser* p)
 
                 switch(rhs->type) {
                     case AST_BOOL: {
-                        DeclareConst(p->sym, name, pos, GetPrimitiveTypetag(p->tp, TYPETAG_BOOL))->constant.bValue = rhs->boolean;
+                        DeclareConst(&p->sym, name, pos, GetPrimitiveTypetag(&p->tp, TYPETAG_BOOL))->constant.bValue = rhs->boolean;
                     } break;
 
                     case AST_CHAR: {
-                        DeclareConst(p->sym, name, pos, GetPrimitiveTypetag(p->tp, TYPETAG_CHAR))->constant.iValue = rhs->iValue;
+                        DeclareConst(&p->sym, name, pos, GetPrimitiveTypetag(&p->tp, TYPETAG_CHAR))->constant.iValue = rhs->iValue;
                     } break;
 
                     case AST_INT: {
-                        DeclareConst(p->sym, name, pos, GetPrimitiveTypetag(p->tp, TYPETAG_INT))->constant.iValue = rhs->iValue;
+                        DeclareConst(&p->sym, name, pos, GetPrimitiveTypetag(&p->tp, TYPETAG_INT))->constant.iValue = rhs->iValue;
                     } break;
 
                     case AST_FLOAT: {
-                        DeclareConst(p->sym, name, pos, GetPrimitiveTypetag(p->tp, TYPETAG_FLOAT))->constant.fIndex = rhs->fIndex;
+                        DeclareConst(&p->sym, name, pos, GetPrimitiveTypetag(&p->tp, TYPETAG_FLOAT))->constant.fValue = rhs->fValue;
                     } break;
 
                     case AST_STRING: {
-                        DeclareConst(p->sym, name, pos, GetPrimitiveTypetag(p->tp, TYPETAG_STR))->constant.str = rhs->str;
+                        DeclareConst(&p->sym, name, pos, GetPrimitiveTypetag(&p->tp, TYPETAG_STR))->constant.str = rhs->str;
                     } break;
 
                     default: {
@@ -726,9 +728,9 @@ static AST* ParseStatement(Parser* p)
 
             ast->whilex.cond = ParseExpr(p);
 
-            PushScope(p->sym);
+            PushScope(&p->sym);
             ast->whilex.body = ParseStatement(p);
-            PopScope(p->sym);
+            PopScope(&p->sym);
 
             return ast;
         } break;
@@ -738,7 +740,7 @@ static AST* ParseStatement(Parser* p)
 
             GetNextToken(p);
 
-            PushScope(p->sym);
+            PushScope(&p->sym);
 
             ast->forx.init = ParseStatement(p);
             
@@ -752,13 +754,13 @@ static AST* ParseStatement(Parser* p)
 
             ast->forx.body = ParseStatement(p);
 
-            PopScope(p->sym);
+            PopScope(&p->sym);
 
             return ast;
         } break;
 
         case TOK_RETURN: {
-            if(!p->sym->func) {
+            if(!p->sym.func) {
                 PARSER_ERROR(p, "Attempted to return from outside a function. Why? Why would you do that? Why would you do any of that?");
             }
 
@@ -772,7 +774,7 @@ static AST* ParseStatement(Parser* p)
                 return ast;
             }
 
-            if(p->sym->func->func.type->func.ret->type == TYPETAG_VOID) {
+            if(p->sym.func->func.type->func.ret->type == TYPETAG_VOID) {
                 PARSER_ERROR(p, "Attempted to return value from function which is supposed to return nothing (void).");
             }
 
@@ -789,16 +791,27 @@ static AST* ParseStatement(Parser* p)
 	return NULL;
 }
 
-static AST** ParseProgram(Parser* p)
+static bool Parse(Parser* p, const char* fileName, const char* src, size_t len)
 {
     int c = setjmp(p->topLevelEnv);
     if(c) {
-        return NULL;
+        if(p->l.errorMessage) {
+            // Can't propogate both lexer and parser message
+            assert(!p->errorMessage);
+
+            // We take ownership of the lexer error message since it will
+            // get destroyed
+            p->errorMessage = p->l.errorMessage;
+            p->l.errorMessage = NULL;
+        }
+
+        DestroyLexer(&p->l);
+        return false;
     }
 
-    GetNextToken(p);
+	InitLexer(&p->l, p->ctx, fileName, src, len);
 
-    PARSER_INIT_BUF(p->asts, p);
+    GetNextToken(p);
 
     while(p->curTok != TOK_EOF) {
         if(p->curTok == TOK_STRUCT) {
@@ -810,24 +823,6 @@ static AST** ParseProgram(Parser* p)
         }
     }
 
-    return p->asts;
-}
-
-static void ClearParserError(Parser* p)
-{
-    if(p->errorMessage) {
-        TFree(p->ctx, p->errorMessage);
-    }
-}
-
-static void DestroyParser(Parser* p)
-{
-    ClearParserError(p);
-
-    for(int i = 0; i < BUF_LEN(p->buffers); ++i) {
-        DESTROY_BUF(*p->buffers[i]);
-    }
-
     DestroyLexer(&p->l);
-    DestroyArena(&p->arena);
+    return true;
 }
