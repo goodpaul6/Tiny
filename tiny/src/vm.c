@@ -4,14 +4,12 @@
 
 static void PushValue(Tiny_VM* vm, Tiny_Value value)
 {
-    *(Tiny_Value*)vm->sp = value;
-    vm->sp += sizeof(Tiny_Value);
+    *vm->sp++ = value;
 }
 
 static Tiny_Value PopValue(Tiny_VM* vm) 
 {
-    vm->sp -= sizeof(Tiny_Value);
-    return *(Tiny_Value*)vm->sp;
+    return *(--vm->sp);
 }
 
 static void PushNull(Tiny_VM* vm)
@@ -26,7 +24,7 @@ static void PushBool(Tiny_VM* vm, bool b)
     PushValue(vm, v);
 }
 
-static void PushChar(Tiny_VM* vm, char c)
+static void PushChar(Tiny_VM* vm, uint32_t c)
 {
     Tiny_Value v = { .c = c };
     PushValue(vm, v);
@@ -52,6 +50,12 @@ static void PushString(Tiny_VM* vm, const char* str, size_t len)
     PushValue(vm, v);
 }
 
+static void PushPointer(Tiny_VM* vm, void* p)
+{
+    Tiny_Value v = { .p = p };
+    PushValue(vm, v);
+}
+
 static void PopFrame(Tiny_VM* vm)
 {
     assert(vm->fc > 0);
@@ -61,58 +65,70 @@ static void PopFrame(Tiny_VM* vm)
     vm->sp = vm->fp;
     vm->fp = vm->frames[vm->fc].fp;
 
-    vm->sp -= vm->frames[vm->fc] * sizeof(Tiny_Value);
+    vm->sp -= vm->frames[vm->fc].nargs;
 }
 
 static void ExecuteCycle(Tiny_VM* vm)
 {
+#define DECODE_VALUE(type, name) \
+    type name; \
+    do { \
+        vm->pc = ALIGN_UP_PTR(vm->pc, alignof(type)); \
+        name = *(type*)vm->pc; \
+    } while(0)
+
+#define DECODE_VALUE_MOVE_PC(type, name) \
+    DECODE_VALUE(type, name) \
+    do { \
+        vm->pc += sizeof(type); \
+    } while(0)
+
     switch(*vm->pc++) {
-        case TINY_OP_ADD_SP: {
-            vm->sp += sizeof(Tiny_Value) * (*vm->pc++);
+        case OP_PUSH_EMPTY_N: {
+            uint8_t n = *vm->pc++;
+            memset(vm->sp, 0, n * sizeof(*vm->sp));
+            vm->sp += n;
         } break;
 
-        case TINY_OP_PUSH_NULL: {
+        case OP_PUSH_NULL: {
             PushNull(vm);
         } break;
 
-        case TINY_OP_PUSH_TRUE: {
+        case OP_PUSH_TRUE: {
             PushBool(vm, true);
         } break;
 
-        case TINY_OP_PUSH_FALSE: {
+        case OP_PUSH_FALSE: {
             PushBool(vm, false);
         } break;
         
-        case TINY_OP_PUSH_C: {
-            PushChar(vm, *vm->pc++);
+        case OP_PUSH_C: {
+            DECODE_VALUE_MOVE_PC(uint32_t, c);
+            PushChar(vm, c);
         } break;
 
-        case TINY_OP_PUSH_I: {
-            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(int));
-            PushInt(vm, *(int*)vm->pc);
-            vm->pc += sizeof(int);
+        case OP_PUSH_I: {
+            DECODE_VALUE_MOVE_PC(int, i);
+            PushInt(vm, i);
         } break;
 
-        case TINY_OP_PUSH_I_0: {
+        case OP_PUSH_I_0: {
             PushInt(vm, 0);
         } break;
 
-        case TINY_OP_PUSH_F: {
-            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(int));
-            PushFloat(vm, vm->state->numbers[*(int*)vm->pc]);
-            vm->pc += sizeof(int);
+        case OP_PUSH_F: {
+            DECODE_VALUE_MOVE_PC(float, f);
+            PushFloat(vm, f);
         } break;
 
-        case TINY_OP_PUSH_F_0: {
+        case OP_PUSH_F_0: {
             PushFloat(vm, 0);
         } break;
 
-        case TINY_OP_PUSH_S: {
-            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(uintptr_t));
-            uintptr_t ps = *(uintptr_t*)vm->pc;
-            vm->pc += sizeof(uintptr_t);
+        case OP_PUSH_S: {
+            DECODE_VALUE_MOVE_PC(uintptr_t, p);
 
-            const Tiny_String* s = Tiny_GetString((const char*)ps);
+            const Tiny_String* s = Tiny_GetString((const char*)p);
             PushString(vm, s->str, s->len);
         } break;
 
@@ -144,44 +160,44 @@ static void ExecuteCycle(Tiny_VM* vm)
 #define CHAR_CMP_OP(name, operator) \
         ARITH_OP(c, name, operator, PushChar)
 
-        INT_OP(TINY_OP_ADD_I, +)
-        INT_OP(TINY_OP_SUB_I, -)
-        INT_OP(TINY_OP_MUL_I, *)
-        INT_OP(TINY_OP_DIV_I, /)
-        INT_OP(TINY_OP_MOD_I, %)
-        INT_OP(TINY_OP_OR_I, |)
-        INT_OP(TINY_OP_AND_I, &)
+        INT_OP(OP_ADD_I, +)
+        INT_OP(OP_SUB_I, -)
+        INT_OP(OP_MUL_I, *)
+        INT_OP(OP_DIV_I, /)
+        INT_OP(OP_MOD_I, %)
+        INT_OP(OP_OR_I, |)
+        INT_OP(OP_AND_I, &)
 
-        case TINY_OP_ADD1_I: {
-            *(int*)(vm->sp - sizeof(int)) += 1;
+        case OP_ADD1_I: {
+            (vm->sp - 1)->i += 1;
         } break;
 
-        case TINY_OP_SUB1_I: {
-            *(int*)(vm->sp - sizeof(int)) -= 1;
+        case OP_SUB1_I: {
+            (vm->sp - 1)->i -= 1;
         } break;
 
-        INT_CMP_OP(TINY_OP_LT_I, <)
-        INT_CMP_OP(TINY_OP_LTE_I, <=)
-        INT_CMP_OP(TINY_OP_GT_I, >)
-        INT_CMP_OP(TINY_OP_GTE_I, >=)
+        INT_CMP_OP(OP_LT_I, <)
+        INT_CMP_OP(OP_LTE_I, <=)
+        INT_CMP_OP(OP_GT_I, >)
+        INT_CMP_OP(OP_GTE_I, >=)
 
-        FLOAT_OP(TINY_OP_ADD_F, +)
-        FLOAT_OP(TINY_OP_SUB_F, -)
-        FLOAT_OP(TINY_OP_MUL_F, *)
-        FLOAT_OP(TINY_OP_DIV_F, /)
+        FLOAT_OP(OP_ADD_F, +)
+        FLOAT_OP(OP_SUB_F, -)
+        FLOAT_OP(OP_MUL_F, *)
+        FLOAT_OP(OP_DIV_F, /)
 
-        FLOAT_CMP_OP(TINY_OP_LT_F, <)
-        FLOAT_CMP_OP(TINY_OP_LTE_F, <=)
-        FLOAT_CMP_OP(TINY_OP_GT_F, >)
-        FLOAT_CMP_OP(TINY_OP_GTE_F, >=)
+        FLOAT_CMP_OP(OP_LT_F, <)
+        FLOAT_CMP_OP(OP_LTE_F, <=)
+        FLOAT_CMP_OP(OP_GT_F, >)
+        FLOAT_CMP_OP(OP_GTE_F, >=)
 
-        BOOL_CMP_OP(TINY_OP_EQU_B, ==)
-        CHAR_CMP_OP(TINY_OP_EQU_C, ==)
-        INT_CMP_OP(TINY_OP_EQU_I, ==)
-        FLOAT_CMP_OP(TINY_OP_EQU_F, ==)
+        BOOL_CMP_OP(OP_EQU_B, ==)
+        CHAR_CMP_OP(OP_EQU_C, ==)
+        INT_CMP_OP(OP_EQU_I, ==)
+        FLOAT_CMP_OP(OP_EQU_F, ==)
 
-        BOOL_OP(TINY_OP_LOG_AND, &&)
-        BOOL_OP(TINY_OP_LOG_OR, ||)
+        BOOL_OP(OP_LOG_AND, &&)
+        BOOL_OP(OP_LOG_OR, ||)
 
 #undef BOOL_OP
 #undef BOOL_CMP_OP
@@ -192,21 +208,19 @@ static void ExecuteCycle(Tiny_VM* vm)
 #undef INT_OP
 #undef ARITH_OP
 
-        case TINY_OP_LOG_NOT: {
+        case OP_LOG_NOT: {
             bool b = PopValue(vm).b;
             PushBool(vm, !b);
         } break;
 
-        case TINY_OP_GOTO: {
-            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(int));
-            int dest = *(int*)vm->pc;
+        case OP_GOTO: {
+            DECODE_VALUE(uint32_t, dest);
+
             vm->pc = vm->state->code + dest;
         } break;
 
-        case TINY_OP_GOTO_FALSE: {
-            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(int));
-            int dest = *(int*)vm->pc;
-            vm->pc += sizeof(int);
+        case OP_GOTO_FALSE: {
+            DECODE_VALUE_MOVE_PC(uint32_t, dest);
 
             bool b = PopValue(vm).b;
             if(!b) {
@@ -214,44 +228,66 @@ static void ExecuteCycle(Tiny_VM* vm)
             }
         } break;
 
-        case TINY_OP_CALL: {
+        case OP_CALL: {
             uint8_t nargs = *vm->pc++;
-            vm->pc = ALIGN_UP_PTR(vm->pc, alignof(int));
-            int dest = *(int*)vm->pc;
-            vm->pc += sizeof(int);
+            DECODE_VALUE_MOVE_PC(uint32_t, idx);
 
+            assert(idx < BUF_LEN(vm->state->functionPcs));
             assert(vm->fc < TINY_THREAD_MAX_CALL_DEPTH);
 
             vm->frames[vm->fc++] = (Tiny_Frame){ vm->pc, vm->fp, nargs };
             vm->fp = vm->sp;
 
-            vm->pc = vm->state->code + dest;
+            vm->pc = vm->state->code + vm->state->functionPcs[idx];
         } break;
 
-        case TINY_OP_RET: {
+        case OP_GET: {
+            DECODE_VALUE_MOVE_PC(uint32_t, idx);
+
+            assert(idx < BUF_LEN(vm->state->parser.sym.globals));
+            PushValue(vm, vm->globals[idx]);
+        } break;
+
+        case OP_SET: {
+            DECODE_VALUE_MOVE_PC(uint32_t, idx);
+
+            vm->globals[idx] = PopValue(vm);
+        } break;
+
+        case OP_GET_LOCAL: {
+            uint8_t idx = *vm->pc++;
+            PushValue(vm, vm->stack[vm->fp + idx]);
+        } break;
+
+        case OP_SET_LOCAL: {
+            uint8_t idx = *vm->pc++;
+            vm->stack[vm->fp + idx] = PopValue(vm);
+        } break;
+
+        case OP_RET: {
             PopFrame(vm);
         } break;
 
-        case TINY_OP_RETVAL: {
+        case OP_RETVAL: {
             vm->retval = PopValue(vm);
             PopFrame(vm);
         } break;
 
-        case TINY_OP_GET_RETVAL: {
+        case OP_GET_RETVAL: {
             PushValue(vm, vm->retval);
         } break;
 
-        case TINY_OP_HALT: {
+        case OP_HALT: {
             vm->pc = NULL;
         } break;
 
-        case TINY_OP_FILE: {
+        case OP_FILE: {
         } break;
 
-        case TINY_OP_LINE: {
+        case OP_LINE: {
         } break;
 
-        case TINY_OP_MISALIGNED_INSTRUCTION: {
+        case OP_MISALIGNED_INSTRUCTION: {
             assert(false);
         } break;
 
@@ -259,6 +295,15 @@ static void ExecuteCycle(Tiny_VM* vm)
             assert(false);
         } break;
     }
+
+#undef DECODE_VALUE
+}
+
+void Tiny_InitVM(Tiny_VM* vm, Tiny_Context* ctx, const Tiny_State* state, Tiny_StringPool* sp)
+{
+    vm->ctx = ctx;
+    vm->state = state;
+    vm->stringPool = sp;
 }
 
 void Tiny_Run(Tiny_VM* vm)
