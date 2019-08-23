@@ -22,6 +22,7 @@ typedef struct Tiny_StringPool
 
 void Tiny_InitStringPool(Tiny_StringPool* sp, Tiny_Context* ctx);
 
+const char* Tiny_StringPoolInsertKeyLen(Tiny_StringPool* sp, uint64_t key, const char* str, size_t len);
 const char* Tiny_StringPoolInsertLen(Tiny_StringPool* sp, const char* str, size_t len);
 const char* Tiny_StringPoolInsert(Tiny_StringPool* sp, const char* s);
 

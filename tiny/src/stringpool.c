@@ -7,10 +7,8 @@ void Tiny_InitStringPool(Tiny_StringPool* sp, Tiny_Context* ctx)
     Tiny_InitMap(&sp->map, ctx);
 }
 
-const char* Tiny_StringPoolInsertLen(Tiny_StringPool* sp, const char* str, size_t len)
+const char* Tiny_StringPoolInsertKeyLen(Tiny_StringPool* sp, uint64_t key, const char* str, size_t len)
 {
-    uint64_t key = HashBytes(str, len);
-
     Tiny_String* prevStr = Tiny_MapGet(&sp->map, key);
 
     if(prevStr) {
@@ -26,9 +24,15 @@ const char* Tiny_StringPoolInsertLen(Tiny_StringPool* sp, const char* str, size_
     memcpy(newStr->str, str, len);
     newStr->str[len] = '\0';
 
-	Tiny_MapInsert(&sp->map, key, newStr);
+    Tiny_MapInsert(&sp->map, key, newStr);
 
     return newStr->str;
+}
+
+const char* Tiny_StringPoolInsertLen(Tiny_StringPool* sp, const char* str, size_t len)
+{
+    uint64_t key = HashBytes(str, len);
+    return Tiny_StringPoolInsertKeyLen(sp, key, str, len);
 }
 
 const char* Tiny_StringPoolInsert(Tiny_StringPool* sp, const char* str)
