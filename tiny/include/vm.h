@@ -9,6 +9,9 @@
 // semantics; then reference semantics can be done using a 'ref' type maybe. Too much for
 // now though. Stick to reference semantics for struct instances.
 
+// Notice that this header defines value types. These would be an implementation
+// detail were it not for the fact that the "any" type exists.
+
 #ifndef TINY_THREAD_STACK_SIZE
 #define TINY_THREAD_STACK_SIZE  256
 #endif
@@ -23,40 +26,45 @@ typedef struct Tiny_State Tiny_State;
 
 typedef struct Tiny_Object Tiny_Object;
 
+// TODO(Apaar): All string creation incurs an object allocation
+// because we don't distinguish between strings and other types
+// of roots, so they're all boxed. However, in the future, we 
+// can distinguish the two or add a "static string" type
+// which basically doesn't participate the GC process. It is interned
+// once and then remains there forever. Useful for constants and stuff.
 typedef enum Tiny_ValueType
 {
-    TINY_VAL_NULL,
     TINY_VAL_BOOL,
     TINY_VAL_CHAR,
     TINY_VAL_INT,
     TINY_VAL_FLOAT,
-    TINY_VAL_STRING,
-    TINY_VAL_POINTER
+    TINY_VAL_STRING
 } Tiny_ValueType;
 
 typedef union {
     bool b;
-    char c;
+    uint32_t c;
     int i;
     float f;
-    const char* s;
-    void* p;
+    Tiny_Object* o;
 } Tiny_Value;
 
 typedef struct Tiny_Frame
 {
     uint8_t* pc;
-    char* fp;
+    Tiny_Value* fp;
     uint8_t nargs;
+
+    LocalRoots roots;
 } Tiny_Frame;
 
-typedef struct Tiny_StateThread
+typedef struct Tiny_VM
 {
     Tiny_Context* ctx;
     const Tiny_State* state;
 
-    // Multiple threads could share the same StringPool; however,
-    // since StringPool is not thread-safe, all the StateThreads which
+    // Multiple VMs can share the same StringPool. However,
+    // since StringPool is not thread-safe, all the VMs which
     // share it must execute on the same OS thread or their execution
     // should be synchronized.
     Tiny_StringPool* stringPool;    
@@ -70,8 +78,17 @@ typedef struct Tiny_StateThread
     Tiny_Value* globals;
 
     uint8_t* pc;
-    char* sp;
-    char* fp;
+    Tiny_Value* sp;
+    Tiny_Value* fp;
+
+    // Roots of the function being executed currently
+    //
+    // I explicitly copy this because if the state->localRoots
+    // buffer is appended to (e.g. if we compile more code)
+    // then that will invalidate any pointers to LocalRoots objects.
+    // However, we don't care about the LocalRoots object, we just 
+    // care about the indices inside it, so this works.
+    LocalRoots roots;
     
     // Last returned value
     Tiny_Value retVal;
@@ -86,6 +103,10 @@ typedef struct Tiny_StateThread
     const char* fileName;
 	int lineNumber;
 
-    // Userdata pointer. Set to NULL when InitThread is called. Use it for whatever you want
+    // Userdata pointer. Set to NULL when Init is called. Use it for whatever you want
     void* userdata;
 } Tiny_VM;
+
+void Tiny_InitVM(Tiny_VM* vm, Tiny_Context* ctx, const Tiny_State* state, Tiny_StringPool* sp);
+void Tiny_Run(Tiny_VM* vm);
+void Tiny_DestroyVM(Tiny_VM* vm);

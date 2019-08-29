@@ -2,6 +2,140 @@
 #include "opcodes.h"
 #include "vm.h"
 
+#define INIT_GC_THRESH  8
+
+typedef struct Tiny_Object {
+    struct 
+    {
+        uint8_t marked : 1;
+        uint8_t type : 7;
+    };
+
+    struct Tiny_Object* next;
+
+    union
+    {
+        // Only boxed when "any" is used
+        bool b;
+        uint32_t c;
+        int i;
+        float f;
+
+        // Always boxed
+        const char* s;
+
+        // TODO(Apaar): Arrays, like structs, will be in place, we just reallocate
+        // the entire object struct.
+        //
+        // Maps too. Tiny_Value's should be able to fit in the void* values.
+        //
+        // "Structs" just in-place arrays of Tiny_Value
+    };
+} Tiny_Object;
+
+static void Mark(Tiny_VM* vm, Tiny_Object* obj)
+{
+    // Handle null or already marked values
+    if(!obj || obj->marked) {
+        return;
+    }
+    
+    obj->marked = 1;
+
+    switch(obj->type) {
+        case TINY_VAL_STRING: Tiny_StringPoolRetain(vm->stringPool, obj->s); break;
+        default: break;
+    }
+}
+
+static void MarkFrame(Tiny_VM* vm, Tiny_Value* fp, LocalRoots roots)
+{
+    // TODO(Apaar): Get rid of this check once we have the compiler _always_
+    // generating roots.
+    if(!roots.indices) {
+        return;
+    }
+
+    for(int i = 0; i < BUF_LEN(roots.indices); ++i) {
+		Mark(vm, fp[roots.indices[i]].o);
+    }
+}
+
+static void MarkAll(Tiny_VM* vm)
+{
+    if(vm->fp) {
+        MarkFrame(vm, vm->fp, vm->roots);
+
+        // Note that there could be double marking because a caller might store a reference
+        // in a local variable and also pass it as an argument to a function. Both are
+        // roots. Arguments need to be roots too because a temporary might be passed in.
+        for(int i = 0; i < vm->fc; ++i) {
+            Tiny_Frame* frame = &vm->frames[i];
+            MarkFrame(vm, frame->fp, frame->roots);
+        }
+    }
+
+    for(int i = 0; i < BUF_LEN(vm->state->globalRoots.indices); ++i) {
+        Mark(vm, vm->globals[vm->state->globalRoots.indices[i]].o);
+    }
+}
+
+static void DeleteObject(Tiny_VM* vm, Tiny_Object* obj)
+{
+    if(!obj) {
+        return;
+    }
+
+    switch(obj->type) {
+        case TINY_VAL_STRING: Tiny_StringPoolRelease(vm->stringPool, obj->s); break;
+        default: break;
+    }
+}
+
+static void Sweep(Tiny_VM* vm)
+{
+    Tiny_Object** node = &vm->gcHead;
+
+    while(*node) {
+        if(!(*node)->marked) {
+            Tiny_Object* unreachable = *node;
+            *node = unreachable->next;
+
+            DeleteObject(vm, unreachable);
+        } else {
+            (*node)->marked = 0;
+            node = &(*node)->next;
+        }
+    }
+}
+
+static void CollectGarbage(Tiny_VM* vm)
+{
+    MarkAll(vm);
+    Sweep(vm);
+
+    vm->maxNumObjects = (vm->numObjects > 0) ? (vm->numObjects * 2) : INIT_GC_THRESH;
+}
+
+static Tiny_Object* AllocObject(Tiny_VM* vm, Tiny_ValueType type)
+{
+    if(vm->numObjects >= vm->maxNumObjects) {
+        CollectGarbage(vm);
+    }
+
+    Tiny_Object* obj = TMalloc(vm->ctx, sizeof(Tiny_Object));
+
+    obj->marked = 0;
+    obj->type = type;
+
+    obj->next = vm->gcHead;
+    vm->gcHead = obj;
+
+	vm->numObjects += 1;
+
+    return obj;
+}
+
 static void PushValue(Tiny_VM* vm, Tiny_Value value)
 {
     *vm->sp++ = value;
@@ -14,7 +148,7 @@ static Tiny_Value PopValue(Tiny_VM* vm)
 
 static void PushNull(Tiny_VM* vm)
 {
-    Tiny_Value v = { .p = NULL };
+    Tiny_Value v = { .o = NULL };
     PushValue(vm, v);
 }
 
@@ -42,17 +176,12 @@ static void PushFloat(Tiny_VM* vm, float f)
     PushValue(vm, v);
 }
 
-static void PushString(Tiny_VM* vm, const char* str, size_t len)
+static void PushString(Tiny_VM* vm, uint64_t key, const char* str, size_t len)
 {
-    const char* s = Tiny_StringPoolInsertLen(vm->stringPool, str, len);
+    Tiny_Object* o = AllocObject(vm, TINY_VAL_STRING);
+    o->s = Tiny_StringPoolInsertKeyLen(vm->stringPool, key, str, len);
 
-    Tiny_Value v = { .s = s };
-    PushValue(vm, v);
-}
-
-static void PushPointer(Tiny_VM* vm, void* p)
-{
-    Tiny_Value v = { .p = p };
+    Tiny_Value v = { .o = o };
     PushValue(vm, v);
 }
 
@@ -78,7 +207,7 @@ static void ExecuteCycle(Tiny_VM* vm)
     } while(0)
 
 #define DECODE_VALUE_MOVE_PC(type, name) \
-    DECODE_VALUE(type, name) \
+    DECODE_VALUE(type, name); \
     do { \
         vm->pc += sizeof(type); \
     } while(0)
@@ -129,7 +258,7 @@ static void ExecuteCycle(Tiny_VM* vm)
             DECODE_VALUE_MOVE_PC(uintptr_t, p);
 
             const Tiny_String* s = Tiny_GetString((const char*)p);
-            PushString(vm, s->str, s->len);
+            PushString(vm, s->key, s->str, s->len);
         } break;
 
 #define ARITH_OP(type, name, operator, push) \
@@ -194,6 +323,12 @@ static void ExecuteCycle(Tiny_VM* vm)
         BOOL_CMP_OP(OP_EQU_B, ==)
         CHAR_CMP_OP(OP_EQU_C, ==)
         INT_CMP_OP(OP_EQU_I, ==)
+
+        case OP_EQU_I_0: {
+            bool b = (--vm->sp)->i == 0;
+            PushBool(vm, b);
+        } break;
+
         FLOAT_CMP_OP(OP_EQU_F, ==)
 
         BOOL_OP(OP_LOG_AND, &&)
@@ -235,8 +370,9 @@ static void ExecuteCycle(Tiny_VM* vm)
             assert(idx < BUF_LEN(vm->state->functionPcs));
             assert(vm->fc < TINY_THREAD_MAX_CALL_DEPTH);
 
-            vm->frames[vm->fc++] = (Tiny_Frame){ vm->pc, vm->fp, nargs };
+            vm->frames[vm->fc++] = (Tiny_Frame){ vm->pc, vm->fp, nargs, vm->roots };
             vm->fp = vm->sp;
+            vm->roots = vm->state->localRoots[idx];
 
             vm->pc = vm->state->code + vm->state->functionPcs[idx];
         } break;
@@ -255,13 +391,17 @@ static void ExecuteCycle(Tiny_VM* vm)
         } break;
 
         case OP_GET_LOCAL: {
-            uint8_t idx = *vm->pc++;
-            PushValue(vm, vm->stack[vm->fp + idx]);
+            int8_t off;
+			memcpy(&off, vm->pc++, sizeof(int8_t));
+
+            PushValue(vm, vm->fp[off]);
         } break;
 
         case OP_SET_LOCAL: {
-            uint8_t idx = *vm->pc++;
-            vm->stack[vm->fp + idx] = PopValue(vm);
+            int8_t off;
+            memcpy(&off, vm->pc++, sizeof(int8_t));
+
+            vm->fp[off] = PopValue(vm);
         } break;
 
         case OP_RET: {
@@ -269,12 +409,16 @@ static void ExecuteCycle(Tiny_VM* vm)
         } break;
 
         case OP_RETVAL: {
-            vm->retval = PopValue(vm);
+            // TODO(Apaar): Determine if the returned value needs to be marked.
+            // Generally, if the retval is to be used, there should be no collection
+            // occurring between this instruction and OP_GET_RETVAL, so for now
+            // I won't bother marking it.
+            vm->retVal = PopValue(vm);
             PopFrame(vm);
         } break;
 
         case OP_GET_RETVAL: {
-            PushValue(vm, vm->retval);
+            PushValue(vm, vm->retVal);
         } break;
 
         case OP_HALT: {
@@ -296,6 +440,7 @@ static void ExecuteCycle(Tiny_VM* vm)
         } break;
     }
 
+#undef DECODE_VALUE_MOVE_PC
 #undef DECODE_VALUE
 }
 
@@ -303,7 +448,28 @@ void Tiny_InitVM(Tiny_VM* vm, Tiny_Context* ctx, const Tiny_State* state, Tiny_S
 {
     vm->ctx = ctx;
     vm->state = state;
+
     vm->stringPool = sp;
+
+    vm->gcHead = NULL;
+    vm->numObjects = 0;
+    vm->maxNumObjects = 8;
+
+    // TODO(Apaar): Memset globals to 0?
+    vm->globals = TMalloc(ctx, sizeof(Tiny_Value) * BUF_LEN(state->parser.sym.globals));
+
+    vm->pc = NULL;
+    vm->sp = vm->stack;
+    vm->fp = NULL;
+	
+	vm->roots.indices = NULL;
+
+    vm->fc = 0;
+
+    vm->fileName = NULL;
+	vm->lineNumber = 0;
+
+    vm->userdata = NULL;
 }
 
 void Tiny_Run(Tiny_VM* vm)
@@ -312,4 +478,14 @@ void Tiny_Run(Tiny_VM* vm)
     while(vm->pc) {
         ExecuteCycle(vm);
     }
+}
+
+void Tiny_DestroyVM(Tiny_VM* vm)
+{
+    // Sweep twice without marking, everything should get collected
+    for(int i = 0; i < 2; ++i) {
+        Sweep(vm);
+    }
+
+    TFree(vm->ctx, vm->globals);
 }
