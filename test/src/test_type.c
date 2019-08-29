@@ -16,46 +16,20 @@ int main(int argc, char** argv)
     TypetagPool tp;
     InitTypetagPool(&tp, &ctx);
 
+	Typetag* tag[TYPETAG_ANY+1];
+
     for(int i = 0; i <= TYPETAG_ANY; ++i) {
         Typetag* t = GetPrimitiveTypetag(&tp, (TypetagType)i);
         assert(t);
+		tag[i] = t;
     }
 
-    enum 
-    {
-        PRIM,
-        FUNC,
-        STRUCT,
-        NAME
-    };
+	for(int i = 0; i <= TYPETAG_ANY; ++i) {
+        Typetag* t = GetPrimitiveTypetag(&tp, (TypetagType)i);
+		assert(t == tag[i]);
+	}
 
-    static const struct
-    {
-        uint8_t type;
-        union
-        {
-            uint8_t primType;
-            struct 
-            {
-                uint8_t retSig;
-                uint8_t sigs[];
-                bool varargs;
-            } func;
-            struct
-            {
-
-            } sstruct;
-            const char* name;
-        };
-    } sigs[] = {
-
-    };
-
-    static Typetag* prevTags[sizeof(sigs) / sizeof(sigs[0])];
-
-    for(int i = 0; i < sizeof(sigs) / sizeof(sigs[0]); ++i) {
-
-    }
+	// TODO(Apaar): Intern struct types and function types
 
     return 0;
 }
