@@ -151,7 +151,7 @@ static void ResolveTypes(Resolver* r, AST* ast)
                     bool fLhs = !iLhs && ast->binary.lhs->tag->type == TYPETAG_FLOAT;
                     bool fRhs = !iRhs && ast->binary.rhs->tag->type == TYPETAG_FLOAT;
 
-                    if((iLhs && fRhs) || (fLhs && iRhs)) {
+                    if((iLhs && fRhs) || (fLhs && iRhs) || (!iLhs && !fLhs) | |(!iRhs && !fRhs)) {
                         RESOLVER_ERROR_AST(r, ast, "Left and right hand side of binary operator must be ints or floats, but they're %s and %s.",
                                 GetTypeName(r->sym, ast->binary.lhs->tag),
                                 GetTypeName(r->sym, ast->binary.rhs->tag));
@@ -205,7 +205,7 @@ static void ResolveTypes(Resolver* r, AST* ast)
                     bool fLhs = !iLhs && ast->binary.lhs->tag->type == TYPETAG_FLOAT;
                     bool fRhs = !iRhs && ast->binary.rhs->tag->type == TYPETAG_FLOAT;
 
-                    if((iLhs && fRhs) || (fLhs && iRhs)) {
+                    if((iLhs && fRhs) || (fLhs && iRhs) || (!iLhs && !fLhs) | |(!iRhs && !fRhs)) {
                         RESOLVER_ERROR_AST(r, ast, "Left and right hand side of binary operator must be ints or floats, but they're %s and %s.",
                                 GetTypeName(r->sym, ast->binary.lhs->tag),
                                 GetTypeName(r->sym, ast->binary.rhs->tag));
@@ -221,6 +221,12 @@ static void ResolveTypes(Resolver* r, AST* ast)
                     if(ast->binary.lhs->tag->type == TYPETAG_VOID ||
                        ast->binary.rhs->tag->type == TYPETAG_VOID) {
                         RESOLVER_ERROR_AST(r, ast, "Attempted to check for equality with void. This is not allowed.");
+                    }
+
+                    if(ast->binary.lhs->tag->type != ast->binary.rhs->tag->type) {
+                        RESOLVER_ERROR_AST(r, ast, "Attempted to check for equality between mismatched types %s and %s. This is not allowed.",
+                                GetTypeName(r->sym, ast->binary.lhs->tag),
+                                GetTypeName(r->sym, ast->binary.rhs->tag));
                     }
 
                     ast->tag = GetPrimitiveTypetag(r->tp, TYPETAG_BOOL);
