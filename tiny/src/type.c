@@ -76,6 +76,18 @@ static void InitTypetagPool(TypetagPool* pool, Tiny_Context* ctx)
     INIT_BUF(pool->buffers, ctx);
 }
 
+static void DestroyTypetagPool(TypetagPool* pool)
+{
+    for(int i = 0; i < BUF_LEN(pool->buffers); ++i) {
+        DESTROY_BUF(pool->buffers[i]);
+    }
+
+    DESTROY_BUF(pool->buffers);
+    DESTROY_BUF(pool->types);
+
+    DestroyArena(&pool->arena);
+}
+
 static Typetag* GetPrimitiveTypetag(TypetagPool* pool, TypetagType type)
 {
     assert(type <= TYPETAG_ANY);
@@ -255,16 +267,4 @@ static int GetFieldIndex(const Typetag* s, const char* name)
     }
 
     return -1;
-}
-
-static void DestroyTypetagPool(TypetagPool* pool)
-{
-    for(int i = 0; i < BUF_LEN(pool->buffers); ++i) {
-        DESTROY_BUF(pool->buffers[i]);
-    }
-
-    DESTROY_BUF(pool->buffers);
-    DESTROY_BUF(pool->types);
-
-    DestroyArena(&pool->arena);
 }
