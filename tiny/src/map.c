@@ -33,7 +33,7 @@ static void MapGrow(Tiny_Map* map, size_t newCap)
     memset(newMap.values, 0, sizeof(void*) * newCap);
 
     for(size_t i = 0; i < map->cap; ++i) {
-        if(map->keys[i]) {
+        if(map->keys[i] && map->keys[i] != TINY_MAP_TOMBSTONE_KEY) {
             Tiny_MapInsert(&newMap, map->keys[i], map->values[i]);
         }
     }
@@ -92,7 +92,7 @@ static int MapGetIndex(Tiny_Map* map, uint64_t key)
     return -1;
 }
 
-void* Tiny_MapGet(Tiny_Map* map, uint64_t key)
+void** Tiny_MapGetPtr(Tiny_Map* map, uint64_t key)
 {
 	int i = MapGetIndex(map, key);
 
@@ -100,7 +100,17 @@ void* Tiny_MapGet(Tiny_Map* map, uint64_t key)
 		return NULL;
 	}
 
-	return map->values[i];
+	return &map->values[i];
+}
+
+void* Tiny_MapGet(Tiny_Map* map, uint64_t key)
+{
+    void** p = Tiny_MapGetPtr(map, key);
+    if(!p) {
+        return NULL;
+    }
+
+    return *p;
 }
 
 // Returns the removed value
