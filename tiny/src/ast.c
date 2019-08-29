@@ -21,7 +21,9 @@ typedef enum ASTType
     AST_FOR,
     AST_DOT,
     AST_CONSTRUCTOR,
-    AST_CAST
+    AST_CAST,
+    AST_BREAK,
+    AST_CONTINUE
 } ASTType;
 
 typedef struct AST
@@ -36,7 +38,7 @@ typedef struct AST
         bool boolean;
 
         int iValue;
-        int fIndex;
+        float fValue;
 
         const char* str;
 

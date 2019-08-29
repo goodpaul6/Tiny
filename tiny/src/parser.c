@@ -783,6 +783,20 @@ static AST* ParseStatement(Parser* p)
             return ast;
         } break;
 
+        case TOK_BREAK: {
+            AST* ast = AllocAST(p, AST_BREAK);
+            GetNextToken(p);
+
+            return ast;
+        } break;
+
+        case TOK_CONTINUE: {
+            AST* ast = AllocAST(p, AST_CONTINUE);
+            GetNextToken(p);
+
+            return ast;
+        } break;
+
 		default: {
 			PARSER_ERROR(p, "Unexpected token.");
 		} break;
@@ -801,6 +815,10 @@ static bool Parse(Parser* p, const char* fileName, const char* src, size_t len)
 
             // We take ownership of the lexer error message since it will
             // get destroyed
+            //
+            // FIXME(Apaar): This assumes the lexer error message is not
+            // placed into some arena or something, which is fine I guess,
+            // but there should be a better way to do this.
             p->errorMessage = p->l.errorMessage;
             p->l.errorMessage = NULL;
         }

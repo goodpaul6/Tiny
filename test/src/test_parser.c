@@ -32,6 +32,8 @@ int main(int argc, char** argv)
 		"   for i := 0; i < 1000; i += 1 {\n"
 		"       print(cast(i.x.y.z, int))\n"
 		"       i.x.y.z = new Struct{i * 1000}\n"
+        "		break\n"
+        "		continue\n"
 		"   }\n"
 		"}\n"
 		"struct Struct {\n"

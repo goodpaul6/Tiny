@@ -11,7 +11,7 @@
 
 int main(int argc, char** argv)
 {
-    const char* s = "( ) { } + - * / % > < = ! & | , ; : . && || := :: += -= *= /= %= |= &= == != <= >= null true false 'a' 1 1.5 \"hello, world\" abcd_1234 if else while for return func foreign struct new cast @";
+    const char* s = "( ) { } + - * / % > < = ! & | , ; : . && || := :: += -= *= /= %= |= &= == != <= >= null true false 'a' 1 1.5 \"hello, world\" abcd_1234 if else while for return func foreign struct new cast break continue @";
 
     Tiny_Context ctx = { NULL, Tiny_DefaultAlloc };
 
@@ -92,6 +92,8 @@ int main(int argc, char** argv)
     EXPECT(TOK_STRUCT);
     EXPECT(TOK_NEW);
     EXPECT(TOK_CAST);
+	EXPECT(TOK_BREAK);
+	EXPECT(TOK_CONTINUE);
 
     EXPECT(TOK_ERROR);
 

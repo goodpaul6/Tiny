@@ -3,6 +3,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
+#include <stdlib.h>
 
 typedef uint32_t TokenPos;
 
@@ -69,6 +70,8 @@ typedef enum
     TOK_STRUCT,
     TOK_NEW,
     TOK_CAST,
+    TOK_BREAK,
+    TOK_CONTINUE,
 
     TOK_EOF,
 
@@ -264,6 +267,8 @@ static TokenType GetToken(Lexer* l)
         if(strcmp(l->lexeme, "struct") == 0) return TOK_STRUCT;
 		if(strcmp(l->lexeme, "new") == 0) return TOK_NEW;
         if(strcmp(l->lexeme, "cast") == 0) return TOK_CAST;
+        if(strcmp(l->lexeme, "break") == 0) return TOK_BREAK;
+        if(strcmp(l->lexeme, "continue") == 0) return TOK_CONTINUE;
 
         return TOK_IDENT;
     }
