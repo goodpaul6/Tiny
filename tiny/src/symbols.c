@@ -36,7 +36,7 @@ typedef struct Sym
             {
                 bool bValue;
                 int iValue;
-                int fIndex;
+                float fValue;
                 const char* str;
             };
         } constant;
