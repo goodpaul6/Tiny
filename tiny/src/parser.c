@@ -18,7 +18,7 @@
 typedef struct Parser
 {
     Tiny_Context* ctx;
-    Arena arena;
+    Arena astArena;
 
     Tiny_StringPool sp;
     Symbols sym;
@@ -29,8 +29,6 @@ typedef struct Parser
 
 	AST** asts;
 
-    // If this is NULL but 'Parse' still returned false, then there is likely a 
-    // lexer error
     char* errorMessage;
 
     jmp_buf topLevelEnv;
@@ -55,7 +53,7 @@ static void InitParser(Parser* p, Tiny_Context* ctx)
     InitTypetagPool(&p->tp, ctx);
     InitSymbols(&p->sym, ctx, &p->sp, &p->tp);
 
-    InitArena(&p->arena, ctx);
+    InitArena(&p->astArena, ctx);
     p->errorMessage = NULL;
 
     INIT_BUF(p->buffers, ctx);
@@ -73,7 +71,11 @@ static void DestroyParser(Parser* p)
         DESTROY_BUF(*p->buffers[i]);
     }
 
-    DestroyArena(&p->arena);
+    DestroySymbols(&p->sym);
+    DestroyTypetagPool(&p->tp);
+    Tiny_DestroyStringPool(&p->sp);
+    
+    DestroyArena(&p->astArena);
 }
 
 static AST* ParseExpr(Parser* p);
@@ -90,7 +92,7 @@ static AST* ParseStatement(Parser* p);
 
 static AST* AllocAST(Parser* p, ASTType type)
 {
-    AST* ast = ArenaAlloc(&p->arena, sizeof(AST));
+    AST* ast = ArenaAlloc(&p->astArena, sizeof(AST));
 
     if(!ast) {
         PARSER_ERROR(p, "Failed to allocate AST; out of memory.");
@@ -827,7 +829,7 @@ static bool Parse(Parser* p, const char* fileName, const char* src, size_t len)
         return false;
     }
 
-	InitLexer(&p->l, p->ctx, fileName, src, len);
+    InitLexer(&p->l, p->ctx, fileName, src, len);
 
     GetNextToken(p);
 

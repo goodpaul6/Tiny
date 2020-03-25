@@ -1,7 +1,6 @@
 #include <string.h>
 
 #include "stringpool.h"
-#include "state.h"
 #include "opcodes.h"
 
 // These "Roots" are necessary in order for the VM to distinguish 
@@ -9,13 +8,6 @@
 // in the symbol table of the parser, but this is basically
 // an optimization so that the GC does not have to iterate
 // through the symbol table.
-typedef struct LocalRoots
-{
-    // Buffer
-    // Offset from frame pointer
-    int8_t* indices;
-} LocalRoots;
-
 typedef struct GlobalRoots
 {
     // Buffer
@@ -23,11 +15,9 @@ typedef struct GlobalRoots
     uint32_t* indices;
 } GlobalRoots;
 
-typedef struct Tiny_State 
+typedef struct Tiny_State
 {
     Tiny_Context* ctx;
-
-    Parser parser;
 
     GlobalRoots globalRoots;
 
@@ -35,7 +25,7 @@ typedef struct Tiny_State
     uint32_t* functionPcs;
 
     // Buffer
-    LocalRoots* localRoots;
+    Tiny_LocalRoots* localRoots;
 
     // Buffer
     uint8_t* code;
@@ -44,8 +34,6 @@ typedef struct Tiny_State
 static void InitState(Tiny_State* state, Tiny_Context* ctx)
 {
     state->ctx = ctx;
-
-    InitParser(&state->parser, ctx);
 
     INIT_BUF(state->globalRoots.indices, ctx);
 
@@ -68,8 +56,6 @@ static void DestroyState(Tiny_State* state)
     DESTROY_BUF(state->localRoots);
 
     DESTROY_BUF(state->code);
-
-    DestroyParser(&state->parser);
 }
 
 inline static uint32_t GetGenPC(Tiny_State* state)
@@ -85,7 +71,7 @@ inline static void AllocateFunctions(Tiny_State* state, uint32_t funcCount)
     BUF_ADD(state->functionPcs, funcCount);
 
     void* roots = BUF_ADD(state->localRoots, funcCount);
-    memset(roots, 0, sizeof(LocalRoots) * funcCount);
+    memset(roots, 0, sizeof(Tiny_LocalRoots) * funcCount);
 }
 
 inline static void SetFuncStartHere(Tiny_State* state, uint32_t funcIndex)

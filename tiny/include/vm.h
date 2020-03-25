@@ -12,6 +12,8 @@
 // Notice that this header defines value types. These would be an implementation
 // detail were it not for the fact that the "any" type exists.
 
+#include "state.h"
+
 #ifndef TINY_THREAD_STACK_SIZE
 #define TINY_THREAD_STACK_SIZE  256
 #endif
@@ -55,7 +57,7 @@ typedef struct Tiny_Frame
     Tiny_Value* fp;
     uint8_t nargs;
 
-    LocalRoots roots;
+    Tiny_LocalRoots roots;
 } Tiny_Frame;
 
 typedef struct Tiny_VM
@@ -88,7 +90,7 @@ typedef struct Tiny_VM
     // then that will invalidate any pointers to LocalRoots objects.
     // However, we don't care about the LocalRoots object, we just 
     // care about the indices inside it, so this works.
-    LocalRoots roots;
+    Tiny_LocalRoots roots;
     
     // Last returned value
     Tiny_Value retVal;

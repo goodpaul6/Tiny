@@ -48,7 +48,7 @@ static void Mark(Tiny_VM* vm, Tiny_Object* obj)
     }
 }
 
-static void MarkFrame(Tiny_VM* vm, Tiny_Value* fp, LocalRoots roots)
+static void MarkFrame(Tiny_VM* vm, Tiny_Value* fp, Tiny_LocalRoots roots)
 {
     // TODO(Apaar): Get rid of this check once we have the compiler _always_
     // generating roots.
