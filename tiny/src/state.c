@@ -47,6 +47,8 @@ static void InitState(Tiny_State* state, Tiny_Context* ctx) {
 }
 
 static void DestroyState(Tiny_State* state) {
+    DestroyParser(&state->parser);
+
     DESTROY_BUF(state->globalRoots.indices);
 
     DESTROY_BUF(state->functionPcs);
