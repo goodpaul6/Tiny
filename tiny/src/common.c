@@ -11,6 +11,8 @@
 
 #ifdef _MSC_VER
 #define alignof(type)(__alignof(type))
+#else
+#include <stdalign.h>
 #endif
 
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))

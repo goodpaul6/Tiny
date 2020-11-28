@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <stdbool.h>
 
+#include "stringpool.h"
+
 // Type system
 
 typedef struct Typetag Typetag;

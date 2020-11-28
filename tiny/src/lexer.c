@@ -135,7 +135,7 @@ static void DestroyLexer(Lexer* l) {
 }
 
 #define LEXER_ERROR(l, fmt, ...) \
-    (((l)->errorMessage = MemPrintf((l)->ctx, (fmt), __VA_ARGS__)), TOK_ERROR)
+    (((l)->errorMessage = MemPrintf((l)->ctx, (fmt), ##__VA_ARGS__)), TOK_ERROR)
 
 static TokenType GetToken(Lexer* l) {
     // Make sure that error has been handled

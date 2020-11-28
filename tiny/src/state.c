@@ -3,6 +3,8 @@
 #include "opcodes.h"
 #include "stringpool.h"
 
+#include "state.h"
+
 // These "Roots" are necessary in order for the VM to distinguish
 // GC roots from other values. This information is available
 // in the symbol table of the parser, but this is basically
@@ -16,6 +18,8 @@ typedef struct GlobalRoots {
 
 typedef struct Tiny_State {
     Tiny_Context* ctx;
+
+    Parser parser;
 
     GlobalRoots globalRoots;
 
@@ -31,6 +35,8 @@ typedef struct Tiny_State {
 
 static void InitState(Tiny_State* state, Tiny_Context* ctx) {
     state->ctx = ctx;
+
+    InitParser(&state->parser, ctx);
 
     INIT_BUF(state->globalRoots.indices, ctx);
 

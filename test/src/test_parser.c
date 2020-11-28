@@ -2,15 +2,8 @@
 #include <math.h>
 #include <string.h>
 
-#include "ast.c"
-#include "common.c"
-#include "context.c"
-#include "lexer.c"
-#include "map.c"
-#include "parser.c"
-#include "stringpool.c"
-#include "symbols.c"
-#include "type.c"
+// TODO(Apaar): Only include what's needed, but this is convenient
+#include "tiny.c"
 
 int main(int argc, char** argv) {
     const char* s =

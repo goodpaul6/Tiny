@@ -84,10 +84,10 @@ static AST* ParseStatement(Parser* p);
         longjmp((p)->topLevelEnv, 1); \
     } while (0)
 
-#define PARSER_ERROR(p, fmt, ...)                                    \
-    do {                                                             \
-        (p)->errorMessage = MemPrintf((p)->ctx, (fmt), __VA_ARGS__); \
-        PARSER_ERROR_LONGJMP(p);                                     \
+#define PARSER_ERROR(p, fmt, ...)                                      \
+    do {                                                               \
+        (p)->errorMessage = MemPrintf((p)->ctx, (fmt), ##__VA_ARGS__); \
+        PARSER_ERROR_LONGJMP(p);                                       \
     } while (0)
 
 static AST* AllocAST(Parser* p, ASTType type) {
@@ -114,20 +114,20 @@ static TokenType GetNextToken(Parser* p) {
     return p->curTok;
 }
 
-#define EXPECT_TOKEN(p, type, fmt, ...)        \
-    do {                                       \
-        if ((p)->curTok != (type)) {           \
-            PARSER_ERROR(p, fmt, __VA_ARGS__); \
-        }                                      \
+#define EXPECT_TOKEN(p, type, fmt, ...)          \
+    do {                                         \
+        if ((p)->curTok != (type)) {             \
+            PARSER_ERROR(p, fmt, ##__VA_ARGS__); \
+        }                                        \
     } while (0)
 
-#define EAT_TOKEN(p, type, fmt, ...)           \
-    do {                                       \
-        if ((p)->curTok == (type)) {           \
-            GetNextToken(p);                   \
-        } else {                               \
-            PARSER_ERROR(p, fmt, __VA_ARGS__); \
-        }                                      \
+#define EAT_TOKEN(p, type, fmt, ...)             \
+    do {                                         \
+        if ((p)->curTok == (type)) {             \
+            GetNextToken(p);                     \
+        } else {                                 \
+            PARSER_ERROR(p, fmt, ##__VA_ARGS__); \
+        }                                        \
     } while (0)
 
 static Typetag* ParseType(Parser* p) {
@@ -295,7 +295,7 @@ static Sym* ParseStruct(Parser* p) {
             }
         }
 
-        BUF_PUSH((char**)names, (char*)name);
+        BUF_PUSH(names, (char*)name);
 
         GetNextToken(p);
 

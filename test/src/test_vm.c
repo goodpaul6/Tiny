@@ -1,16 +1,6 @@
 #include <assert.h>
 
-#include "ast.c"
-#include "common.c"
-#include "context.c"
-#include "lexer.c"
-#include "map.c"
-#include "parser.c"
-#include "state.c"
-#include "stringpool.c"
-#include "symbols.c"
-#include "type.c"
-#include "vm.c"
+#include "tiny.c"
 
 int main(int argc, char** argv) {
     Tiny_Context ctx = {NULL, Tiny_DefaultAlloc};
