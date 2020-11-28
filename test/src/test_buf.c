@@ -1,22 +1,21 @@
-#include "context.c"
 #include "common.c"
+#include "context.c"
 
-int main(int argc, char** argv)
-{
-    Tiny_Context ctx = { NULL, Tiny_DefaultAlloc };
+int main(int argc, char** argv) {
+    Tiny_Context ctx = {NULL, Tiny_DefaultAlloc};
 
-    int* ints = NULL; 
-    
+    int* ints = NULL;
+
     INIT_BUF(ints, &ctx);
 
-    for(int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 1000; ++i) {
         BUF_PUSH(ints, i);
     }
 
     assert(BUF_LEN(ints) == 1000);
     assert(BUF_CAP(ints) >= 1000);
 
-    for(int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 1000; ++i) {
         assert(ints[i] == i);
     }
 
@@ -29,23 +28,23 @@ int main(int argc, char** argv)
 
     assert(BUF_CAP(ints) == 1000);
 
-    for(int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 1000; ++i) {
         BUF_PUSH(ints, i);
     }
-    
+
     assert(BUF_LEN(ints) == 1000);
     assert(BUF_CAP(ints) == 1000);
 
     int* start = BUF_ADD(ints, 1000);
 
-    for(int i = 0; i < 1000; ++i) {
+    for (int i = 0; i < 1000; ++i) {
         start[i] = i;
     }
 
     assert(BUF_LEN(ints) == 2000);
     assert(BUF_CAP(ints) == 2000);
-    
-    for(int i = 0; i < 1000; ++i) {
+
+    for (int i = 0; i < 1000; ++i) {
         assert(ints[i + 1000] == i);
     }
 
@@ -53,4 +52,3 @@ int main(int argc, char** argv)
 
     return 0;
 }
-

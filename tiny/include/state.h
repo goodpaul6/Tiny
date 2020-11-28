@@ -12,17 +12,16 @@
 // and then execute their code recursively,
 
 // Holidays 2019:
-// We don't want the user to have to worry about modules from the C side that much. 
+// We don't want the user to have to worry about modules from the C side that much.
 // A state will retain all modules and code. The VM doesn't even need to worry about
 // the existence of modules this way. Anytime you compile some code, we simply append
 // it to the end of the existing code and keep track of a module symbol which can
 // be used to look up symbols in the module. I suppose each module can maintain its
-// own symbol table; the parser won't own it. Imported modules will 
+// own symbol table; the parser won't own it. Imported modules will
 
 typedef struct Tiny_State Tiny_State;
 
-typedef struct Tiny_LocalRoots
-{
+typedef struct Tiny_LocalRoots {
     // Buffer
     // Offset from frame pointer
     int8_t* indices;

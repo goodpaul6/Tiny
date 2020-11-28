@@ -1,7 +1,6 @@
 #include <setjmp.h>
 
-typedef struct Compiler
-{
+typedef struct Compiler {
     Tiny_Context* ctx;
     Tiny_State* state;
 
@@ -12,7 +11,4 @@ typedef struct Compiler
     jmp_buf topLevelEnv;
 } Compiler;
 
-static void InitCompiler(Compiler* comp) 
-{
-
-}
+static void InitCompiler(Compiler* comp) {}

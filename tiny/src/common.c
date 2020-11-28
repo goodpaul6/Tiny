@@ -1,55 +1,48 @@
 // Core functions
 
 #include <assert.h>
-#include <string.h>
-#include <stdio.h>
 #include <stdarg.h>
-#include <stdint.h>
 #include <stddef.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
 
 #include "context.h"
 
 #ifdef _MSC_VER
-#define alignof(type) (__alignof(type))
+#define alignof(type)(__alignof(type))
 #endif
 
 #define MIN(x, y) ((x) <= (y) ? (x) : (y))
 #define MAX(x, y) ((x) >= (y) ? (x) : (y))
 
-#define ALIGN_DOWN(n, a) ((n) & ~((a) - 1))
-#define ALIGN_UP(n, a) ALIGN_DOWN((n) + (a) - 1, (a))
-#define ALIGN_DOWN_PTR(p, a) ((void *)ALIGN_DOWN((uintptr_t)(p), (a)))
-#define ALIGN_UP_PTR(p, a) ((void *)ALIGN_UP((uintptr_t)(p), (a)))
+#define ALIGN_DOWN(n, a) ((n) & ~((a)-1))
+#define ALIGN_UP(n, a) ALIGN_DOWN((n) + (a)-1, (a))
+#define ALIGN_DOWN_PTR(p, a) ((void*)ALIGN_DOWN((uintptr_t)(p), (a)))
+#define ALIGN_UP_PTR(p, a) ((void*)ALIGN_UP((uintptr_t)(p), (a)))
 
 #define ARENA_PAGE_SIZE 4096
-#define ARENA_ALIGNMENT	8
+#define ARENA_ALIGNMENT 8
 
-inline static void* TMalloc(Tiny_Context* ctx, size_t size)
-{
+inline static void* TMalloc(Tiny_Context* ctx, size_t size) {
     return ctx->alloc(ctx->data, NULL, size);
 }
 
-inline static void* TRealloc(Tiny_Context* ctx, void* mem, size_t newSize)
-{
+inline static void* TRealloc(Tiny_Context* ctx, void* mem, size_t newSize) {
     return ctx->alloc(ctx->data, mem, newSize);
 }
 
-inline static void TFree(Tiny_Context* ctx, void* mem)
-{
-    ctx->alloc(ctx->data, mem, 0);
-}
+inline static void TFree(Tiny_Context* ctx, void* mem) { ctx->alloc(ctx->data, mem, 0); }
 
-inline static uint64_t HashUint64(uint64_t x)
-{
+inline static uint64_t HashUint64(uint64_t x) {
     x *= 0xff51afd7ed558ccd;
     x ^= x >> 32;
     return x;
 }
 
-inline static uint64_t HashBytes(const void* ptr, size_t len)
-{
+inline static uint64_t HashBytes(const void* ptr, size_t len) {
     uint64_t x = 0xcbf29ce484222325;
-    const char *buf = (const char *)ptr;
+    const char* buf = (const char*)ptr;
 
     for (size_t i = 0; i < len; i++) {
         x ^= buf[i];
@@ -62,8 +55,7 @@ inline static uint64_t HashBytes(const void* ptr, size_t len)
 
 // Arena allocator
 
-typedef struct ArenaPage
-{ 
+typedef struct ArenaPage {
     uint8_t* data;
     size_t size;
     size_t used;
@@ -71,19 +63,17 @@ typedef struct ArenaPage
     struct ArenaPage* next;
 } ArenaPage;
 
-typedef struct Arena
-{
+typedef struct Arena {
     Tiny_Context* ctx;
 
     ArenaPage* head;
     ArenaPage* tail;
 } Arena;
 
-static ArenaPage* CreateArenaPage(Tiny_Context* ctx, size_t size)
-{
+static ArenaPage* CreateArenaPage(Tiny_Context* ctx, size_t size) {
     ArenaPage* page = TMalloc(ctx, sizeof(ArenaPage));
 
-	size = ALIGN_UP(MAX(ARENA_PAGE_SIZE, size), ARENA_ALIGNMENT);
+    size = ALIGN_UP(MAX(ARENA_PAGE_SIZE, size), ARENA_ALIGNMENT);
 
     page->data = TMalloc(ctx, size);
 
@@ -97,18 +87,16 @@ static ArenaPage* CreateArenaPage(Tiny_Context* ctx, size_t size)
     return page;
 }
 
-static void InitArena(Arena* arena, Tiny_Context* ctx)
-{
+static void InitArena(Arena* arena, Tiny_Context* ctx) {
     arena->ctx = ctx;
     arena->head = arena->tail = NULL;
 }
 
-static void* ArenaAlloc(Arena* arena, size_t size)
-{
-    if(!arena->tail || size > (arena->tail->size - arena->tail->used)) {
+static void* ArenaAlloc(Arena* arena, size_t size) {
+    if (!arena->tail || size > (arena->tail->size - arena->tail->used)) {
         ArenaPage* page = CreateArenaPage(arena->ctx, size);
 
-        if(!arena->tail) {
+        if (!arena->tail) {
             arena->head = arena->tail = page;
         } else {
             arena->tail->next = page;
@@ -124,11 +112,10 @@ static void* ArenaAlloc(Arena* arena, size_t size)
     return ptr;
 }
 
-static void DestroyArena(Arena* arena)
-{
+static void DestroyArena(Arena* arena) {
     ArenaPage* page = arena->head;
-    
-    while(page) {
+
+    while (page) {
         ArenaPage* next = page->next;
 
         TFree(arena->ctx, page->data);
@@ -140,32 +127,31 @@ static void DestroyArena(Arena* arena)
 
 // Stretchy buffer (ala stb)
 
-typedef struct
-{
+typedef struct {
     Tiny_Context* ctx;
     size_t len, cap;
     char data[];
 } BufHeader;
 
 // This is necessary so that we have access to the allocation routines.
-#define INIT_BUF(b, c)          ((b) = CreateBuf((c)))
+#define INIT_BUF(b, c) ((b) = CreateBuf((c)))
 
-#define BUF_HEADER(b)           ((BufHeader*)((char*)(b) - offsetof(BufHeader, data)))
+#define BUF_HEADER(b) ((BufHeader*)((char*)(b)-offsetof(BufHeader, data)))
 
-#define BUF_LEN(b)              (BUF_HEADER(b)->len)
-#define BUF_CAP(b)              (BUF_HEADER(b)->cap)
-#define BUF_END(b)              ((b) + BUF_LEN(b))
+#define BUF_LEN(b) (BUF_HEADER(b)->len)
+#define BUF_CAP(b) (BUF_HEADER(b)->cap)
+#define BUF_END(b) ((b) + BUF_LEN(b))
 
-#define BUF_RESERVE(b, n)       ((n) <= BUF_CAP(b) ? 0 : ((b) = BufGrow((b), (n), sizeof(*(b)))))
-#define BUF_PUSH(b, v)          (BUF_RESERVE((b), BUF_LEN(b) + 1), (b)[BUF_HEADER(b)->len++] = (v))
-#define BUF_ADD(b, n)           (BUF_RESERVE((b), BUF_LEN(b) + (n)), (BUF_LEN(b) += (n)), (&(b)[BUF_LEN(b) - (n)]))
-#define BUF_POP(b)              (b[--BUF_HEADER(b)->len])
-#define BUF_CLEAR(b)            (BUF_HEADER(b)->len = 0)
+#define BUF_RESERVE(b, n) ((n) <= BUF_CAP(b) ? 0 : ((b) = BufGrow((b), (n), sizeof(*(b)))))
+#define BUF_PUSH(b, v) (BUF_RESERVE((b), BUF_LEN(b) + 1), (b)[BUF_HEADER(b)->len++] = (v))
+#define BUF_ADD(b, n) \
+    (BUF_RESERVE((b), BUF_LEN(b) + (n)), (BUF_LEN(b) += (n)), (&(b)[BUF_LEN(b) - (n)]))
+#define BUF_POP(b) (b[--BUF_HEADER(b)->len])
+#define BUF_CLEAR(b) (BUF_HEADER(b)->len = 0)
 
-#define DESTROY_BUF(b)          ((b) ? (TFree(BUF_HEADER(b)->ctx, BUF_HEADER(b)), (b) = NULL) : 0)
+#define DESTROY_BUF(b) ((b) ? (TFree(BUF_HEADER(b)->ctx, BUF_HEADER(b)), (b) = NULL) : 0)
 
-static void* CreateBuf(Tiny_Context* ctx)
-{
+static void* CreateBuf(Tiny_Context* ctx) {
     BufHeader* header = TMalloc(ctx, offsetof(BufHeader, data));
 
     header->ctx = ctx;
@@ -174,8 +160,7 @@ static void* CreateBuf(Tiny_Context* ctx)
     return header->data;
 }
 
-static void* BufGrow(void* b, size_t newLen, size_t elemSize)
-{
+static void* BufGrow(void* b, size_t newLen, size_t elemSize) {
     assert(b);
     assert(BUF_CAP(b) <= (SIZE_MAX - 1) / 2);
 
@@ -196,8 +181,7 @@ static void* BufGrow(void* b, size_t newLen, size_t elemSize)
     return newHeader->data;
 }
 
-static char* MemPrintf(Tiny_Context* ctx, const char* fmt, ...)
-{
+static char* MemPrintf(Tiny_Context* ctx, const char* fmt, ...) {
     va_list args;
     va_start(args, fmt);
 

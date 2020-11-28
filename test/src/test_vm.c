@@ -1,20 +1,19 @@
 #include <assert.h>
 
-#include "context.c"
-#include "common.c"
-#include "map.c"
-#include "stringpool.c"
-#include "type.c"
-#include "lexer.c"
-#include "symbols.c"
 #include "ast.c"
+#include "common.c"
+#include "context.c"
+#include "lexer.c"
+#include "map.c"
 #include "parser.c"
 #include "state.c"
+#include "stringpool.c"
+#include "symbols.c"
+#include "type.c"
 #include "vm.c"
 
-int main(int argc, char** argv)
-{
-    Tiny_Context ctx = { NULL, Tiny_DefaultAlloc };
+int main(int argc, char** argv) {
+    Tiny_Context ctx = {NULL, Tiny_DefaultAlloc};
 
     const char s[] = "Hello, World!";
 
@@ -25,7 +24,7 @@ int main(int argc, char** argv)
 
     uintptr_t ps = (uintptr_t)Tiny_StringPoolInsertLen(&state.parser.sp, s, sizeof(s) - 1);
 
-	uint32_t patchPos = GenGotoPatch(&state, OP_GOTO);
+    uint32_t patchPos = GenGotoPatch(&state, OP_GOTO);
 
     // func(a: int, b: int, c: int): bool { return a + b - c == 0 }
     SetFuncStartHere(&state, 0);
@@ -38,8 +37,8 @@ int main(int argc, char** argv)
     GenOp(&state, OP_EQU_I_0);
     GenOp(&state, OP_RETVAL);
 
-	uint32_t pc = GetGenPC(&state);
-	FillPatch(&state, patchPos, &pc, sizeof(pc));
+    uint32_t pc = GetGenPC(&state);
+    FillPatch(&state, patchPos, &pc, sizeof(pc));
 
     GenOp(&state, OP_PUSH_S);
     GenBytes(&state, alignof(ps), &ps, sizeof(ps));
@@ -52,8 +51,8 @@ int main(int argc, char** argv)
 
     GenOp(&state, OP_HALT);
 
-	Tiny_StringPool sp;
-	Tiny_InitStringPool(&sp, &ctx);
+    Tiny_StringPool sp;
+    Tiny_InitStringPool(&sp, &ctx);
 
     Tiny_VM vm;
     Tiny_InitVM(&vm, &ctx, &state, &sp);

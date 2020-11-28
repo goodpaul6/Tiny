@@ -1,17 +1,16 @@
-#include "map.h"
 #include "stringpool.h"
+#include "map.h"
 
-void Tiny_InitStringPool(Tiny_StringPool* sp, Tiny_Context* ctx)
-{
+void Tiny_InitStringPool(Tiny_StringPool* sp, Tiny_Context* ctx) {
     sp->ctx = ctx;
     Tiny_InitMap(&sp->map, ctx);
 }
 
-const char* Tiny_StringPoolInsertKeyLen(Tiny_StringPool* sp, uint64_t key, const char* str, size_t len)
-{
+const char* Tiny_StringPoolInsertKeyLen(Tiny_StringPool* sp, uint64_t key, const char* str,
+                                        size_t len) {
     Tiny_String* prevStr = Tiny_MapGet(&sp->map, key);
 
-    if(prevStr) {
+    if (prevStr) {
         return prevStr->str;
     }
 
@@ -29,25 +28,21 @@ const char* Tiny_StringPoolInsertKeyLen(Tiny_StringPool* sp, uint64_t key, const
     return newStr->str;
 }
 
-const char* Tiny_StringPoolInsertLen(Tiny_StringPool* sp, const char* str, size_t len)
-{
+const char* Tiny_StringPoolInsertLen(Tiny_StringPool* sp, const char* str, size_t len) {
     uint64_t key = HashBytes(str, len);
     return Tiny_StringPoolInsertKeyLen(sp, key, str, len);
 }
 
-const char* Tiny_StringPoolInsert(Tiny_StringPool* sp, const char* str)
-{
+const char* Tiny_StringPoolInsert(Tiny_StringPool* sp, const char* str) {
     return Tiny_StringPoolInsertLen(sp, str, strlen(str));
 }
 
-Tiny_String* Tiny_GetString(const char* str)
-{
+Tiny_String* Tiny_GetString(const char* str) {
     return (Tiny_String*)((char*)str - offsetof(Tiny_String, str));
 }
 
 // Call this when a string is marked.
-void Tiny_StringPoolRetain(Tiny_StringPool* sp, const char* str)
-{
+void Tiny_StringPoolRetain(Tiny_StringPool* sp, const char* str) {
     (void)sp;
 
     Tiny_String* g = Tiny_GetString(str);
@@ -55,8 +50,7 @@ void Tiny_StringPoolRetain(Tiny_StringPool* sp, const char* str)
 }
 
 // Call this when a string is sweeped (destroyed).
-void Tiny_StringPoolRelease(Tiny_StringPool* sp, const char* str)
-{
+void Tiny_StringPoolRelease(Tiny_StringPool* sp, const char* str) {
     Tiny_String* g = Tiny_GetString(str);
 
     // Must have been retained in order to be released like this
@@ -64,7 +58,7 @@ void Tiny_StringPoolRelease(Tiny_StringPool* sp, const char* str)
 
     g->refCount -= 1;
 
-    if(g->refCount <= 0) {
+    if (g->refCount <= 0) {
         Tiny_String* removed = Tiny_MapRemove(&sp->map, g->key);
         assert(g == removed);
 
@@ -72,13 +66,12 @@ void Tiny_StringPoolRelease(Tiny_StringPool* sp, const char* str)
     }
 }
 
-void Tiny_DestroyStringPool(Tiny_StringPool* sp)
-{
-    for(size_t i = 0; i < sp->map.cap; ++i) {
-        if(sp->map.keys[i] && sp->map.keys[i] != TINY_MAP_TOMBSTONE_KEY) {
+void Tiny_DestroyStringPool(Tiny_StringPool* sp) {
+    for (size_t i = 0; i < sp->map.cap; ++i) {
+        if (sp->map.keys[i] && sp->map.keys[i] != TINY_MAP_TOMBSTONE_KEY) {
             TFree(sp->ctx, sp->map.values[i]);
         }
     }
 
-    Tiny_DestroyMap(&sp->map);    
+    Tiny_DestroyMap(&sp->map);
 }
