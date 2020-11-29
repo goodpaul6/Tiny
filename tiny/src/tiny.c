@@ -10,5 +10,6 @@
 #include "symbols.c"
 #include "ast.c"
 #include "parser.c"
+#include "resolve.c"
 #include "state.c"
 #include "vm.c"

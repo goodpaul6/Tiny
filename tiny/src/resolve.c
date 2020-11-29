@@ -3,7 +3,7 @@
 typedef struct Resolver {
     Tiny_Context* ctx;
 
-    StringPool* sp;
+    Tiny_StringPool* sp;
     Symbols* sym;
     TypetagPool* tp;
 
@@ -18,19 +18,19 @@ typedef struct Resolver {
         longjmp((r)->topLevelEnv, 1); \
     } while (0)
 
-#define RESOLVER_ERROR(r, fmt, ...)                                \
-    do {                                                           \
-        (r)->errorMessage = MemPrintf(r->ctx, (fmt), __VA_ARGS__); \
-        RESOLVER_ERROR_LONGJMP(r);                                 \
+#define RESOLVER_ERROR(r, fmt, ...)                                  \
+    do {                                                             \
+        (r)->errorMessage = MemPrintf(r->ctx, (fmt), ##__VA_ARGS__); \
+        RESOLVER_ERROR_LONGJMP(r);                                   \
     } while (0)
 
-#define RESOLVER_ERROR_AST(r, ast, fmt, ...) \
-    do {                                     \
-        (r)->errorAST = (ast);               \
-        RESOLVER_ERROR(r, fmt, __VA_ARGS__); \
+#define RESOLVER_ERROR_AST(r, ast, fmt, ...)   \
+    do {                                       \
+        (r)->errorAST = (ast);                 \
+        RESOLVER_ERROR(r, fmt, ##__VA_ARGS__); \
     } while (0)
 
-static void InitResolver(Resolver* r, Tiny_Context* ctx, StringPool* sp, Symbols* sym,
+static void InitResolver(Resolver* r, Tiny_Context* ctx, Tiny_StringPool* sp, Symbols* sym,
                          TypetagPool* tp) {
     r->ctx = ctx;
 
@@ -126,7 +126,7 @@ static void ResolveTypes(Resolver* r, AST* ast) {
             }
 
             for (int i = 0; i < BUF_LEN(funcType->func.args); ++i) {
-                if (!CompareTypes(ast->call.args[i], funcType->func.args[i])) {
+                if (!CompareTypes(ast->call.args[i]->tag, funcType->func.args[i])) {
                     RESOLVER_ERROR_AST(
                         r, ast->call.args[i],
                         "Argument %i is supposed to be a %s but you supplied a %s.\n",
@@ -159,7 +159,7 @@ static void ResolveTypes(Resolver* r, AST* ast) {
                     bool fLhs = !iLhs && ast->binary.lhs->tag->type == TYPETAG_FLOAT;
                     bool fRhs = !iRhs && ast->binary.rhs->tag->type == TYPETAG_FLOAT;
 
-                    if ((iLhs && fRhs) || (fLhs && iRhs) || (!iLhs && !fLhs) | | (!iRhs && !fRhs)) {
+                    if ((iLhs && fRhs) || (fLhs && iRhs) || (!iLhs && !fLhs) || (!iRhs && !fRhs)) {
                         RESOLVER_ERROR_AST(r, ast,
                                            "Left and right hand side of binary operator must be "
                                            "ints or floats, but they're %s and %s.",
@@ -214,8 +214,8 @@ static void ResolveTypes(Resolver* r, AST* ast) {
                 case TOK_LT:
                 case TOK_GTE:
                 case TOK_LTE: {
-                    ResolveTypes(ast->binary.lhs);
-                    ResolveTypes(ast->binary.rhs);
+                    ResolveTypes(r, ast->binary.lhs);
+                    ResolveTypes(r, ast->binary.rhs);
 
                     // TODO(Apaar): Refactor this; it's identical to the TOK_PLUS/MINUS
                     // stuff above
@@ -225,7 +225,7 @@ static void ResolveTypes(Resolver* r, AST* ast) {
                     bool fLhs = !iLhs && ast->binary.lhs->tag->type == TYPETAG_FLOAT;
                     bool fRhs = !iRhs && ast->binary.rhs->tag->type == TYPETAG_FLOAT;
 
-                    if ((iLhs && fRhs) || (fLhs && iRhs) || (!iLhs && !fLhs) | | (!iRhs && !fRhs)) {
+                    if ((iLhs && fRhs) || (fLhs && iRhs) || (!iLhs && !fLhs) || (!iRhs && !fRhs)) {
                         RESOLVER_ERROR_AST(r, ast,
                                            "Left and right hand side of binary operator must be "
                                            "ints or floats, but they're %s and %s.",
@@ -273,7 +273,7 @@ static void ResolveTypes(Resolver* r, AST* ast) {
 
                     ast->binary.lhs->id.sym->var.type = ast->binary.rhs->tag;
 
-                    ast->tag = GetPrimitiveTypetag(r, TYPETAG_VOID);
+                    ast->tag = GetPrimitiveTypetag(r->tp, TYPETAG_VOID);
                 } break;
 
                 case TOK_EQUAL: {
@@ -306,7 +306,7 @@ static void ResolveTypes(Resolver* r, AST* ast) {
 
                     if (!(i || f)) {
                         RESOLVER_ERROR_AST(r, ast, "Attempted to apply unary '-' to a %s.",
-                                           GetTypeName(ast->unary.exp->tag));
+                                           GetTypeName(r->sym, ast->unary.exp->tag));
                     }
 
                     ast->tag = GetPrimitiveTypetag(r->tp, i ? TYPETAG_INT : TYPETAG_FLOAT);
@@ -315,7 +315,7 @@ static void ResolveTypes(Resolver* r, AST* ast) {
                 case TOK_BANG: {
                     if (ast->unary.exp->tag->type != TYPETAG_BOOL) {
                         RESOLVER_ERROR_AST(r, ast, "Attempted to apply unary '!' to a %s.",
-                                           GetTypeName(ast->unary.exp->tag));
+                                           GetTypeName(r->sym, ast->unary.exp->tag));
                     }
 
                     ast->tag = GetPrimitiveTypetag(r->tp, TYPETAG_BOOL);
@@ -345,7 +345,7 @@ static void ResolveTypes(Resolver* r, AST* ast) {
         case AST_IF: {
             ResolveTypes(r, ast->ifx.cond);
 
-            if (exp->ifx.cond->tag->type != TYPETAG_BOOL) {
+            if (ast->ifx.cond->tag->type != TYPETAG_BOOL) {
                 RESOLVER_ERROR_AST(r, ast->ifx.cond,
                                    "If condition is supposed to be a bool but it's a %s.",
                                    GetTypeName(r->sym, ast->ifx.cond->tag));
@@ -416,33 +416,32 @@ static void ResolveTypes(Resolver* r, AST* ast) {
         } break;
 
         case AST_CONSTRUCTOR: {
-            assert(ast->constructor.structSym->typetag);
+            assert(ast->constructor.type);
             assert(BUF_LEN(ast->constructor.args) <= UCHAR_MAX);
 
             int meCount = BUF_LEN(ast->constructor.args);
-            int tagCount = BUF_LEN(ast->constructor.structSym->typetag->tstruct.types);
+            int tagCount = BUF_LEN(ast->constructor.type->tstruct.types);
 
             if (meCount != tagCount) {
                 RESOLVER_ERROR_AST(r, ast,
                                    "Struct %s constructor expects %d args but you supplied %d.",
-                                   ast->constructor.structSym->name, tagCount, meCount);
+                                   ast->constructor.type->name, tagCount, meCount);
             }
 
             for (int i = 0; i < BUF_LEN(ast->constructor.args); ++i) {
                 ResolveTypes(r, ast->constructor.args[i]);
 
-                if (!CompareTypes(ast->constructor.args[i],
-                                  ast->constructor.structSym->typetag->tstruct.types[i])) {
+                if (!CompareTypes(ast->constructor.args[i]->tag,
+                                  ast->constructor.type->tstruct.types[i])) {
                     RESOLVER_ERROR_AST(
                         r, ast,
                         "Argument %d to constructor is supposed to be a %s but you supplied a %s.",
-                        i + 1,
-                        GetTypeName(r->sym, ast->constructor.structSym->typetag->tstruct.types[i]),
+                        i + 1, GetTypeName(r->sym, ast->constructor.type->tstruct.types[i]),
                         GetTypeName(r->sym, ast->constructor.args[i]->tag));
                 }
             }
 
-            ast->tag = ast->constructor.structSym->typetag;
+            ast->tag = ast->constructor.type;
         } break;
 
         case AST_CAST: {
