@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdio.h>
 
 #include "tiny.c"
 
@@ -20,6 +21,19 @@ int main(int argc, char** argv) {
     res = ResolveProgram(&resolver, parser.asts);
 
     assert(res);
+
+    const char* invalidCode = "func add(x: int, y: int): int { return x + y } add(10, 10.5)";
+
+    res = Parse(&parser, "test2", invalidCode, strlen(invalidCode));
+
+    assert(res);
+
+    res = ResolveProgram(&resolver, parser.asts);
+
+    assert(!res);
+
+    assert(strcmp(resolver.errorMessage,
+                  "Argument 2 is supposed to be a int but you supplied a float.") == 0);
 
     return 0;
 }
