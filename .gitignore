@@ -11,3 +11,4 @@ Release/*
 *.tlog 
 build 
 bin 
+.vscode
