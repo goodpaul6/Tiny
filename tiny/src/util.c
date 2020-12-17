@@ -1,27 +1,25 @@
-#include <math.h>
 #include <assert.h>
+#include <math.h>
 #include <stdio.h>
-#include <string.h>
 #include <stdlib.h>
+#include <string.h>
 
 #include "util.h"
 
-char* Tiny_Strdup(const char* s)
-{
+char* Tiny_Strdup(const char* s) {
     char* ss = malloc(strlen(s) + 1);
     strcpy(ss, s);
     return ss;
 }
 
-int Tiny_TranslatePosToLineNumber(const char* src, Tiny_TokenPos pos)
-{
+int Tiny_TranslatePosToLineNumber(const char* src, Tiny_TokenPos pos) {
     int curPos = 0;
     int lineNumber = 1;
 
-    while(curPos < pos) {
+    while (curPos < pos) {
         assert(src[curPos]);
 
-        if(src[curPos] == '\n') {
+        if (src[curPos] == '\n') {
             ++lineNumber;
         }
 
@@ -31,40 +29,40 @@ int Tiny_TranslatePosToLineNumber(const char* src, Tiny_TokenPos pos)
     return lineNumber;
 }
 
-void Tiny_ReportErrorV(const char* fileName, const char* src, Tiny_TokenPos pos, const char* s, va_list args)
-{
-	fputc('\n', stderr);
+void Tiny_ReportErrorV(const char* fileName, const char* src, Tiny_TokenPos pos, const char* s,
+                       va_list args) {
+    fputc('\n', stderr);
 
-    if(src) {
+    if (src) {
         int lineNumber = Tiny_TranslatePosToLineNumber(src, pos);
         int curLine = 1;
 
         // Print nearest 3 lines
-        while(*src) {
-            if(abs(lineNumber - curLine) <= 3) {
-                if(curLine == lineNumber) {
+        while (*src) {
+            if (abs(lineNumber - curLine) <= 3) {
+                if (curLine == lineNumber) {
                     fprintf(stderr, "%d ->\t", curLine);
                 } else {
                     fprintf(stderr, "%d\t", curLine);
                 }
 
-                while(*src && *src != '\n') {
+                while (*src && *src != '\n') {
                     fputc(*src, stderr);
                     src += 1;
                 }
 
-				if (*src == '\n') {
-					src += 1;
-					fputc('\n', stderr);
-				}
+                if (*src == '\n') {
+                    src += 1;
+                    fputc('\n', stderr);
+                }
 
                 curLine += 1;
             } else {
-				if (*src == '\n') {
-					++curLine;
-				}
+                if (*src == '\n') {
+                    ++curLine;
+                }
                 src += 1;
-            }     
+            }
         }
 
         fputc('\n', stderr);

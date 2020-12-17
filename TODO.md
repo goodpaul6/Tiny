@@ -1,5 +1,14 @@
 # Todo
+* Make sure VM bytecode instructions and data are aligned properly (DONE)
+    - Actually memcpy-ing from byte-aligned values should work fine as well but I wanna
+      benchmark to see which one is faster. For binary size/memory footprint, unaligned
+      should be better, can be an option.
+
 * Refactor VM from compiler
+
+* Get rid of map.h/stringpool.h and add buf.c instead of throwing buf in common (because it isn't actually common to e.g. map.h and stringpool.h)
+
+* panic/recover (basically setjmp/longjmp ok) style error handling in VM
 
 * First class types (store a "type" which is just an integer in the VM)
 
@@ -11,6 +20,10 @@
 * "Method" sugar (first argument to func matches type of x => x.func())
 
 * Do not `exit` anywhere in the library; user code must be able to handle errors
+
+* Multiple return values
+    - Super useful for error handling and just many things. Should be lower overhead
+      than anonymous structs (purely transmit on the stack, result must be assigned to exactly as many values as are expected to be returned).
 
 * Less haphazard allocation: Allow the user to supply a malloc, use Arenas
 
@@ -76,6 +89,12 @@ Tiny_RegisterType(state, "array($t)");
 Tiny_BindFunction(state, "get(array($t), int): t");
 ```
 
+<<<<<<< HEAD
 # Done
 * Make sure VM bytecode instructions and data are aligned properly
 * Safer "any" type: must be explicitly converted
+=======
+* Cool idea:
+    - Hygenic macros could be done with the '::' syntax because we basically paste the contents of the right hand side wherever these values are used but we could also store more than just strings/numbers: store the AST:
+    - Even functions could use that same syntax tbh, and structs too, but then I look like I'm copying Jai
+>>>>>>> 31427e9... More todo

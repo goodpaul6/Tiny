@@ -1,8 +1,18 @@
-set(SOURCES
-    src/test.c)
+set(test_executables "")
 
-add_executable(tiny_test ${SOURCES})
+function(tiny_test source)
+    get_filename_component(name ${source} NAME_WE)
+    add_executable("tiny_${name}" ${source})
+    set(test_executables ${test_list} "$<TARGET_FILE:tiny_${name}>" PARENT_SCOPE)
+    target_include_directories("tiny_${name}" PRIVATE ../tiny/include)
+    target_include_directories("tiny_${name}" PRIVATE ../tiny/src)
+endfunction()
 
-target_include_directories(tiny_test PRIVATE include)
-
-target_link_libraries(tiny_test tiny)
+tiny_test(src/test_buf.c)
+tiny_test(src/test_map.c)
+tiny_test(src/test_stringpool.c)
+tiny_test(src/test_lexer.c)
+tiny_test(src/test_type.c)
+tiny_test(src/test_parser.c)
+tiny_test(src/test_resolve.c)
+tiny_test(src/test_vm.c)
