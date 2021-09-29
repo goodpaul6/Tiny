@@ -12,3 +12,4 @@ Release/*
 build 
 bin 
 .vscode
+CMakeLists.txt.user
