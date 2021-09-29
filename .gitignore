@@ -11,3 +11,5 @@ Release/*
 *.tlog 
 build 
 bin 
+CMakeLists.txt.user
+.vscode
