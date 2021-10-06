@@ -1,13 +1,17 @@
-file(GLOB SOURCES src/*.c)
+set(SOURCES
+    lexer.cpp)
 
 add_library(tiny STATIC ${SOURCES})
 
 if(WIN32)
-    add_definitions(-D_CRT_SECURE_NO_WARNINGS -DTINY_MEM_STACK_TRACE_COUNT=10)
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
 endif()
 
-if(UNIX)
-    target_link_libraries(tiny PRIVATE m)
-endif()
+target_include_directories(tiny PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-target_include_directories(tiny PUBLIC include)
+set(TEST_LEXER_SOURCES
+    test_lexer.cpp)
+
+add_executable(test_lexer ${TEST_LEXER_SOURCES})
+
+target_link_libraries(test_lexer PRIVATE tiny)

@@ -1,8 +1,37 @@
+cmake_minimum_required(VERSION 3.1 FATAL_ERROR)
+
 project(tiny)
 
-cmake_minimum_required(VERSION 3.1)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-add_subdirectory(tiny)
-add_subdirectory(examples)
-add_subdirectory(test)
+if(WIN32)
+    add_definitions(-D_CRT_SECURE_NO_WARNINGS)
+endif()
 
+# Core language
+set(SOURCES
+    pos_error.cpp
+    lexer.cpp
+    ast_visitor.cpp
+    ast.cpp
+    parser.cpp)
+
+add_library(tiny STATIC ${SOURCES})
+
+target_include_directories(tiny PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+# Tests
+set(TEST_LEXER_SOURCES
+    test_lexer.cpp)
+
+add_executable(test_lexer ${TEST_LEXER_SOURCES})
+
+target_link_libraries(test_lexer PRIVATE tiny)
+
+set(TEST_PARSER_SOURCES
+    test_parser.cpp)
+
+add_executable(test_parser ${TEST_PARSER_SOURCES})
+
+target_link_libraries(test_parser PRIVATE tiny)
