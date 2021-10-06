@@ -20,7 +20,9 @@ constexpr std::array<Entity, 6> SEPARATORS{{{"(", tiny::TokenType::OPENPAREN},
                                             {",", tiny::TokenType::COMMA},
                                             {";", tiny::TokenType::SEMI}}};
 
-constexpr std::array<Entity, 8> OPERATORS{{{"+", tiny::TokenType::PLUS},
+constexpr std::array<Entity, 9> OPERATORS{{{"=", tiny::TokenType::EQUAL},
+
+                                           {"+", tiny::TokenType::PLUS},
                                            {"-", tiny::TokenType::MINUS},
                                            {"*", tiny::TokenType::STAR},
                                            {"/", tiny::TokenType::SLASH},

@@ -15,7 +15,8 @@ set(SOURCES
     lexer.cpp
     ast_visitor.cpp
     ast.cpp
-    parser.cpp)
+    parser.cpp
+    ast_interpreter.cpp)
 
 add_library(tiny STATIC ${SOURCES})
 
@@ -35,3 +36,10 @@ set(TEST_PARSER_SOURCES
 add_executable(test_parser ${TEST_PARSER_SOURCES})
 
 target_link_libraries(test_parser PRIVATE tiny)
+
+set(TEST_AST_INTERPRETER_SOURCES
+    test_ast_interpreter.cpp)
+
+add_executable(test_ast_interpreter ${TEST_AST_INTERPRETER_SOURCES})
+
+target_link_libraries(test_ast_interpreter PRIVATE tiny)

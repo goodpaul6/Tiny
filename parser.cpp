@@ -8,8 +8,8 @@ namespace {
 bool is_operator(tiny::TokenType token) {
     using namespace tiny;
 
-    return token == TokenType::PLUS || token == TokenType::MINUS || token == TokenType::STAR ||
-           token == TokenType::SLASH;
+    return token == TokenType::EQUAL || token == TokenType::PLUS || token == TokenType::MINUS ||
+           token == TokenType::STAR || token == TokenType::SLASH;
 }
 
 }  // namespace
@@ -78,24 +78,16 @@ Parser::ASTPtr Parser::parse_factor() {
 Parser::ASTPtr Parser::parse_expr() {
     auto ast = parse_factor();
 
-    switch (m_cur_tok) {
-        case TokenType::PLUS:
-        case TokenType::MINUS:
-        case TokenType::STAR:
-        case TokenType::SLASH: {
-            auto bin_ast = make_ast<BinAST>();
+    while (is_operator(m_cur_tok)) {
+        auto bin_ast = make_ast<BinAST>();
 
-            bin_ast->op = m_cur_tok;
-            next_token();
+        bin_ast->op = m_cur_tok;
+        next_token();
 
-            bin_ast->lhs = std::move(ast);
-            bin_ast->rhs = parse_expr();
+        bin_ast->lhs = std::move(ast);
+        bin_ast->rhs = parse_factor();
 
-            ast = std::move(bin_ast);
-        } break;
-
-        default:
-            break;
+        ast = std::move(bin_ast);
     }
 
     return ast;
