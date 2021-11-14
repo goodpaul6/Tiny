@@ -16,7 +16,8 @@ set(SOURCES
     ast_visitor.cpp
     ast.cpp
     parser.cpp
-    ast_interpreter.cpp)
+    ast_interpreter.cpp
+    type_name_pool.cpp)
 
 add_library(tiny STATIC ${SOURCES})
 
@@ -43,3 +44,10 @@ set(TEST_AST_INTERPRETER_SOURCES
 add_executable(test_ast_interpreter ${TEST_AST_INTERPRETER_SOURCES})
 
 target_link_libraries(test_ast_interpreter PRIVATE tiny)
+
+set(TEST_TYPE_NAME_POOL_SOURCES
+    test_type_name_pool.cpp)
+
+add_executable(test_type_name_pool ${TEST_TYPE_NAME_POOL_SOURCES})
+
+target_link_libraries(test_type_name_pool PRIVATE tiny)
