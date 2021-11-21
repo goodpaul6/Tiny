@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
 
     // As it stands, the only type of statement we have is a variable declaration,
     // so we test arithmetic in terms of that.
-    std::string str{"x: int = 10 y: int = x * 10 + 20"};
+    std::string str{"x: int = 10 y: int = x * 10 + 20 z: str = \"hello \" + \"world\""};
     std::istringstream ss{str};
 
     Lexer lexer{ss, "test"};
@@ -29,6 +29,7 @@ int main(int argc, char** argv) {
     }
 
     assert(std::get<std::int64_t>(ast_interpreter.env.at("y")) == 120);
+    assert(std::get<std::string>(ast_interpreter.env.at("z")) == "hello world");
 
     return 0;
 }

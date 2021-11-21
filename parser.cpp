@@ -138,6 +138,15 @@ Parser::ASTPtr Parser::parse_factor() {
             return ast;
         } break;
 
+        case TokenType::STRING_VALUE: {
+            auto ast = make_ast<LiteralAST>();
+
+            ast->value = m_lex.str();
+            next_token();
+
+            return ast;
+        } break;
+
         default:
             break;
     }
