@@ -4,15 +4,17 @@
 
 #include "ast.hpp"
 #include "parser.hpp"
+#include "type_name_pool.hpp"
 
 int main(int argc, char** argv) {
     using namespace tiny;
 
-    std::string str{"x * 10 + 20"};
+    std::string str{"x: [int]int[][] = x * 10 + 20"};
     std::istringstream ss{str};
 
     Lexer lexer{ss, "test"};
-    Parser parser{lexer};
+    TypeNamePool type_name_pool;
+    Parser parser{lexer, type_name_pool};
 
     parser.parse_until_eof([](auto ast) { assert(dynamic_cast<const BinAST*>(ast.get())); });
 
