@@ -6,18 +6,20 @@
 #include "function_view.hpp"
 #include "lexer.hpp"
 #include "token_type.hpp"
+#include "type_name_pool.hpp"
 
 namespace tiny {
 
 struct Parser {
     using ASTPtr = std::unique_ptr<AST>;
 
-    Parser(Lexer& lexer);
+    Parser(Lexer& lexer, TypeNamePool& type_name_pool);
 
     void parse_until_eof(const FunctionView<void(ASTPtr)>& ast_handler);
 
 private:
     Lexer& m_lex;
+    TypeNamePool& m_type_name_pool;
 
     TokenType m_cur_tok;
 
@@ -29,6 +31,8 @@ private:
     // Throws an error if the current token is not equal to the type, or consumes
     // the token if it is
     void eat_token(TokenType type);
+
+    const TypeName& parse_type();
 
     ASTPtr parse_factor();
     ASTPtr parse_expr();

@@ -1,9 +1,28 @@
 #include "parser.hpp"
 
+#include <array>
+#include <cassert>
+#include <optional>
+
 #include "lexer.hpp"
 #include "pos_error.hpp"
+#include "primitive_type.hpp"
 
 namespace {
+
+struct Entity {
+    std::string_view str;
+    tiny::PrimitiveType primitive_type;
+};
+
+constexpr std::array<Entity, static_cast<size_t>(tiny::PrimitiveType::COUNT)> PRIMITIVE_TYPES{
+    {{"void", tiny::PrimitiveType::NULLV},
+     {"bool", tiny::PrimitiveType::BOOL},
+     {"char", tiny::PrimitiveType::CHAR},
+     {"int", tiny::PrimitiveType::INT},
+     {"float", tiny::PrimitiveType::FLOAT},
+     {"str", tiny::PrimitiveType::STR},
+     {"any", tiny::PrimitiveType::ANY}}};
 
 bool is_operator(tiny::TokenType token) {
     using namespace tiny;
@@ -16,7 +35,8 @@ bool is_operator(tiny::TokenType token) {
 
 namespace tiny {
 
-Parser::Parser(Lexer& lexer) : m_lex{lexer} {}
+Parser::Parser(Lexer& lexer, TypeNamePool& type_name_pool)
+    : m_lex{lexer}, m_type_name_pool{type_name_pool} {}
 
 void Parser::parse_until_eof(const FunctionView<void(ASTPtr)>& ast_handler) {
     next_token();
@@ -37,6 +57,56 @@ void Parser::expect_token(TokenType type) {
 void Parser::eat_token(TokenType type) {
     expect_token(type);
     next_token();
+}
+
+const TypeName& Parser::parse_type() {
+    const TypeName* type = nullptr;
+
+    if (m_cur_tok == TokenType::OPENSQUARE) {
+        // Parse a map
+        next_token();
+
+        const auto& key = parse_type();
+
+        eat_token(TokenType::CLOSESQUARE);
+
+        const auto& value = parse_type();
+
+        type = &m_type_name_pool.map(key, value);
+    } else {
+        // We parse types as identifiers since it prevents us from
+        // reserving their names as keywords, even for primitive types.
+        expect_token(TokenType::IDENT);
+
+        std::optional<PrimitiveType> primitive_type;
+
+        for (const auto& entity : PRIMITIVE_TYPES) {
+            if (m_lex.str() == entity.str) {
+                primitive_type = entity.primitive_type;
+                break;
+            }
+        }
+
+        if (!primitive_type) {
+            throw PosError{m_lex.pos(), "Identifier does not denote a primitive type"};
+        }
+
+        next_token();
+
+        type = &m_type_name_pool.primitive_type(*primitive_type);
+    }
+
+    assert(type);
+
+    while (m_cur_tok == TokenType::OPENSQUARE) {
+        next_token();
+
+        eat_token(TokenType::CLOSESQUARE);
+
+        type = &m_type_name_pool.array(*type);
+    }
+
+    return *type;
 }
 
 Parser::ASTPtr Parser::parse_factor() {
@@ -93,6 +163,37 @@ Parser::ASTPtr Parser::parse_expr() {
     return ast;
 }
 
-Parser::ASTPtr Parser::parse_statement() { return parse_expr(); }
+Parser::ASTPtr Parser::parse_statement() {
+    switch (m_cur_tok) {
+        case TokenType::IDENT: {
+            auto str = m_lex.str();
+
+            next_token();
+
+            eat_token(TokenType::COLON);
+
+            const auto& type = parse_type();
+
+            auto var_ast = make_ast<VarDeclAST>();
+
+            var_ast->name = std::move(str);
+            var_ast->type = &type;
+
+            eat_token(TokenType::EQUAL);
+
+            auto bin_ast = make_ast<BinAST>();
+
+            bin_ast->op = TokenType::EQUAL;
+            bin_ast->lhs = std::move(var_ast);
+            bin_ast->rhs = parse_expr();
+
+            return bin_ast;
+        } break;
+
+        default: {
+            throw PosError{m_lex.pos(), "Expected identifier at start of statement."};
+        } break;
+    }
+}
 
 }  // namespace tiny

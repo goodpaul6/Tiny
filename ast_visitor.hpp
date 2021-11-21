@@ -4,11 +4,13 @@ namespace tiny {
 
 struct LiteralAST;
 struct IdAST;
+struct VarDeclAST;
 struct BinAST;
 
 struct ASTVisitor {
     virtual void visit(LiteralAST&);
     virtual void visit(IdAST&);
+    virtual void visit(VarDeclAST&);
     virtual void visit(BinAST&);
 };
 

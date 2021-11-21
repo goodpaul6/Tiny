@@ -13,24 +13,30 @@ struct Entity {
     tiny::TokenType token_type;
 };
 
-constexpr std::array<Entity, 6> SEPARATORS{{{"(", tiny::TokenType::OPENPAREN},
+constexpr std::array<Entity, 8> SEPARATORS{{{"(", tiny::TokenType::OPENPAREN},
                                             {")", tiny::TokenType::CLOSEPAREN},
                                             {"{", tiny::TokenType::OPENCURLY},
                                             {"}", tiny::TokenType::CLOSECURLY},
                                             {",", tiny::TokenType::COMMA},
-                                            {";", tiny::TokenType::SEMI}}};
+                                            {";", tiny::TokenType::SEMI},
+                                            {"[", tiny::TokenType::OPENSQUARE},
+                                            {"]", tiny::TokenType::CLOSESQUARE}}};
 
-constexpr std::array<Entity, 9> OPERATORS{{{"=", tiny::TokenType::EQUAL},
+constexpr std::array<Entity, 12> OPERATORS{{{"=", tiny::TokenType::EQUAL},
 
-                                           {"+", tiny::TokenType::PLUS},
-                                           {"-", tiny::TokenType::MINUS},
-                                           {"*", tiny::TokenType::STAR},
-                                           {"/", tiny::TokenType::SLASH},
+                                            {"+", tiny::TokenType::PLUS},
+                                            {"-", tiny::TokenType::MINUS},
+                                            {"*", tiny::TokenType::STAR},
+                                            {"/", tiny::TokenType::SLASH},
+                                            {":", tiny::TokenType::COLON},
 
-                                           {"+=", tiny::TokenType::PLUS_EQUAL},
-                                           {"-=", tiny::TokenType::MINUS_EQUAL},
-                                           {"*=", tiny::TokenType::STAR_EQUAL},
-                                           {"/=", tiny::TokenType::SLASH_EQUAL}}};
+                                            {"+=", tiny::TokenType::PLUS_EQUAL},
+                                            {"-=", tiny::TokenType::MINUS_EQUAL},
+                                            {"*=", tiny::TokenType::STAR_EQUAL},
+                                            {"/=", tiny::TokenType::SLASH_EQUAL},
+
+                                            {":=", tiny::TokenType::DECLARE},
+                                            {"::", tiny::TokenType::DECLARE_CONST}}};
 
 constexpr std::array<Entity, 10> KEYWORDS{{{"if", tiny::TokenType::IF},
                                            {"else", tiny::TokenType::ELSE},
@@ -145,6 +151,7 @@ TokenType Lexer::next_token() {
 
     for (const auto& sep : SEPARATORS) {
         if (m_last == sep.str[0]) {
+            m_last = m_s.get();
             return sep.token_type;
         }
     }

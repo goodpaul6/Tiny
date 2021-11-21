@@ -13,10 +13,9 @@ struct ASTInterpreter {
     using Value = std::variant<std::monostate, bool, char, std::int64_t, float, std::string>;
     using Env = std::unordered_map<std::string, Value>;
 
-    Value eval(AST& ast);
+    Env env;
 
-private:
-    Env m_env;
+    Value eval(AST& ast);
 };
 
 }  // namespace tiny

@@ -9,6 +9,8 @@ enum class TokenType : std::uint8_t {
     CLOSEPAREN,
     OPENCURLY,
     CLOSECURLY,
+    OPENSQUARE,
+    CLOSESQUARE,
 
     PLUS,
     MINUS,

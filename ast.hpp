@@ -6,6 +6,7 @@
 
 #include "pos.hpp"
 #include "token_type.hpp"
+#include "type_name.hpp"
 
 namespace tiny {
 
@@ -27,6 +28,13 @@ struct LiteralAST final : AST {
 
 struct IdAST final : AST {
     std::string name;
+
+    void visit(ASTVisitor& v) override;
+};
+
+struct VarDeclAST final : AST {
+    std::string name;
+    const TypeName* type = nullptr;
 
     void visit(ASTVisitor& v) override;
 };
