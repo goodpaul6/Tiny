@@ -2,13 +2,9 @@
 
 #include "request.h"
 
-enum
-{
-    REQUEST_ERROR = -1
-};
+enum { REQUEST_ERROR = -1 };
 
-typedef enum
-{
+typedef enum {
     REQUEST_STATE_FIRST_LINE,
     REQUEST_STATE_HEADER_NAME,
     REQUEST_STATE_HEADER_VALUE,
@@ -16,16 +12,15 @@ typedef enum
     REQUEST_STATE_DONE
 } RequestParserState;
 
-typedef struct
-{
+typedef struct {
     RequestParserState state;
 
     // If this is -1, then we don't expect a body.
-    // Otherwise, we'll be in the body state until 
+    // Otherwise, we'll be in the body state until
     // this is done
     int bodyBytesLeft;
 
-	int nameLen;
+    int nameLen;
 
     RequestHeader curHeader;
 } RequestParser;

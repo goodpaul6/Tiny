@@ -1,7 +1,6 @@
 #pragma once
 
-typedef struct
-{
+typedef struct {
     int cap;
     int len;
     char* s;
@@ -18,4 +17,3 @@ void AppendString(StringBuilder* b, const char* s);
 // the built string
 
 void DestroyStringBuilder(StringBuilder* b);
-

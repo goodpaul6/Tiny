@@ -64,10 +64,11 @@
 //
 //         sb_free(TYPE *a)           free the array
 //         sb_count(TYPE *a)          the number of elements in the array
-//         sb_push(TYPE *a, TYPE v)   adds v on the end of the array, a la push_back
-//         sb_add(TYPE *a, int n)     adds n uninitialized elements at end of array & returns pointer to first added
-//         sb_last(TYPE *a)           returns an lvalue of the last item in the array
-//         a[n]                       access the nth (counting from 0) element of the array
+//         sb_push(TYPE *a, TYPE v)   adds v on the end of the array, a la
+//         push_back sb_add(TYPE *a, int n)     adds n uninitialized elements at
+//         end of array & returns pointer to first added sb_last(TYPE *a)
+//         returns an lvalue of the last item in the array a[n] access the nth
+//         (counting from 0) element of the array
 //
 //     #define STRETCHY_BUFFER_NO_SHORT_NAMES to only export
 //     names of the form 'stb_sb_' if you have a name that would
@@ -177,49 +178,46 @@
 #include "mem.h"
 
 #ifndef NO_STRETCHY_BUFFER_SHORT_NAMES
-#define sb_free   stb_sb_free
-#define sb_push   stb_sb_push
-#define sb_count  stb_sb_count
-#define sb_add    stb_sb_add
-#define sb_last   stb_sb_last
+#define sb_free stb_sb_free
+#define sb_push stb_sb_push
+#define sb_count stb_sb_count
+#define sb_add stb_sb_add
+#define sb_last stb_sb_last
 #endif
 
-#define stb_sb_free(a)         ((a) ? free(stb__sbraw(a)),0 : 0)
-#define stb_sb_push(a,v)       (stb__sbmaybegrow(a,1), (a)[stb__sbn(a)++] = (v))
-#define stb_sb_count(a)        ((a) ? stb__sbn(a) : 0)
-#define stb_sb_add(a,n)        (stb__sbmaybegrow(a,n), stb__sbn(a)+=(n), &(a)[stb__sbn(a)-(n)])
-#define stb_sb_last(a)         ((a)[stb__sbn(a)-1])
+#define stb_sb_free(a) ((a) ? free(stb__sbraw(a)), 0 : 0)
+#define stb_sb_push(a, v) (stb__sbmaybegrow(a, 1), (a)[stb__sbn(a)++] = (v))
+#define stb_sb_count(a) ((a) ? stb__sbn(a) : 0)
+#define stb_sb_add(a, n) (stb__sbmaybegrow(a, n), stb__sbn(a) += (n), &(a)[stb__sbn(a) - (n)])
+#define stb_sb_last(a) ((a)[stb__sbn(a) - 1])
 
-#define stb__sbraw(a) ((int *) (a) - 2)
-#define stb__sbm(a)   stb__sbraw(a)[0]
-#define stb__sbn(a)   stb__sbraw(a)[1]
+#define stb__sbraw(a) ((int *)(a)-2)
+#define stb__sbm(a) stb__sbraw(a)[0]
+#define stb__sbn(a) stb__sbraw(a)[1]
 
-#define stb__sbneedgrow(a,n)  ((a)==0 || stb__sbn(a)+(n) >= stb__sbm(a))
-#define stb__sbmaybegrow(a,n) (stb__sbneedgrow(a,(n)) ? stb__sbgrow(a,n) : 0)
-#define stb__sbgrow(a,n)      (*((void **)&(a)) = stb__sbgrowf((a), (n), sizeof(*(a))))
+#define stb__sbneedgrow(a, n) ((a) == 0 || stb__sbn(a) + (n) >= stb__sbm(a))
+#define stb__sbmaybegrow(a, n) (stb__sbneedgrow(a, (n)) ? stb__sbgrow(a, n) : 0)
+#define stb__sbgrow(a, n) (*((void **)&(a)) = stb__sbgrowf((a), (n), sizeof(*(a))))
 
 #include <stdlib.h>
 
-static void * stb__sbgrowf(void *arr, int increment, int itemsize)
-{
-   int dbl_cur = arr ? 2*stb__sbm(arr) : 0;
-   int min_needed = stb_sb_count(arr) + increment;
-   int m = dbl_cur > min_needed ? dbl_cur : min_needed;
-   int *p = (int *) realloc(arr ? stb__sbraw(arr) : 0, itemsize * m + sizeof(int)*2);
-   if (p) {
-      if (!arr)
-         p[1] = 0;
-      p[0] = m;
-      return p+2;
-   } else {
-      #ifdef STRETCHY_BUFFER_OUT_OF_MEMORY
-      STRETCHY_BUFFER_OUT_OF_MEMORY ;
-      #endif
-      return (void *) (2*sizeof(int)); // try to force a NULL pointer exception later
-   }
+static void *stb__sbgrowf(void *arr, int increment, int itemsize) {
+    int dbl_cur = arr ? 2 * stb__sbm(arr) : 0;
+    int min_needed = stb_sb_count(arr) + increment;
+    int m = dbl_cur > min_needed ? dbl_cur : min_needed;
+    int *p = (int *)realloc(arr ? stb__sbraw(arr) : 0, itemsize * m + sizeof(int) * 2);
+    if (p) {
+        if (!arr) p[1] = 0;
+        p[0] = m;
+        return p + 2;
+    } else {
+#ifdef STRETCHY_BUFFER_OUT_OF_MEMORY
+        STRETCHY_BUFFER_OUT_OF_MEMORY;
+#endif
+        return (void *)(2 * sizeof(int));  // try to force a NULL pointer exception later
+    }
 }
-#endif // STB_STRETCHY_BUFFER_H_INCLUDED
-
+#endif  // STB_STRETCHY_BUFFER_H_INCLUDED
 
 /*
 ------------------------------------------------------------------------------
@@ -227,38 +225,38 @@ This software is available under 2 licenses -- choose whichever you prefer.
 ------------------------------------------------------------------------------
 ALTERNATIVE A - MIT License
 Copyright (c) 2017 Sean Barrett
-Permission is hereby granted, free of charge, to any person obtaining a copy of 
-this software and associated documentation files (the "Software"), to deal in 
-the Software without restriction, including without limitation the rights to 
-use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies 
-of the Software, and to permit persons to whom the Software is furnished to do 
+Permission is hereby granted, free of charge, to any person obtaining a copy of
+this software and associated documentation files (the "Software"), to deal in
+the Software without restriction, including without limitation the rights to
+use, copy, modify, merge, publish, distribute, sublicense, and/or sell copies
+of the Software, and to permit persons to whom the Software is furnished to do
 so, subject to the following conditions:
-The above copyright notice and this permission notice shall be included in all 
+The above copyright notice and this permission notice shall be included in all
 copies or substantial portions of the Software.
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER 
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, 
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE 
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 ------------------------------------------------------------------------------
 ALTERNATIVE B - Public Domain (www.unlicense.org)
 This is free and unencumbered software released into the public domain.
-Anyone is free to copy, modify, publish, use, compile, sell, or distribute this 
-software, either in source code form or as a compiled binary, for any purpose, 
+Anyone is free to copy, modify, publish, use, compile, sell, or distribute this
+software, either in source code form or as a compiled binary, for any purpose,
 commercial or non-commercial, and by any means.
-In jurisdictions that recognize copyright laws, the author or authors of this 
-software dedicate any and all copyright interest in the software to the public 
-domain. We make this dedication for the benefit of the public at large and to 
-the detriment of our heirs and successors. We intend this dedication to be an 
-overt act of relinquishment in perpetuity of all present and future rights to 
+In jurisdictions that recognize copyright laws, the author or authors of this
+software dedicate any and all copyright interest in the software to the public
+domain. We make this dedication for the benefit of the public at large and to
+the detriment of our heirs and successors. We intend this dedication to be an
+overt act of relinquishment in perpetuity of all present and future rights to
 this software under copyright law.
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR 
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, 
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE 
-AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN 
-ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION 
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN
+ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ------------------------------------------------------------------------------
 */

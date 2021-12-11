@@ -24,8 +24,6 @@
  *
  */
 
-
-
 /*
  * MINCTEST - Minimal testing library for C
  *
@@ -55,91 +53,88 @@
  *
  */
 
-
 #ifndef __MINCTEST_H__
 #define __MINCTEST_H__
 
-#include <stdio.h>
 #include <math.h>
-#include <time.h>
+#include <stdio.h>
 #include <string.h>
-
+#include <time.h>
 
 /* How far apart can floats be before we consider them unequal. */
 #ifndef LTEST_FLOAT_TOLERANCE
 #define LTEST_FLOAT_TOLERANCE 0.001
 #endif
 
-
 /* Track the number of passes, fails. */
 /* NB this is made for all tests to be in one file. */
 static int ltests = 0;
 static int lfails = 0;
 
-
 /* Display the test results. */
-#define lresults() do {\
-    if (lfails == 0) {\
-        printf("ALL TESTS PASSED (%d/%d)\n", ltests, ltests);\
-    } else {\
-        printf("SOME TESTS FAILED (%d/%d)\n", ltests-lfails, ltests);\
-    }\
-} while (0)
+#define lresults()                                                          \
+    do {                                                                    \
+        if (lfails == 0) {                                                  \
+            printf("ALL TESTS PASSED (%d/%d)\n", ltests, ltests);           \
+        } else {                                                            \
+            printf("SOME TESTS FAILED (%d/%d)\n", ltests - lfails, ltests); \
+        }                                                                   \
+    } while (0)
 
-
-/* Run a test. Name can be any string to print out, test is the function name to call. */
-#define lrun(name, test) do {\
-    const int ts = ltests;\
-    const int fs = lfails;\
-    const clock_t start = clock();\
-    printf("\t%-45s", name);\
-    test();\
-    printf("pass:%2d   fail:%2d   %4dms\n",\
-            (ltests-ts)-(lfails-fs), lfails-fs,\
-            (int)((clock() - start) * 1000 / CLOCKS_PER_SEC));\
-} while (0)
-
+/* Run a test. Name can be any string to print out, test is the function name to
+ * call. */
+#define lrun(name, test)                                                                    \
+    do {                                                                                    \
+        const int ts = ltests;                                                              \
+        const int fs = lfails;                                                              \
+        const clock_t start = clock();                                                      \
+        printf("\t%-45s", name);                                                            \
+        test();                                                                             \
+        printf("pass:%2d   fail:%2d   %4dms\n", (ltests - ts) - (lfails - fs), lfails - fs, \
+               (int)((clock() - start) * 1000 / CLOCKS_PER_SEC));                           \
+    } while (0)
 
 /* Assert a true statement. */
-#define lok(test) do {\
-    ++ltests;\
-    if (!(test)) {\
-        ++lfails;\
-        printf("%s:%d error \n", __FILE__, __LINE__);\
-    }} while (0)
+#define lok(test)                                         \
+    do {                                                  \
+        ++ltests;                                         \
+        if (!(test)) {                                    \
+            ++lfails;                                     \
+            printf("%s:%d error \n", __FILE__, __LINE__); \
+        }                                                 \
+    } while (0)
 
 /* Assert a true and printf something if it isn't true */
-#define lok_print(test, ...) do {\
-    ++ltests;\
-    if(!(test)) {\
-        ++lfails;\
-        printf("%s:%d error \n", __FILE__, __LINE__);\
-        printf(__VA_ARGS__);\
-    }} while(0)
+#define lok_print(test, ...)                              \
+    do {                                                  \
+        ++ltests;                                         \
+        if (!(test)) {                                    \
+            ++lfails;                                     \
+            printf("%s:%d error \n", __FILE__, __LINE__); \
+            printf(__VA_ARGS__);                          \
+        }                                                 \
+    } while (0)
 
 /* Prototype to assert equal. */
-#define lequal_base(equality, a, b, format) do {\
-    ++ltests;\
-    if (!(equality)) {\
-        ++lfails;\
-        printf("%s:%d ("format " != " format")\n", __FILE__, __LINE__, (a), (b));\
-    }} while (0)
-
+#define lequal_base(equality, a, b, format)                                             \
+    do {                                                                                \
+        ++ltests;                                                                       \
+        if (!(equality)) {                                                              \
+            ++lfails;                                                                   \
+            printf("%s:%d (" format " != " format ")\n", __FILE__, __LINE__, (a), (b)); \
+        }                                                                               \
+    } while (0)
 
 /* Assert two integers are equal. */
-#define lequal(a, b)\
-    lequal_base((a) == (b), a, b, "%d")
-
+#define lequal(a, b) lequal_base((a) == (b), a, b, "%d")
 
 /* Assert two floats are equal (Within LTEST_FLOAT_TOLERANCE). */
-#define lfequal(a, b)\
-    lequal_base(fabs((double)(a)-(double)(b)) <= LTEST_FLOAT_TOLERANCE\
-     && fabs((double)(a)-(double)(b)) == fabs((double)(a)-(double)(b)), (double)(a), (double)(b), "%f")
-
+#define lfequal(a, b)                                                                   \
+    lequal_base(fabs((double)(a) - (double)(b)) <= LTEST_FLOAT_TOLERANCE &&             \
+                    fabs((double)(a) - (double)(b)) == fabs((double)(a) - (double)(b)), \
+                (double)(a), (double)(b), "%f")
 
 /* Assert two strings are equal. */
-#define lsequal(a, b)\
-    lequal_base(strcmp(a, b) == 0, a, b, "%s")
-
+#define lsequal(a, b) lequal_base(strcmp(a, b) == 0, a, b, "%s")
 
 #endif /*__MINCTEST_H__*/

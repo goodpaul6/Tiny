@@ -1,47 +1,47 @@
+#include <assert.h>
+#include <ctype.h>
 #include <stdio.h>
 #include <string.h>
-#include <ctype.h>
-#include <assert.h>
 
-#include "dict.h"
 #include "array.h"
-#include "tiny.h"
+#include "dict.h"
 #include "stretchy_buffer.h"
+#include "tiny.h"
 
-#define VAR_SIZE    32
+#define VAR_SIZE 32
 
-#define ERROR(...)  do {  \
-    fprintf(stderr, "Template error %s(%i): ", filename, *line); \
-    fprintf(stderr, __VA_ARGS__); \
-    goto error; \
-} while(0)
+#define ERROR(...)                                                   \
+    do {                                                             \
+        fprintf(stderr, "Template error %s(%i): ", filename, *line); \
+        fprintf(stderr, __VA_ARGS__);                                \
+        goto error;                                                  \
+    } while (0)
 
 extern Tiny_NativeProp DictProp;
 extern Tiny_NativeProp ArrayProp;
 extern Tiny_NativeProp BufProp;
 
-static void AppendStr(char** buf, const char* s)
-{
+static void AppendStr(char** buf, const char* s) {
     size_t len = strlen(s);
 
     char* start = sb_add(*buf, len);
 
-    for(int i = 0; i < len; ++i) {
+    for (int i = 0; i < len; ++i) {
         start[i] = s[i];
     }
 }
 
-static const Tiny_Value* ReadVar(const char* filename, int* line, FILE* f, Dict* env, Array* arr, int arrIndex, int c, char* var)
-{
+static const Tiny_Value* ReadVar(const char* filename, int* line, FILE* f, Dict* env, Array* arr,
+                                 int arrIndex, int c, char* var) {
     const Tiny_Value* val = NULL;
 
-    if(c == '_') {
-        if(!arr) {
+    if (c == '_') {
+        if (!arr) {
             ERROR("Attempted to use '$_' outside of array expansion.\n");
         }
 
         assert(arrIndex >= 0 && arrIndex < arr->length);
-    
+
         var[0] = '_';
         var[1] = 0;
 
@@ -49,18 +49,18 @@ static const Tiny_Value* ReadVar(const char* filename, int* line, FILE* f, Dict*
     } else {
         int i = 0;
 
-        while(isalpha(c)) {
-            if(i >= VAR_SIZE - 1) {
+        while (isalpha(c)) {
+            if (i >= VAR_SIZE - 1) {
                 ERROR("Var name is too long.\n");
             }
 
             var[i++] = c;
             c = getc(f);
         }
-		ungetc(c, f);
+        ungetc(c, f);
 
         var[i] = 0;
-        
+
         val = DictGet(env, var);
     }
 
@@ -69,23 +69,23 @@ error:
     return NULL;
 }
 
-static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int end, Dict* env, Array* arr, int arrIndex)
-{
+static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int end, Dict* env,
+                   Array* arr, int arrIndex) {
     char* buf = *pBuf;
 
-    while(true) {
+    while (true) {
         int c = getc(f);
 
-		if (c == end) {
-			break;
-		}
+        if (c == end) {
+            break;
+        }
 
-        if(c == '\n') ++*line;
+        if (c == '\n') ++*line;
 
-        if(c == '[') {
+        if (c == '[') {
             c = getc(f);
 
-            if(c == '[') {
+            if (c == '[') {
                 sb_push(buf, '[');
                 continue;
             }
@@ -94,15 +94,15 @@ static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int en
 
             const Tiny_Value* val = ReadVar(filename, line, f, env, arr, arrIndex, c, var);
 
-			c = getc(f);
-            
-            if(c != ']') {
-                ERROR("Expected ']' after %s.\n", var);                
+            c = getc(f);
+
+            if (c != ']') {
+                ERROR("Expected ']' after %s.\n", var);
             }
 
             c = getc(f);
 
-            if(c != '{') {
+            if (c != '{') {
                 ERROR("Expected '{' after ']'.\n");
             }
 
@@ -110,28 +110,28 @@ static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int en
 
             long epos = ftell(f);
 
-			int nest = 1;
-            while(c != EOF && nest != 0) {
-                if(c == '\n') ++*line;
-				if (c == '{') ++nest;
-				if (c == '}') --nest;
+            int nest = 1;
+            while (c != EOF && nest != 0) {
+                if (c == '\n') ++*line;
+                if (c == '{') ++nest;
+                if (c == '}') --nest;
                 c = getc(f);
             }
 
-			if (c == EOF) {
-				ERROR("Unexpected EOF.\n");
-			}
+            if (c == EOF) {
+                ERROR("Unexpected EOF.\n");
+            }
 
             long pos = ftell(f);
 
-            if(!val || Tiny_GetProp(*val) != &ArrayProp) {
+            if (!val || Tiny_GetProp(*val) != &ArrayProp) {
                 ERROR("Attempted to expand '[%s]' but %s is not an array.\n", var, var);
             } else {
                 Array* a = Tiny_ToAddr(*val);
 
                 *pBuf = buf;
 
-                for(int i = 0; i < a->length; ++i) {
+                for (int i = 0; i < a->length; ++i) {
                     fseek(f, epos, SEEK_SET);
                     Expand(filename, line, f, pBuf, '}', env, a, i);
                 }
@@ -140,10 +140,10 @@ static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int en
 
                 fseek(f, pos, SEEK_SET);
             }
-        } else if(c == '?') {
+        } else if (c == '?') {
             c = getc(f);
 
-            if(c == '?') {
+            if (c == '?') {
                 sb_push(buf, '?');
                 continue;
             }
@@ -152,9 +152,9 @@ static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int en
 
             const Tiny_Value* val = ReadVar(filename, line, f, env, arr, arrIndex, c, var);
 
-			c = getc(f);
+            c = getc(f);
 
-            if(c != '{') {
+            if (c != '{') {
                 ERROR("Expected '{' after %s.\n", var);
             }
 
@@ -162,19 +162,19 @@ static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int en
 
             long tp = ftell(f);
 
-			int nest = 1;
-            while(c != EOF && nest != 0) {
-                if(c == '\n') ++*line;
-				if (c == '{') ++nest;
-				if (c == '}') --nest;
+            int nest = 1;
+            while (c != EOF && nest != 0) {
+                if (c == '\n') ++*line;
+                if (c == '{') ++nest;
+                if (c == '}') --nest;
                 c = getc(f);
             }
 
-			if (c == EOF) {
-				ERROR("Unexpected EOF.\n");
-			}
+            if (c == EOF) {
+                ERROR("Unexpected EOF.\n");
+            }
 
-            if(c != '{') {
+            if (c != '{') {
                 ERROR("Expected '{' after '}' in '?%s' clause.\n", var);
             }
 
@@ -182,21 +182,21 @@ static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int en
 
             long fp = ftell(f);
 
-			nest = 1;
-            while(c != EOF && nest != 0) {
-                if(c == '\n') ++*line;
-				if (c == '{') ++nest;
-				if (c == '}') --nest;
+            nest = 1;
+            while (c != EOF && nest != 0) {
+                if (c == '\n') ++*line;
+                if (c == '{') ++nest;
+                if (c == '}') --nest;
                 c = getc(f);
             }
 
-			if (c == EOF) {
-				ERROR("Unexpected EOF.\n");
-			}
+            if (c == EOF) {
+                ERROR("Unexpected EOF.\n");
+            }
 
             long pos = ftell(f);
 
-            if(!val || !Tiny_ToBool(*val)) {
+            if (!val || !Tiny_ToBool(*val)) {
                 fseek(f, fp, SEEK_SET);
             } else {
                 fseek(f, tp, SEEK_SET);
@@ -208,10 +208,10 @@ static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int en
             buf = *pBuf;
 
             fseek(f, pos, SEEK_SET);
-        } else if(c == '$') {
+        } else if (c == '$') {
             c = getc(f);
-            
-            if(c == '$') {
+
+            if (c == '$') {
                 sb_push(buf, c);
                 continue;
             }
@@ -220,11 +220,11 @@ static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int en
 
             const Tiny_Value* val = ReadVar(filename, line, f, env, arr, arrIndex, c, var);
 
-            if(!val) {
+            if (!val) {
                 ERROR("Var '%s' doesn't exist in env.\n", var);
             }
-        
-            switch(val->type) {
+
+            switch (val->type) {
                 case TINY_VAL_BOOL: {
                     AppendStr(&buf, val->boolean ? "true" : "false");
                 } break;
@@ -247,18 +247,18 @@ static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int en
                 } break;
 
                 case TINY_VAL_NATIVE: {
-                    if(Tiny_GetProp(*val) != &BufProp) {
+                    if (Tiny_GetProp(*val) != &BufProp) {
                         goto defaultCase;
                     }
 
                     char* b = *(char**)Tiny_ToAddr(*val);
 
-                    for(int i = 0; i < sb_count(b); ++i) { 
+                    for (int i = 0; i < sb_count(b); ++i) {
                         sb_push(buf, b[i]);
                     }
                 } break;
 
-defaultCase:
+                defaultCase:
                 default: {
                     ERROR("Attempted to expand unsupported value at '$%s'.\n", var);
                 } break;
@@ -276,28 +276,27 @@ error:
     return false;
 }
 
-static TINY_FOREIGN_FUNCTION(RenderTemplate)
-{
+static TINY_FOREIGN_FUNCTION(RenderTemplate) {
     const char* filename = Tiny_ToString(args[0]);
     Dict* env = Tiny_ToAddr(args[1]);
 
     FILE* f = fopen(filename, "r");
 
-    if(!f) {
-		fprintf(stderr, "Failed to open file '%s' for reading (RenderTemplate).\n", filename);
+    if (!f) {
+        fprintf(stderr, "Failed to open file '%s' for reading (RenderTemplate).\n", filename);
         return Tiny_Null;
     }
 
     int line = 1;
     char* buf = NULL;
 
-    if(!Expand(filename, &line, f, &buf, EOF, env, NULL, -1)) {
+    if (!Expand(filename, &line, f, &buf, EOF, env, NULL, -1)) {
         fclose(f);
         sb_free(buf);
 
         return Tiny_Null;
     }
-    
+
     fclose(f);
 
     char** bp = malloc(sizeof(char*));
@@ -306,8 +305,7 @@ static TINY_FOREIGN_FUNCTION(RenderTemplate)
     return Tiny_NewNative(thread, bp, &BufProp);
 }
 
-void BindTemplateUtils(Tiny_State* state)
-{
+void BindTemplateUtils(Tiny_State* state) {
     Tiny_RegisterType(state, "dict");
 
     Tiny_BindFunction(state, "render_template(str, dict): buf", RenderTemplate);

@@ -1,26 +1,26 @@
-#include <stdio.h>
-#include <assert.h>
-#include <string.h>
-#include <ctype.h>
-
-#include "display.h"
 #include "buffer.h"
 
-static void UpdateDefinitions(Buffer* buf)
-{
+#include <assert.h>
+#include <ctype.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "display.h"
+
+static void UpdateDefinitions(Buffer* buf) {
     buf->numDefns = 2;
-    
+
     strcpy(buf->defns[0], "NULL");
     strcpy(buf->defns[1], "FILE");
 
     for (int i = 0; i < buf->numLines; ++i) {
-        const char* s = strstr(buf->lines[i], "#define");    
+        const char* s = strstr(buf->lines[i], "#define");
         if (!s) continue;
 
         if (buf->numDefns >= MAX_TRACKED_DEFNS) break;
 
         s += strlen("#define");
-        
+
         while (isspace(*s)) {
             s += 1;
         }
@@ -36,8 +36,7 @@ static void UpdateDefinitions(Buffer* buf)
     }
 }
 
-void InitDefaultBuffer(Buffer* buf)
-{
+void InitDefaultBuffer(Buffer* buf) {
     buf->filetype = FILE_UNKNOWN;
 
     buf->numLines = 2;
@@ -46,22 +45,21 @@ void InitDefaultBuffer(Buffer* buf)
     buf->numDefns = 0;
 }
 
-bool MyOpenFile(Buffer* buf, const char* filename)
-{
+bool MyOpenFile(Buffer* buf, const char* filename) {
     FILE* f = fopen(filename, "r");
 
-    if(!f) {
+    if (!f) {
         return false;
     }
 
     int last = getc(f);
-    
+
     const char* ext = strrchr(filename, '.');
     if (ext) {
-        if(strcmp(ext, ".c") == 0 || strcmp(ext, ".cc") == 0 || strcmp(ext, ".h") == 0 || 
-                strcmp(ext, ".hh") == 0 || strcmp(ext, ".hpp") == 0) {
+        if (strcmp(ext, ".c") == 0 || strcmp(ext, ".cc") == 0 || strcmp(ext, ".h") == 0 ||
+            strcmp(ext, ".hh") == 0 || strcmp(ext, ".hpp") == 0) {
             buf->filetype = FILE_C;
-        } else if(strcmp(ext, ".tiny") == 0) {
+        } else if (strcmp(ext, ".tiny") == 0) {
             buf->filetype = FILE_TINY;
         }
     } else {
@@ -96,7 +94,7 @@ bool MyOpenFile(Buffer* buf, const char* filename)
                 }
             } else {
                 buf->lines[curLine][curChar++] = last;
-            }    
+            }
         }
 
         last = getc(f);
@@ -112,41 +110,37 @@ bool MyOpenFile(Buffer* buf, const char* filename)
     return true;
 }
 
-bool MyWriteFile(Buffer* buf, const char* filename)
-{
+bool MyWriteFile(Buffer* buf, const char* filename) {
     FILE* f = fopen(filename, "w");
 
-    if(!f) {
+    if (!f) {
         return false;
     }
 
-    for(int i = 0; i < buf->numLines; ++i) {
-		if (i + 1 == buf->numLines) {
-			fprintf(f, "%s", buf->lines[i]);
-		} else {
-			fprintf(f, "%s\n", buf->lines[i]);
-		}
+    for (int i = 0; i < buf->numLines; ++i) {
+        if (i + 1 == buf->numLines) {
+            fprintf(f, "%s", buf->lines[i]);
+        } else {
+            fprintf(f, "%s\n", buf->lines[i]);
+        }
     }
-      
+
     fclose(f);
 
     return true;
 }
 
-const char* GetLine(Buffer* buf, int y)
-{
+const char* GetLine(Buffer* buf, int y) {
     assert(y >= 0 && y < buf->numLines);
     return buf->lines[y];
 }
 
-void SetLine(Buffer* buf, int y, const char* text)
-{
+void SetLine(Buffer* buf, int y, const char* text) {
     assert(y >= 0 && y < buf->numLines);
     strcpy(buf->lines[y], text);
 }
 
-void InsertEmptyLine(Buffer* buf, int y)
-{
+void InsertEmptyLine(Buffer* buf, int y) {
     assert(buf->numLines + 1 < MAX_NUM_LINES);
 
     // Shift rest of the lines down
@@ -157,24 +151,22 @@ void InsertEmptyLine(Buffer* buf, int y)
     buf->numLines += 1;
 }
 
-void RemoveLine(Buffer* buf, int y)
-{
+void RemoveLine(Buffer* buf, int y) {
     assert(y >= 0 && y < buf->numLines);
 
     memmove(&buf->lines[y], &buf->lines[y + 1], (buf->numLines - y + 1) * MAX_LINE_LENGTH);
     buf->numLines -= 1;
 }
 
-void InsertChar(Buffer* buf, int x, int y, char ch)
-{
+void InsertChar(Buffer* buf, int x, int y, char ch) {
     assert(y >= 0 && y < buf->numLines);
 
     int len = strlen(buf->lines[y]);
 
     assert(x >= 0 && x <= len);
     assert(len < MAX_LINE_LENGTH);
-    
-    if(x == len) {
+
+    if (x == len) {
         // End of line
         buf->lines[y][x] = ch;
         buf->lines[y][x + 1] = 0;
@@ -189,8 +181,7 @@ void InsertChar(Buffer* buf, int x, int y, char ch)
     UpdateDefinitions(buf);
 }
 
-void InsertString(Buffer* buf, int x, int y, const char* str)
-{
+void InsertString(Buffer* buf, int x, int y, const char* str) {
     assert(y >= 0 && y < buf->numLines);
 
     int len = strlen(buf->lines[y]);
@@ -199,10 +190,10 @@ void InsertString(Buffer* buf, int x, int y, const char* str)
     assert(x >= 0 && x <= len);
     assert(slen + len < MAX_LINE_LENGTH - 1);
 
-    if(x == len) {
+    if (x == len) {
         strcat(buf->lines[y], str);
     } else {
-        memmove(&buf->lines[y][x + slen], &buf->lines[y][x], len - x + slen); 
+        memmove(&buf->lines[y][x + slen], &buf->lines[y][x], len - x + slen);
         memcpy(&buf->lines[y][x], str, slen);
 
         buf->lines[y][len + slen + 1] = '\0';
@@ -211,25 +202,23 @@ void InsertString(Buffer* buf, int x, int y, const char* str)
     UpdateDefinitions(buf);
 }
 
-void RemoveChar(Buffer* buf, int x, int y)
-{ 
+void RemoveChar(Buffer* buf, int x, int y) {
     assert(y >= 0 && y < buf->numLines);
 
     int len = strlen(buf->lines[y]);
 
     assert(x >= 0 && x < len);
 
-    if(x == len - 1) {
+    if (x == len - 1) {
         buf->lines[y][x] = '\0';
     } else {
-        memmove(&buf->lines[y][x], &buf->lines[y][x + 1], len - x - 1); 
+        memmove(&buf->lines[y][x], &buf->lines[y][x + 1], len - x - 1);
         buf->lines[y][len - 1] = '\0';
     }
 }
 
 // Puts a null terminator at pos
-void TerminateLine(Buffer* buf, int x, int y)
-{
+void TerminateLine(Buffer* buf, int x, int y) {
     assert(y >= 0 && y < buf->numLines);
 
     int len = strlen(buf->lines[y]);
@@ -238,5 +227,3 @@ void TerminateLine(Buffer* buf, int x, int y)
 
     buf->lines[y][x] = '\0';
 }
-
-

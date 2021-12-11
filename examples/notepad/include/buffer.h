@@ -2,20 +2,14 @@
 
 #include <stdbool.h>
 
-#define MAX_NUM_LINES       4096
-#define MAX_LINE_LENGTH     512
-#define MAX_TRACKED_DEFNS    128
-#define MAX_DEFN_LENGTH     256
+#define MAX_NUM_LINES 4096
+#define MAX_LINE_LENGTH 512
+#define MAX_TRACKED_DEFNS 128
+#define MAX_DEFN_LENGTH 256
 
-typedef enum
-{
-    FILE_C,
-    FILE_TINY,
-    FILE_UNKNOWN
-} Filetype;
+typedef enum { FILE_C, FILE_TINY, FILE_UNKNOWN } Filetype;
 
-typedef enum
-{
+typedef enum {
     EDIT_SET_LINE,
     EDIT_INSERT_EMPTY_LINE,
     EDIT_REMOVE_LINE,
@@ -25,13 +19,11 @@ typedef enum
     EDIT_REMOVE_CHAR
 } UndoableEditType;
 
-typedef struct
-{
+typedef struct {
     UndoableEditType type;
 } UndoableEdit;
 
-typedef struct
-{ 
+typedef struct {
     Filetype filetype;
 
     int numLines;
@@ -59,4 +51,3 @@ void RemoveChar(Buffer* buf, int x, int y);
 
 // Puts a null terminator at pos
 void TerminateLine(Buffer* buf, int x, int y);
-
