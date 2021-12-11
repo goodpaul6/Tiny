@@ -14,15 +14,14 @@
 #error TODO Other platforms
 #endif
 
-static void LoopBody(Server* serv)
-{
+static void LoopBody(Server* serv) {
     Sock client;
 
-    if(ListPopFront(&serv->clientQueue, &client)) {
-        for(int i = 0; i < serv->conf.maxConns; ++i) {
+    if (ListPopFront(&serv->clientQueue, &client)) {
+        for (int i = 0; i < serv->conf.maxConns; ++i) {
             Connection* conn = &serv->conn.conns[i];
 
-            if(conn->active) continue;
+            if (conn->active) continue;
 
             InitRequest(&conn->r);
             InitRequestParser(&conn->p);
@@ -30,38 +29,38 @@ static void LoopBody(Server* serv)
             conn->client = client;
             conn->active = true;
 
-			printf("Opening socket %d.\n", i);
-			break;
+            printf("Opening socket %d.\n", i);
+            break;
         }
     }
 
-	fd_set fds;
+    fd_set fds;
 
-	FD_ZERO(&fds);
-	int nfds = 0;
+    FD_ZERO(&fds);
+    int nfds = 0;
 
-    for(int i = 0; i < serv->conf.maxConns; ++i) {
+    for (int i = 0; i < serv->conf.maxConns; ++i) {
         Connection* conn = &serv->conn.conns[i];
 
-        if(!conn->active) continue;
+        if (!conn->active) continue;
 
-		FD_SET((SOCKET)conn->client.handle, &fds);
-		++nfds;
+        FD_SET((SOCKET)conn->client.handle, &fds);
+        ++nfds;
     }
 
-    if(nfds == 0) {
+    if (nfds == 0) {
         mtx_lock(&serv->clientQueue.mutex);
 
-        while(!serv->clientQueue.head) {
+        while (!serv->clientQueue.head) {
             cnd_wait(&serv->newConn, &serv->clientQueue.mutex);
         }
 
         mtx_unlock(&serv->clientQueue.mutex);
 
-		return;
+        return;
     }
 
-	TIMEVAL timeout = { 1, 0 };
+    TIMEVAL timeout = {1, 0};
 
     int r = select(nfds, &fds, NULL, NULL, &timeout);
 
@@ -75,7 +74,7 @@ static void LoopBody(Server* serv)
             Connection* conn = &serv->conn.conns[i];
 
             if (!FD_ISSET((SOCKET)conn->client.handle, &fds)) {
-				continue;
+                continue;
             }
 
             char buf[512];
@@ -84,9 +83,9 @@ static void LoopBody(Server* serv)
 
             if (res != SOCK_WOULD_BLOCK) {
                 if (res == 0) {
-					if (*conn->client.rc == 1) {
-						printf("Closing socket %d.\n", i);
-					}
+                    if (*conn->client.rc == 1) {
+                        printf("Closing socket %d.\n", i);
+                    }
 
                     DestroyRequest(&conn->r);
                     DestroyRequestParser(&conn->p);
@@ -128,27 +127,26 @@ static void LoopBody(Server* serv)
 
 extern volatile bool KeepRunning;
 
-int ConnLoop(void* pServ)
-{
+int ConnLoop(void* pServ) {
     Server* serv = pServ;
 
     serv->conn.conns = malloc(sizeof(Connection) * serv->conf.maxConns);
-    
-    for(int i = 0; i < serv->conf.maxConns; ++i) {
+
+    for (int i = 0; i < serv->conf.maxConns; ++i) {
         serv->conn.conns[i].active = false;
     }
 
-    while(KeepRunning) {
+    while (KeepRunning) {
         LoopBody(serv);
     }
 
-    for(int i = 0; i < serv->conf.maxConns; ++i) {
-        if(!serv->conn.conns[i].active) continue;
+    for (int i = 0; i < serv->conf.maxConns; ++i) {
+        if (!serv->conn.conns[i].active) continue;
 
         ReleaseSock(&serv->conn.conns[i].client);
     }
 
     free(serv->conn.conns);
 
-	return 0;
+    return 0;
 }

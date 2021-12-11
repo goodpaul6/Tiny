@@ -2,26 +2,22 @@
 
 #include "tiny.h"
 
-typedef struct
-{
+typedef struct {
     char* pattern;
     char* filename;
 } Route;
 
-typedef struct
-{
+typedef struct {
     Tiny_ForeignFunction func;
     char* sig;
 } ForeignModuleFunction;
 
-typedef struct
-{
+typedef struct {
     void* handle;
-    ForeignModuleFunction* funcs;   // array
+    ForeignModuleFunction* funcs;  // array
 } ForeignModule;
 
-typedef struct
-{
+typedef struct {
     int argc;
     char** argv;
 
@@ -31,15 +27,15 @@ typedef struct
     int maxConns;
 
     int numThreads;
-    Route* routes;      // array
+    Route* routes;  // array
 
     int cyclesPerLoop;
 
     // These scripts are "imported" (compiled) into
     // all other scripts
-    char** commonScripts;       // array
+    char** commonScripts;  // array
 
-    ForeignModule* modules;     // array
+    ForeignModule* modules;  // array
 } Config;
 
 void InitConfig(Config* c, const char* filename, int argc, char** argv);

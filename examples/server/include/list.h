@@ -4,12 +4,11 @@
 
 #include "tinycthread.h"
 
-#define LIST_EACH(l) for(ListNode* node = (l).head; node; node = node->next)
+#define LIST_EACH(l) for (ListNode* node = (l).head; node; node = node->next)
 
 typedef struct ListNode ListNode;
 
-typedef struct
-{
+typedef struct {
     mtx_t mutex;
 
     size_t itemSize;

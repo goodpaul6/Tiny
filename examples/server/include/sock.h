@@ -1,13 +1,11 @@
 #pragma once
 
-enum
-{
-    SOCK_ERROR                  = -1,
-    SOCK_WOULD_BLOCK            = -2,
+enum {
+    SOCK_ERROR = -1,
+    SOCK_WOULD_BLOCK = -2,
 };
 
-typedef struct
-{
+typedef struct {
     int* rc;
     void* handle;
 } Sock;

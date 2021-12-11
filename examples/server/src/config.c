@@ -1,9 +1,10 @@
-#include <stdlib.h>
-#include <stdio.h>
+#include "config.h"
+
 #include <assert.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "tiny.h"
-#include "config.h"
 #include "util.h"
 
 #ifdef _WIN32
@@ -17,8 +18,7 @@
 #error TODO Port to unix
 #endif
 
-static TINY_FOREIGN_FUNCTION(AddCommonScript)
-{
+static TINY_FOREIGN_FUNCTION(AddCommonScript) {
     Config* c = thread->userdata;
 
     sb_push(c->commonScripts, estrdup(Tiny_ToString(args[0])));
@@ -26,8 +26,7 @@ static TINY_FOREIGN_FUNCTION(AddCommonScript)
     return Tiny_Null;
 }
 
-static TINY_FOREIGN_FUNCTION(SetMaxConns)
-{
+static TINY_FOREIGN_FUNCTION(SetMaxConns) {
     Config* c = thread->userdata;
 
     c->maxConns = Tiny_ToInt(args[0]);
@@ -35,8 +34,7 @@ static TINY_FOREIGN_FUNCTION(SetMaxConns)
     return Tiny_Null;
 }
 
-static TINY_FOREIGN_FUNCTION(SetCyclesPerLoop)
-{
+static TINY_FOREIGN_FUNCTION(SetCyclesPerLoop) {
     Config* c = thread->userdata;
 
     c->cyclesPerLoop = Tiny_ToInt(args[0]);
@@ -44,8 +42,7 @@ static TINY_FOREIGN_FUNCTION(SetCyclesPerLoop)
     return Tiny_Null;
 }
 
-static TINY_FOREIGN_FUNCTION(SetName)
-{
+static TINY_FOREIGN_FUNCTION(SetName) {
     Config* c = thread->userdata;
 
     c->name = estrdup(Tiny_ToString(args[0]));
@@ -53,8 +50,7 @@ static TINY_FOREIGN_FUNCTION(SetName)
     return Tiny_Null;
 }
 
-static TINY_FOREIGN_FUNCTION(AddRoute)
-{
+static TINY_FOREIGN_FUNCTION(AddRoute) {
     Config* c = thread->userdata;
 
     Route r;
@@ -67,15 +63,13 @@ static TINY_FOREIGN_FUNCTION(AddRoute)
     return Tiny_Null;
 }
 
-static TINY_FOREIGN_FUNCTION(GetArgc)
-{
+static TINY_FOREIGN_FUNCTION(GetArgc) {
     Config* c = thread->userdata;
 
     return Tiny_NewInt(c->argc);
 }
 
-static TINY_FOREIGN_FUNCTION(GetArgv)
-{
+static TINY_FOREIGN_FUNCTION(GetArgv) {
     Config* c = thread->userdata;
 
     int i = Tiny_ToInt(args[0]);
@@ -85,8 +79,7 @@ static TINY_FOREIGN_FUNCTION(GetArgv)
     return Tiny_NewConstString(c->argv[i]);
 }
 
-static TINY_FOREIGN_FUNCTION(SetPort)
-{
+static TINY_FOREIGN_FUNCTION(SetPort) {
     Config* c = thread->userdata;
 
     c->port = estrdup(Tiny_ToString(args[0]));
@@ -94,8 +87,7 @@ static TINY_FOREIGN_FUNCTION(SetPort)
     return Tiny_Null;
 }
 
-static TINY_FOREIGN_FUNCTION(SetNumThreads)
-{
+static TINY_FOREIGN_FUNCTION(SetNumThreads) {
     Config* c = thread->userdata;
 
     c->numThreads = Tiny_ToInt(args[0]);
@@ -105,13 +97,12 @@ static TINY_FOREIGN_FUNCTION(SetNumThreads)
     return Tiny_Null;
 }
 
-static TINY_FOREIGN_FUNCTION(Lib_LoadModule)
-{
+static TINY_FOREIGN_FUNCTION(Lib_LoadModule) {
     Config* c = thread->userdata;
 
     const char* name = Tiny_ToString(args[0]);
 
-    ForeignModule mod = { 0 };
+    ForeignModule mod = {0};
 
 #ifdef WIN32
     mod.handle = (void*)LoadLibraryA(name);
@@ -119,14 +110,14 @@ static TINY_FOREIGN_FUNCTION(Lib_LoadModule)
 #error How to load dll?
 #endif
 
-    if(!mod.handle) {
+    if (!mod.handle) {
         fprintf(stderr, "Failed to load module '%s'.\n", name);
         exit(1);
     }
 
-    for(int i = 1; i < count; i += 2) {
+    for (int i = 1; i < count; i += 2) {
         const char* procName = Tiny_ToString(args[i]);
-        
+
         ForeignModuleFunction modFunc;
 
         modFunc.sig = estrdup(Tiny_ToString(args[i + 1]));
@@ -137,7 +128,7 @@ static TINY_FOREIGN_FUNCTION(Lib_LoadModule)
 #error GetProcAddress equivalent here
 #endif
 
-        if(!modFunc.func) {
+        if (!modFunc.func) {
             fprintf(stderr, "Failed to load procedure '%s' from module '%s'.\n", procName, name);
             exit(1);
         }
@@ -150,8 +141,7 @@ static TINY_FOREIGN_FUNCTION(Lib_LoadModule)
     return Tiny_Null;
 }
 
-void InitConfig(Config* c, const char* filename, int argc, char** argv)
-{
+void InitConfig(Config* c, const char* filename, int argc, char** argv) {
     c->name = NULL;
 
     c->port = NULL;
@@ -164,11 +154,11 @@ void InitConfig(Config* c, const char* filename, int argc, char** argv)
 
     c->cyclesPerLoop = 10;
 
-	c->maxConns = 10;
+    c->maxConns = 10;
 
     c->commonScripts = NULL;
 
-	c->modules = NULL;
+    c->modules = NULL;
 
     Tiny_State* state = Tiny_CreateState();
 
@@ -199,26 +189,26 @@ void InitConfig(Config* c, const char* filename, int argc, char** argv)
 
     Tiny_StartThread(&thread);
 
-    while(Tiny_ExecuteCycle(&thread));
+    while (Tiny_ExecuteCycle(&thread))
+        ;
 
     Tiny_DestroyThread(&thread);
     Tiny_DeleteState(state);
 }
 
-const char* GetFilenameForTarget(const Config* c, const char* target)
-{
-    for(int i = 0; i < sb_count(c->routes); ++i) {
+const char* GetFilenameForTarget(const Config* c, const char* target) {
+    for (int i = 0; i < sb_count(c->routes); ++i) {
         const Route* r = &c->routes[i];
-        
+
         const char* s = r->pattern;
         const char* t = target;
 
-        while(*t && (*s == *t || *s == '*')) {
-            if(*s != '*') ++s;
+        while (*t && (*s == *t || *s == '*')) {
+            if (*s != '*') ++s;
             ++t;
         }
 
-        if(*t == 0 && (*s == 0 || *s == '*')) {
+        if (*t == 0 && (*s == 0 || *s == '*')) {
             return r->filename;
         }
     }
@@ -226,26 +216,25 @@ const char* GetFilenameForTarget(const Config* c, const char* target)
     return NULL;
 }
 
-void DestroyConfig(Config* c)
-{
+void DestroyConfig(Config* c) {
     free(c->name);
     free(c->port);
 
-    for(int i = 0; i < sb_count(c->routes); ++i) {
+    for (int i = 0; i < sb_count(c->routes); ++i) {
         free(c->routes[i].pattern);
         free(c->routes[i].filename);
     }
 
     sb_free(c->routes);
 
-    for(int i = 0; i < sb_count(c->commonScripts); ++i) {
+    for (int i = 0; i < sb_count(c->commonScripts); ++i) {
         free(c->commonScripts[i]);
     }
-    
+
     sb_free(c->commonScripts);
-    
-    for(int i = 0; i < sb_count(c->modules); ++i) {
-        for(int j = 0; j < sb_count(c->modules[i].funcs); ++j) {
+
+    for (int i = 0; i < sb_count(c->modules); ++i) {
+        for (int j = 0; j < sb_count(c->modules[i].funcs); ++j) {
             free(c->modules[i].funcs[j].sig);
         }
 

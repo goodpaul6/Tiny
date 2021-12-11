@@ -1,36 +1,33 @@
 #pragma once
 
-#define MAX_COMMAND_LENGTH  512
+#define MAX_COMMAND_LENGTH 512
 #define MAX_FILENAME_LENGTH 256
-#define MAX_TEMP_LINES      1024
+#define MAX_TEMP_LINES 1024
 
-#include "tiny.h"
 #include "buffer.h"
+#include "tiny.h"
 
 typedef struct Tigr Tigr;
 
-typedef enum
-{
-	MODE_NORMAL,
-	MODE_INSERT,
-	MODE_VISUAL_LINE,
+typedef enum {
+    MODE_NORMAL,
+    MODE_INSERT,
+    MODE_VISUAL_LINE,
     MODE_COMMAND,
-	MODE_FORWARD_SEARCH,
+    MODE_FORWARD_SEARCH,
     MODE_DEBUGGER
 } Mode;
 
-typedef struct
-{
+typedef struct {
     // y - line
     // x - character
     int y, x;
 } Pos;
 
-typedef struct Editor
-{
+typedef struct Editor {
     Mode mode;
     Pos cur;
-    
+
     // Visual mode selection start
     Pos vStart;
 

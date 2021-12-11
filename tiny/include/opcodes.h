@@ -1,7 +1,6 @@
 #pragma once
 
-enum
-{
+enum {
     TINY_OP_PUSH_NULL,
 
     // Pushes N null values onto the stack (where n <= 0xff)
@@ -10,14 +9,14 @@ enum
     TINY_OP_PUSH_TRUE,
     TINY_OP_PUSH_FALSE,
 
-	TINY_OP_PUSH_INT,
-     
+    TINY_OP_PUSH_INT,
+
     // Fast integer ops
     TINY_OP_PUSH_0,
     TINY_OP_PUSH_1,
     TINY_OP_PUSH_CHAR,
 
-	TINY_OP_PUSH_FLOAT,
+    TINY_OP_PUSH_FLOAT,
     // If the float is in the first 0xff constants, use this opcode
     TINY_OP_PUSH_FLOAT_FF,
 
@@ -55,7 +54,7 @@ enum
 
     TINY_OP_SET,
     TINY_OP_GET,
-    
+
     TINY_OP_READ,
 
     TINY_OP_GOTO,

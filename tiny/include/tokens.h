@@ -1,7 +1,6 @@
 #pragma once
 
-typedef enum
-{
+typedef enum {
     TINY_TOK_OPENPAREN,
     TINY_TOK_CLOSEPAREN,
     TINY_TOK_OPENCURLY,
@@ -23,19 +22,19 @@ typedef enum
     TINY_TOK_COLON,
     TINY_TOK_DOT,
 
-    TINY_TOK_LOG_AND,                   // &&
-    TINY_TOK_LOG_OR,                    // ||
+    TINY_TOK_LOG_AND,  // &&
+    TINY_TOK_LOG_OR,   // ||
 
-    TINY_TOK_DECLARE,               // :=
-    TINY_TOK_DECLARECONST,          // ::
+    TINY_TOK_DECLARE,       // :=
+    TINY_TOK_DECLARECONST,  // ::
 
-    TINY_TOK_PLUSEQUAL,             // +=
-    TINY_TOK_MINUSEQUAL,            // -=
-    TINY_TOK_STAREQUAL,              // *=
-    TINY_TOK_SLASHEQUAL,              // /=
-    TINY_TOK_PERCENTEQUAL,              // %=
-    TINY_TOK_OREQUAL,               // |=
-    TINY_TOK_ANDEQUAL,              // &=
+    TINY_TOK_PLUSEQUAL,     // +=
+    TINY_TOK_MINUSEQUAL,    // -=
+    TINY_TOK_STAREQUAL,     // *=
+    TINY_TOK_SLASHEQUAL,    // /=
+    TINY_TOK_PERCENTEQUAL,  // %=
+    TINY_TOK_OREQUAL,       // |=
+    TINY_TOK_ANDEQUAL,      // &=
 
     TINY_TOK_EQUALS,
     TINY_TOK_NOTEQUALS,

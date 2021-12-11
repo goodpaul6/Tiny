@@ -1,42 +1,33 @@
+#include "display.h"
+
 #include <assert.h>
-#include <string.h>
 #include <ctype.h>
 #include <math.h>
+#include <string.h>
 
+#include "buffer.h"
 #include "editor.h"
 #include "tigr.h"
-#include "display.h"
-#include "buffer.h"
 
 #define MAX_TOKEN_LENGTH 256
 #define MAX_TOKENS 128
 
-typedef struct
-{
+typedef struct {
     TokenType type;
     char lexeme[MAX_TOKEN_LENGTH];
 } Token;
 
 char Status[MAX_STATUS_LENGTH];
 
-#define RGB(r, g, b) { b, g, r, 255 }
+#define RGB(r, g, b) \
+    { b, g, r, 255 }
 
 static TPixel TokenColors[NUM_TOKEN_TYPES] = {
-    RGB(60, 60, 60),
-    RGB(200, 200, 200),
-    RGB(40, 40, 150),
-    RGB(0, 0, 0),
-    RGB(40, 150, 40),
-    RGB(130, 130, 130),
-    RGB(150, 150, 40),
-    RGB(150, 30, 150),
-    RGB(20, 80, 20),
-    RGB(200, 120, 40)
-};
+    RGB(60, 60, 60),    RGB(200, 200, 200), RGB(40, 40, 150),  RGB(0, 0, 0),    RGB(40, 150, 40),
+    RGB(130, 130, 130), RGB(150, 150, 40),  RGB(150, 30, 150), RGB(20, 80, 20), RGB(200, 120, 40)};
 
 // Returns number of tokens extracted
-static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxTokens)
-{
+static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxTokens) {
     // TODO(Apaar): Check for buffer overflows
     int curTok = 0;
 
@@ -66,7 +57,7 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
         } else if (isascii(*line) && isalpha(*line)) {
             tokens[curTok].type = TOK_IDENT;
             int i = 0;
-            
+
             while (isalnum(*line) || *line == '_') {
                 tokens[curTok].lexeme[i++] = *line++;
                 if (!isascii(*line)) {
@@ -75,39 +66,24 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
             }
 
             tokens[curTok].lexeme[i] = '\0';
-            
+
             const char* lexeme = tokens[curTok].lexeme;
 
-            if ((strcmp(lexeme, "if") == 0) ||
-                (strcmp(lexeme, "typedef") == 0) ||
-                (strcmp(lexeme, "const") == 0) ||
-                (strcmp(lexeme, "while") == 0) ||
-                (strcmp(lexeme, "for") == 0) ||
-                (strcmp(lexeme, "else") == 0) ||
-                (strcmp(lexeme, "do") == 0) ||
-                (strcmp(lexeme, "switch") == 0) ||
-                (strcmp(lexeme, "struct") == 0) ||
-                (strcmp(lexeme, "enum") == 0) ||
-                (strcmp(lexeme, "char") == 0) ||
-                (strcmp(lexeme, "int") == 0) ||
-                (strcmp(lexeme, "void") == 0) ||
-                (strcmp(lexeme, "unsigned") == 0) ||
-                (strcmp(lexeme, "bool") == 0) ||
-                (strcmp(lexeme, "short") == 0) ||
-                (strcmp(lexeme, "long") == 0) ||
-                (strcmp(lexeme, "float") == 0) ||
-                (strcmp(lexeme, "false") == 0) ||
-                (strcmp(lexeme, "true") == 0) ||
-                (strcmp(lexeme, "static") == 0) ||
-                (strcmp(lexeme, "return") == 0) ||
-                (strcmp(lexeme, "func") == 0) ||
-                (strcmp(lexeme, "or") == 0) ||
-                (strcmp(lexeme, "and") == 0) ||
-                (strcmp(lexeme, "not") == 0) ||
-                (strcmp(lexeme, "case") == 0) ||
-                (strcmp(lexeme, "str") == 0) ||
-                (strcmp(lexeme, "num") == 0) ||
-                (strcmp(lexeme, "any") == 0)) {
+            if ((strcmp(lexeme, "if") == 0) || (strcmp(lexeme, "typedef") == 0) ||
+                (strcmp(lexeme, "const") == 0) || (strcmp(lexeme, "while") == 0) ||
+                (strcmp(lexeme, "for") == 0) || (strcmp(lexeme, "else") == 0) ||
+                (strcmp(lexeme, "do") == 0) || (strcmp(lexeme, "switch") == 0) ||
+                (strcmp(lexeme, "struct") == 0) || (strcmp(lexeme, "enum") == 0) ||
+                (strcmp(lexeme, "char") == 0) || (strcmp(lexeme, "int") == 0) ||
+                (strcmp(lexeme, "void") == 0) || (strcmp(lexeme, "unsigned") == 0) ||
+                (strcmp(lexeme, "bool") == 0) || (strcmp(lexeme, "short") == 0) ||
+                (strcmp(lexeme, "long") == 0) || (strcmp(lexeme, "float") == 0) ||
+                (strcmp(lexeme, "false") == 0) || (strcmp(lexeme, "true") == 0) ||
+                (strcmp(lexeme, "static") == 0) || (strcmp(lexeme, "return") == 0) ||
+                (strcmp(lexeme, "func") == 0) || (strcmp(lexeme, "or") == 0) ||
+                (strcmp(lexeme, "and") == 0) || (strcmp(lexeme, "not") == 0) ||
+                (strcmp(lexeme, "case") == 0) || (strcmp(lexeme, "str") == 0) ||
+                (strcmp(lexeme, "num") == 0) || (strcmp(lexeme, "any") == 0)) {
                 tokens[curTok].type = TOK_KEYWORD;
             }
 
@@ -128,7 +104,7 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
 
             tokens[curTok].lexeme[i] = '\0';
             curTok += 1;
-        } else if(*line == '"') {
+        } else if (*line == '"') {
             line += 1;
             tokens[curTok].type = TOK_STRING;
             int i = 0;
@@ -166,7 +142,7 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
 
             tokens[curTok].lexeme[i] = '\0';
             curTok += 1;
-        } else if(*line == '/' && line[1] == '*') {
+        } else if (*line == '/' && line[1] == '*') {
             tokens[curTok].type = TOK_MULTILINE_COMMENT_START;
 
             tokens[curTok].lexeme[0] = '/';
@@ -176,7 +152,7 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
             line += 2;
 
             curTok += 1;
-        } else if(*line == '*' && line[1] == '/') {
+        } else if (*line == '*' && line[1] == '/') {
             tokens[curTok].type = TOK_MULTILINE_COMMENT_END;
 
             tokens[curTok].lexeme[0] = '*';
@@ -208,13 +184,9 @@ static int Tokenize(const Buffer* buf, const char* line, Token* tokens, int maxT
     return curTok;
 }
 
-void SetTokenColor(TokenType type, int r, int g, int b)
-{
-    TokenColors[type] = tigrRGB(r, g, b);
-}
+void SetTokenColor(TokenType type, int r, int g, int b) { TokenColors[type] = tigrRGB(r, g, b); }
 
-void DrawEditor(Tigr* screen, Editor* ed)
-{
+void DrawEditor(Tigr* screen, Editor* ed) {
     int y = 0;
 
     const Buffer* buf = &ed->buf;
@@ -228,8 +200,8 @@ void DrawEditor(Tigr* screen, Editor* ed)
 
     bool blink = ed->blinkTime < 0.5f;
 
-    for(int i = ed->scrollY; i < buf->numLines; ++i)  {
-        if(y >= screen->h) {
+    for (int i = ed->scrollY; i < buf->numLines; ++i) {
+        if (y >= screen->h) {
             break;
         }
 
@@ -243,24 +215,25 @@ void DrawEditor(Tigr* screen, Editor* ed)
         tigrPrint(screen, font, x, y, tigrRGB(40, 40, 40), lbuf);
         x += tigrTextWidth(font, lbuf) + 4;
 
-        if(ed->mode == MODE_VISUAL_LINE) {
+        if (ed->mode == MODE_VISUAL_LINE) {
             int a = ed->vStart.y;
             int b = ed->cur.y;
 
-            if(a > b) {
+            if (a > b) {
                 int temp = b;
                 b = a;
                 a = temp;
             }
 
-            if(i >= a && i <= b) {
-                tigrFill(screen, x, y, tigrTextWidth(font, buf->lines[i]), tigrTextHeight(font, buf->lines[i]), tigrRGB(80, 80, 80));
+            if (i >= a && i <= b) {
+                tigrFill(screen, x, y, tigrTextWidth(font, buf->lines[i]),
+                         tigrTextHeight(font, buf->lines[i]), tigrRGB(80, 80, 80));
             }
         }
 
         int lineLen = strlen(buf->lines[i]);
 
-        // TODO(Apaar): Don't bother tokenizing when 
+        // TODO(Apaar): Don't bother tokenizing when
         // the filetype is unknown (or maybe just produce line-long
         // tokens)
 
@@ -268,20 +241,20 @@ void DrawEditor(Tigr* screen, Editor* ed)
 
         int numTokens = Tokenize(buf, buf->lines[i], tokens, MAX_TOKENS);
 
-        if(i == ed->cur.y) {
+        if (i == ed->cur.y) {
             assert(ed->cur.x >= 0 && ed->cur.x <= lineLen);
 
-            if(blink) {
-                if(numTokens == 0) {
+            if (blink) {
+                if (numTokens == 0) {
                     int w = tigrTextWidth(font, " ");
                     int h = tigrTextHeight(font, "A");
 
-                    if(ed->mode == MODE_INSERT) {
+                    if (ed->mode == MODE_INSERT) {
                         w = 2;
                     }
 
                     tigrFill(screen, x, y, w, h, tigrRGB(100, 100, 100));
-                } else if(ed->cur.x == lineLen) {
+                } else if (ed->cur.x == lineLen) {
                     assert(ed->mode == MODE_INSERT);
 
                     int w = tigrTextWidth(font, buf->lines[ed->cur.y]);
@@ -292,20 +265,20 @@ void DrawEditor(Tigr* screen, Editor* ed)
             }
         }
 
-        for(int j = 0; j < numTokens; ++j) {
+        for (int j = 0; j < numTokens; ++j) {
             int len = 0;
             int k = 0;
 
-            if(tokens[j].type == TOK_MULTILINE_COMMENT_START) {
+            if (tokens[j].type == TOK_MULTILINE_COMMENT_START) {
                 insideComment = true;
-            } 
+            }
 
             const char* s = tokens[j].lexeme;
 
             static char lexeme[MAX_TOKEN_LENGTH];
 
-            while(*s) {
-                if(*s == '%') {
+            while (*s) {
+                if (*s == '%') {
                     lexeme[k++] = '%';
                     lexeme[k++] = '%';
                     s += 1;
@@ -318,13 +291,13 @@ void DrawEditor(Tigr* screen, Editor* ed)
 
             TPixel color = tokenColors[tokens[j].type];
 
-            if(insideComment) {
+            if (insideComment) {
                 color = tokenColors[TOK_COMMENT];
             }
 
             int lexw = tigrTextWidth(font, lexeme);
-           
-            if(x + lexw >= screen->w) {
+
+            if (x + lexw >= screen->w) {
                 // Wrap once
                 // anything longer is obnoxiously long and should be deleted
                 x = 0;
@@ -337,7 +310,7 @@ void DrawEditor(Tigr* screen, Editor* ed)
                 insideComment = false;
             }
 
-            if(blink && i == ed->cur.y && drawCurX <= ed->cur.x && ed->cur.x < drawCurX + len) {
+            if (blink && i == ed->cur.y && drawCurX <= ed->cur.x && ed->cur.x < drawCurX + len) {
                 char buf[MAX_TOKEN_LENGTH];
                 strcpy(buf, tokens[j].lexeme);
 
@@ -366,13 +339,13 @@ void DrawEditor(Tigr* screen, Editor* ed)
         y += tigrTextHeight(font, buf->lines[i]);
     }
 
-    if(Status[0] || ed->mode == MODE_COMMAND || ed->mode == MODE_FORWARD_SEARCH) {
+    if (Status[0] || ed->mode == MODE_COMMAND || ed->mode == MODE_FORWARD_SEARCH) {
         // print status/command
         static char buf[MAX_COMMAND_LENGTH];
-        
-        if(ed->mode == MODE_COMMAND) {
+
+        if (ed->mode == MODE_COMMAND) {
             sprintf(buf, ":%s", ed->cmd);
-        } else if(ed->mode == MODE_FORWARD_SEARCH) {
+        } else if (ed->mode == MODE_FORWARD_SEARCH) {
             sprintf(buf, "/%s", ed->cmd);
         } else {
             strcpy(buf, Status);
@@ -383,4 +356,3 @@ void DrawEditor(Tigr* screen, Editor* ed)
         tigrPrint(screen, font, 0, screen->h - h, tigrRGB(200, 200, 200), buf);
     }
 }
-

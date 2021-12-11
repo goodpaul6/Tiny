@@ -1,11 +1,12 @@
-#include <string.h>
-#include <stdio.h>
-#include <ctype.h>
+#include "lib.h"
 
+#include <ctype.h>
+#include <stdio.h>
+#include <string.h>
+
+#include "dict.h"
 #include "stretchy_buffer.h"
 #include "tiny.h"
-#include "dict.h"
-#include "lib.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -17,10 +18,9 @@
 
 char* estrdup(const char* s);
 
-static void FinalizeBuf(void* bp)
-{	
-	sb_free(*(unsigned char**)bp);
-	free(bp);
+static void FinalizeBuf(void* bp) {
+    sb_free(*(unsigned char**)bp);
+    free(bp);
 }
 
 const Tiny_NativeProp BufProp = {
@@ -33,19 +33,18 @@ const Tiny_NativeProp BufProp = {
 extern const Tiny_NativeProp DictProp;
 extern const Tiny_NativeProp ArrayProp;
 
-static TINY_FOREIGN_FUNCTION(Buf)
-{
-	unsigned char** buf = malloc(sizeof(unsigned char*));
-	*buf = NULL;
-	
-    if(count == 1) {     
+static TINY_FOREIGN_FUNCTION(Buf) {
+    unsigned char** buf = malloc(sizeof(unsigned char*));
+    *buf = NULL;
+
+    if (count == 1) {
         const char* str = Tiny_ToString(args[0]);
 
         size_t len = strlen(str);
 
         unsigned char* start = sb_add(*buf, len);
-        
-        for(int i = 0; i < len; ++i) {
+
+        for (int i = 0; i < len; ++i) {
             start[i] = str[i];
         }
     }
@@ -53,8 +52,7 @@ static TINY_FOREIGN_FUNCTION(Buf)
     return Tiny_NewNative(thread, buf, &BufProp);
 }
 
-static TINY_FOREIGN_FUNCTION(BufPushByte)
-{
+static TINY_FOREIGN_FUNCTION(BufPushByte) {
     unsigned char** buf = Tiny_ToAddr(args[0]);
     unsigned char b = (unsigned char)Tiny_ToInt(args[1]);
 
@@ -63,8 +61,7 @@ static TINY_FOREIGN_FUNCTION(BufPushByte)
     return Tiny_Null;
 }
 
-static TINY_FOREIGN_FUNCTION(BufPushStr)
-{
+static TINY_FOREIGN_FUNCTION(BufPushStr) {
     unsigned char** buf = Tiny_ToAddr(args[0]);
     const char* str = Tiny_ToString(args[1]);
 
@@ -72,15 +69,14 @@ static TINY_FOREIGN_FUNCTION(BufPushStr)
 
     unsigned char* start = sb_add(*buf, len);
 
-    for(size_t i = 0; i < len; ++i) {
+    for (size_t i = 0; i < len; ++i) {
         start[i] = str[i];
     }
 
     return Tiny_Null;
 }
 
-static TINY_FOREIGN_FUNCTION(BufClear)
-{
+static TINY_FOREIGN_FUNCTION(BufClear) {
     unsigned char** buf = Tiny_ToAddr(args[0]);
 
     stb__sbn(*buf) = 0;
@@ -88,14 +84,12 @@ static TINY_FOREIGN_FUNCTION(BufClear)
     return Tiny_Null;
 }
 
-static TINY_FOREIGN_FUNCTION(BufLen)
-{
+static TINY_FOREIGN_FUNCTION(BufLen) {
     unsigned char** buf = Tiny_ToAddr(args[0]);
     return Tiny_NewInt(sb_count(*buf));
 }
 
-static TINY_FOREIGN_FUNCTION(BufToStr)
-{
+static TINY_FOREIGN_FUNCTION(BufToStr) {
     unsigned char** buf = Tiny_ToAddr(args[0]);
 
     char* s = estrdup((char*)(*buf));
@@ -103,13 +97,12 @@ static TINY_FOREIGN_FUNCTION(BufToStr)
     return Tiny_NewString(thread, s);
 }
 
-static TINY_FOREIGN_FUNCTION(GetFileContents)
-{
+static TINY_FOREIGN_FUNCTION(GetFileContents) {
     const char* filename = Tiny_ToString(args[0]);
 
     FILE* file = fopen(filename, "rb");
 
-    if(!file) {
+    if (!file) {
         return Tiny_Null;
     }
 
@@ -128,14 +121,13 @@ static TINY_FOREIGN_FUNCTION(GetFileContents)
     return Tiny_NewNative(thread, buf, &BufProp);
 }
 
-static TINY_FOREIGN_FUNCTION(FilePutContents)
-{
+static TINY_FOREIGN_FUNCTION(FilePutContents) {
     const char* filename = Tiny_ToString(args[0]);
     unsigned char** buf = Tiny_ToAddr(args[1]);
 
     FILE* file = fopen(filename, "wb");
 
-    if(!file) {
+    if (!file) {
         return Tiny_NewBool(false);
     }
 
@@ -145,19 +137,17 @@ static TINY_FOREIGN_FUNCTION(FilePutContents)
     return Tiny_NewBool(true);
 }
 
-static void ConvertPath(char* s)
-{
+static void ConvertPath(char* s) {
 #ifdef _WIN32
-    while(*s) {
-        if(*s == '/') *s = '\\';
-		s += 1;
+    while (*s) {
+        if (*s == '/') *s = '\\';
+        s += 1;
     }
 #else
 #endif
 }
 
-static TINY_FOREIGN_FUNCTION(ListDir)
-{
+static TINY_FOREIGN_FUNCTION(ListDir) {
     const char* dir = Tiny_ToString(args[0]);
 
 #ifdef _WIN32
@@ -169,10 +159,10 @@ static TINY_FOREIGN_FUNCTION(ListDir)
     strcat(path, "\\*");
 
     WIN32_FIND_DATA data;
-    
+
     HANDLE hFind = FindFirstFile(path, &data);
 
-    if(hFind == INVALID_HANDLE_VALUE) {
+    if (hFind == INVALID_HANDLE_VALUE) {
         return Tiny_Null;
     }
 
@@ -181,33 +171,32 @@ static TINY_FOREIGN_FUNCTION(ListDir)
     InitArray(a, sizeof(Tiny_Value));
 
     do {
-		if(data.cFileName[0] == '.') continue;
+        if (data.cFileName[0] == '.') continue;
 
         Tiny_Value val = Tiny_NewString(thread, estrdup(data.cFileName));
         ArrayPush(a, &val);
-    } while(FindNextFile(hFind, &data));
+    } while (FindNextFile(hFind, &data));
 
-	FindClose(hFind);
+    FindClose(hFind);
 
     return Tiny_NewNative(thread, a, &ArrayProp);
 #else
     return Tiny_Null;
 #endif
 }
- 
-static char* DecodeURL(const char* s)
-{
+
+static char* DecodeURL(const char* s) {
     char* buf = NULL;
 
-    while(*s) {
+    while (*s) {
         int c = *s;
 
-        if(c == '%') {
-            if(isxdigit(s[1]) && isxdigit(s[2])) {
+        if (c == '%') {
+            if (isxdigit(s[1]) && isxdigit(s[2])) {
                 sscanf(s + 1, "%2x", &c);
             }
-            
-			s += 3;
+
+            s += 3;
         } else {
             s += 1;
         }
@@ -220,53 +209,51 @@ static char* DecodeURL(const char* s)
     return buf;
 }
 
-static TINY_FOREIGN_FUNCTION(Lib_DecodeURL)
-{
+static TINY_FOREIGN_FUNCTION(Lib_DecodeURL) {
     const char* s = Tiny_ToString(args[0]);
     return Tiny_NewString(thread, DecodeURL(s));
 }
 
-static TINY_FOREIGN_FUNCTION(ParseFormValues)
-{
+static TINY_FOREIGN_FUNCTION(ParseFormValues) {
     char** pBuf = Tiny_ToAddr(args[0]);
     sb_push(*pBuf, 0);
 
     char* dec = DecodeURL(*pBuf);
-	char* startDec = dec;
+    char* startDec = dec;
 
-	char* name = NULL;
-	char* value = NULL;
+    char* name = NULL;
+    char* value = NULL;
 
     Dict* d = malloc(sizeof(Dict));
 
     InitDict(d, sizeof(Tiny_Value));
 
-    while(*dec) {
-        while(*dec && *dec != '=') {
+    while (*dec) {
+        while (*dec && *dec != '=') {
             sb_push(name, *dec++);
         }
 
-		sb_push(name, 0);
+        sb_push(name, 0);
 
-        if(!*dec) {
+        if (!*dec) {
             fprintf(stderr, "Expected '=' after value name in form body but it wasn't there.\n");
             sb_free(name);
             break;
         }
 
-		dec += 1;
+        dec += 1;
 
-        while(*dec && *dec != '&') {
+        while (*dec && *dec != '&') {
             sb_push(value, *dec++);
         }
 
-		if(*dec == '&') ++dec;
-	
-		sb_push(value, 0);
+        if (*dec == '&') ++dec;
+
+        sb_push(value, 0);
 
         // Handle spaces
-        for(int i = 0; i < sb_count(value); ++i) {
-            if(value[i] == '+') value[i] = ' ';
+        for (int i = 0; i < sb_count(value); ++i) {
+            if (value[i] == '+') value[i] = ' ';
         }
 
         printf("Parsed form value: %s=%s\n", name, value);
@@ -276,19 +263,18 @@ static TINY_FOREIGN_FUNCTION(ParseFormValues)
         DictSet(d, name, &val);
 
         sb_free(name);
-		sb_free(value);
+        sb_free(value);
 
         name = NULL;
         value = NULL;
     }
 
-	sb_free(startDec);
+    sb_free(startDec);
 
     return Tiny_NewNative(thread, d, &DictProp);
 }
 
-void BindBuffer(Tiny_State* state)
-{
+void BindBuffer(Tiny_State* state) {
     Tiny_RegisterType(state, "buf");
 
     Tiny_BindFunction(state, "buf(...): buf", Buf);
@@ -299,19 +285,17 @@ void BindBuffer(Tiny_State* state)
     Tiny_BindFunction(state, "buf_clear(buf): void", BufClear);
 }
 
-void BindIO(Tiny_State* state)
-{
+void BindIO(Tiny_State* state) {
     Tiny_RegisterType(state, "buf");
     Tiny_RegisterType(state, "array");
 
     Tiny_BindFunction(state, "get_file_contents(str): buf", GetFileContents);
     Tiny_BindFunction(state, "file_put_contents(str, buf): bool", FilePutContents);
 
-	Tiny_BindFunction(state, "list_dir(str): array", ListDir);
+    Tiny_BindFunction(state, "list_dir(str): array", ListDir);
 }
 
-void BindHttpUtils(Tiny_State* state)
-{
+void BindHttpUtils(Tiny_State* state) {
     Tiny_RegisterType(state, "dict");
     Tiny_RegisterType(state, "buf");
 

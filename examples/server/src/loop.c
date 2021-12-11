@@ -1,7 +1,7 @@
+#include "lib.h"
 #include "request.h"
 #include "server.h"
 #include "util.h"
-#include "lib.h"
 
 #ifdef _WIN32
 #ifndef WIN32_LEAN_AND_MEAN
@@ -22,8 +22,7 @@
 
 #define Waiting(thread) (AtomicLoad(((Context*)((thread)->userdata))->waiting))
 
-typedef struct
-{
+typedef struct {
     Request req;
     Sock client;
     Server* serv;
@@ -34,8 +33,7 @@ typedef struct
     thrd_t worker;
 } Context;
 
-typedef struct
-{
+typedef struct {
     Tiny_StateThread* thread;
     const Tiny_Value* args;
     int count;
@@ -43,36 +41,35 @@ typedef struct
 
 extern const Tiny_NativeProp BufProp;
 
-static int DoCallWait(void* pData)
-{
+static int DoCallWait(void* pData) {
     WorkerData* data = pData;
 
     const char* funcName = Tiny_ToString(data->args[0]);
 
     int funcIndex = Tiny_GetFunctionIndex(data->thread->state, funcName);
-    
-    if(funcIndex < 0) {
+
+    if (funcIndex < 0) {
         fprintf(stderr, "Attempted to call_wait a non-existent function '%s'.\n", funcName);
         data->thread->retVal = Tiny_Null;
         free(data);
         return 1;
     }
 
-    data->thread->retVal = Tiny_CallFunction(data->thread, funcIndex, &data->args[1], data->count - 1);
+    data->thread->retVal =
+        Tiny_CallFunction(data->thread, funcIndex, &data->args[1], data->count - 1);
 
     Context* ctx = data->thread->userdata;
 
-	AtomicDec(ctx->waiting);
+    AtomicDec(ctx->waiting);
 
     free(data);
 
-	cnd_signal(&ctx->serv->updateLoop);
+    cnd_signal(&ctx->serv->updateLoop);
 
     return 0;
 }
 
-static TINY_FOREIGN_FUNCTION(CallWait)
-{
+static TINY_FOREIGN_FUNCTION(CallWait) {
     Context* ctx = thread->userdata;
 
     WorkerData* data = malloc(sizeof(WorkerData));
@@ -88,8 +85,7 @@ static TINY_FOREIGN_FUNCTION(CallWait)
     return Tiny_Null;
 }
 
-static TINY_FOREIGN_FUNCTION(Sends)
-{
+static TINY_FOREIGN_FUNCTION(Sends) {
     Context* ctx = thread->userdata;
 
     const char* s = Tiny_ToString(args[0]);
@@ -97,36 +93,35 @@ static TINY_FOREIGN_FUNCTION(Sends)
     return Tiny_NewInt(SockSend(&ctx->client, s, (int)strlen(s)));
 }
 
-static TINY_FOREIGN_FUNCTION(Sendf)
-{
+static TINY_FOREIGN_FUNCTION(Sendf) {
     Context* ctx = thread->userdata;
 
     const char* s = Tiny_ToString(args[0]);
-    
-	int arg = 1;
+
+    int arg = 1;
 
     char* buf = NULL;
 
-    while(*s) {
-        if(*s == '%') {
+    while (*s) {
+        if (*s == '%') {
             ++s;
-            if(*s == '%') {
+            if (*s == '%') {
                 sb_push(buf, '%');
             } else {
-                if(arg >= count) {
+                if (arg >= count) {
                     fprintf(stderr, "Insufficient arguments to sendf.");
                     thread->pc = -1;
                     return Tiny_Null;
                 }
             }
 
-            switch(*s) {
+            switch (*s) {
                 case 'i': {
                     char is[32];
                     sprintf(is, "%i", Tiny_ToInt(args[arg]));
 
-                    for(int i = 0; i < 32; ++i) {
-                        if(is[i] == 0) break;
+                    for (int i = 0; i < 32; ++i) {
+                        if (is[i] == 0) break;
                         sb_push(buf, is[i]);
                     }
                 } break;
@@ -134,96 +129,90 @@ static TINY_FOREIGN_FUNCTION(Sendf)
                 case 's': {
                     const char* ss = Tiny_ToString(args[arg]);
 
-                    while(*ss) {
+                    while (*ss) {
                         sb_push(buf, *ss++);
                     }
                 } break;
 
                 default: {
-					fprintf(stderr, "%s(%i): Invalid format specifier '%%%c' in sendf.\n", thread->fileName, thread->lineNumber, *s);
+                    fprintf(stderr, "%s(%i): Invalid format specifier '%%%c' in sendf.\n",
+                            thread->fileName, thread->lineNumber, *s);
                 } break;
             }
 
-			s++;
+            s++;
             arg += 1;
         } else {
             sb_push(buf, *s++);
         }
     }
 
-	int i = SockSend(&ctx->client, buf, sb_count(buf));
+    int i = SockSend(&ctx->client, buf, sb_count(buf));
 
     sb_free(buf);
 
     return Tiny_NewInt(i);
 }
 
-static TINY_FOREIGN_FUNCTION(Sendb)
-{
+static TINY_FOREIGN_FUNCTION(Sendb) {
     Context* ctx = thread->userdata;
 
     unsigned char** buf = Tiny_ToAddr(args[0]);
- 
+
     return Tiny_NewInt(SockSend(&ctx->client, *(char**)buf, sb_count(*buf)));
 }
 
-static TINY_FOREIGN_FUNCTION(GetRequestMethod)
-{
+static TINY_FOREIGN_FUNCTION(GetRequestMethod) {
     Context* ctx = thread->userdata;
     return Tiny_NewConstString(ctx->req.method);
 }
 
-static TINY_FOREIGN_FUNCTION(GetRequestTarget)
-{
+static TINY_FOREIGN_FUNCTION(GetRequestTarget) {
     Context* ctx = thread->userdata;
     return Tiny_NewConstString(ctx->req.target);
 }
 
-static TINY_FOREIGN_FUNCTION(GetRequestBody)
-{
+static TINY_FOREIGN_FUNCTION(GetRequestBody) {
     Context* ctx = thread->userdata;
 
     char** pBuf = malloc(sizeof(char*));
-	*pBuf = NULL;
+    *pBuf = NULL;
 
     size_t len = strlen(ctx->req.body);
 
     char* start = sb_add(*pBuf, len);
 
-    for(int i = 0; i < len; ++i) {
+    for (int i = 0; i < len; ++i) {
         start[i] = ctx->req.body[i];
-    } 
+    }
 
     return Tiny_NewNative(thread, pBuf, &BufProp);
 }
 
-static TINY_FOREIGN_FUNCTION(Lib_GetHeaderValue)
-{
+static TINY_FOREIGN_FUNCTION(Lib_GetHeaderValue) {
     Context* ctx = thread->userdata;
-    
+
     const char* name = Tiny_ToString(args[0]);
 
     const char* s = GetHeaderValue(&ctx->req, name);
 
-    if(!s) return Tiny_Null;
+    if (!s) return Tiny_Null;
 
     return Tiny_NewConstString(s);
 }
 
-static TINY_FOREIGN_FUNCTION(Stop)
-{
-	thread->pc = -1;
-	return Tiny_Null;
+static TINY_FOREIGN_FUNCTION(Stop) {
+    thread->pc = -1;
+    return Tiny_Null;
 }
 
-static Tiny_State* CreateState(const Config* c, const char* filename)
-{
+static Tiny_State* CreateState(const Config* c, const char* filename) {
     Tiny_State* state = Tiny_CreateState();
 
     Tiny_BindStandardLib(state);
     Tiny_BindStandardArray(state);
     Tiny_BindStandardDict(state);
-    
+
     BindBuffer(state);
     BindIO(state);
     BindTemplateUtils(state);
@@ -240,53 +229,52 @@ static Tiny_State* CreateState(const Config* c, const char* filename)
     Tiny_BindFunction(state, "get_request_body(): buf", GetRequestBody);
     Tiny_BindFunction(state, "get_header_value(str): str", Lib_GetHeaderValue);
 
-	Tiny_BindFunction(state, "stop(): void", Stop);
+    Tiny_BindFunction(state, "stop(): void", Stop);
 
-    for(int i = 0; i < sb_count(c->modules); ++i) {
-        for(int j = 0; j < sb_count(c->modules[i].funcs); ++j) {
+    for (int i = 0; i < sb_count(c->modules); ++i) {
+        for (int j = 0; j < sb_count(c->modules[i].funcs); ++j) {
             Tiny_BindFunction(state, c->modules[i].funcs[j].sig, c->modules[i].funcs[j].func);
         }
     }
 
-    for(int i = 0; i < sb_count(c->commonScripts); ++i) {
+    for (int i = 0; i < sb_count(c->commonScripts); ++i) {
         Tiny_CompileFile(state, c->commonScripts[i]);
     }
 
     Tiny_CompileFile(state, filename);
 
-	return state;
+    return state;
 }
 
 // Does nothing if the state is already loaded
-static Tiny_State* LoadState(Server* serv, const char* filename)
-{
+static Tiny_State* LoadState(Server* serv, const char* filename) {
     LoopData* loop = &serv->loop;
 
-    for(int i = 0; i < sb_count(loop->states); ++i) {
-        if(strcmp(loop->states[i].filename, filename) == 0) {
+    for (int i = 0; i < sb_count(loop->states); ++i) {
+        if (strcmp(loop->states[i].filename, filename) == 0) {
             long long writeTime;
 
-            if(GetLastWriteTime(filename, &writeTime)) {
-                if(writeTime > loop->states[i].writeTime) {
+            if (GetLastWriteTime(filename, &writeTime)) {
+                if (writeTime > loop->states[i].writeTime) {
                     bool inUse = false;
 
-                    for(int i = 0; i < serv->conf.numThreads; ++i) {
-                        if(loop->threads[i].pc >= 0 && loop->threads[i].state == loop->states[i].state) {
+                    for (int i = 0; i < serv->conf.numThreads; ++i) {
+                        if (loop->threads[i].pc >= 0 &&
+                            loop->threads[i].state == loop->states[i].state) {
                             inUse = true;
                             break;
                         }
                     }
 
-                    if(!inUse) {
+                    if (!inUse) {
                         Tiny_DeleteState(loop->states[i].state);
 
-						loop->states[i].state = CreateState(&serv->conf, filename);
+                        loop->states[i].state = CreateState(&serv->conf, filename);
                         loop->states[i].writeTime = writeTime;
 
                         printf("Reloaded script %s.\n", filename);
                     }
-
-				}
+                }
             }
 
             return loop->states[i].state;
@@ -296,7 +284,7 @@ static Tiny_State* LoadState(Server* serv, const char* filename)
     StateFilename s;
 
     s.filename = estrdup(filename);
-	s.state = CreateState(&serv->conf, filename);
+    s.state = CreateState(&serv->conf, filename);
     s.writeTime = 0;
 
     GetLastWriteTime(filename, &s.writeTime);
@@ -306,40 +294,39 @@ static Tiny_State* LoadState(Server* serv, const char* filename)
     return s.state;
 }
 
-static void DeleteContext(Context* ctx)
-{
+static void DeleteContext(Context* ctx) {
     ReleaseSock(&ctx->client);
     DestroyRequest(&ctx->req);
 
     free(ctx);
 }
 
-static void LoopBody(Server* serv)
-{
+static void LoopBody(Server* serv) {
     bool isActive = false;
 
-    for(int i = 0; i < serv->conf.numThreads; ++i) {
+    for (int i = 0; i < serv->conf.numThreads; ++i) {
         Tiny_StateThread* thread = &serv->loop.threads[i];
 
-        if(thread->pc < 0 || Waiting(thread)) {
+        if (thread->pc < 0 || Waiting(thread)) {
             continue;
         }
 
         bool willHaveRunningThread = true;
 
-        for(int k = 0; k < serv->conf.cyclesPerLoop; ++k) {
-			if(!Tiny_ExecuteCycle(thread)) {
-				break;
-			}
+        for (int k = 0; k < serv->conf.cyclesPerLoop; ++k) {
+            if (!Tiny_ExecuteCycle(thread)) {
+                break;
+            }
 
-            if(Waiting(thread)) {
+            if (Waiting(thread)) {
                 willHaveRunningThread = false;
                 break;
             }
         }
 
-        if(thread->pc < 0) {
-            printf("Completed job on StateThread %d (%s).\n", i, ((Context*)thread->userdata)->req.target);
+        if (thread->pc < 0) {
+            printf("Completed job on StateThread %d (%s).\n", i,
+                   ((Context*)thread->userdata)->req.target);
 
             DeleteContext(thread->userdata);
             Tiny_DestroyThread(thread);
@@ -347,43 +334,43 @@ static void LoopBody(Server* serv)
             willHaveRunningThread = false;
         }
 
-        if(willHaveRunningThread) {
+        if (willHaveRunningThread) {
             isActive = true;
         }
     }
 
     ClientRequest req;
 
-    if(!ListPopFront(&serv->requestQueue, &req)) {
-        if(!isActive) {
+    if (!ListPopFront(&serv->requestQueue, &req)) {
+        if (!isActive) {
             mtx_lock(&serv->requestQueue.mutex);
 
-            while(!serv->requestQueue.head && !isActive) {
-				cnd_wait(&serv->updateLoop, &serv->requestQueue.mutex);
+            while (!serv->requestQueue.head && !isActive) {
+                cnd_wait(&serv->updateLoop, &serv->requestQueue.mutex);
 
                 // Re-check the threads to see if anyone is running because
                 // we could've been woken up as a result of a waiting call
                 // being completed
-                for(int i = 0; i < serv->conf.numThreads; ++i) {
-                    if(serv->loop.threads[i].pc >= 0 && !Waiting(&serv->loop.threads[i])) {
+                for (int i = 0; i < serv->conf.numThreads; ++i) {
+                    if (serv->loop.threads[i].pc >= 0 && !Waiting(&serv->loop.threads[i])) {
                         isActive = true;
                         break;
                     }
                 }
             }
-            
+
             mtx_unlock(&serv->requestQueue.mutex);
-        }     
+        }
     } else {
         // Look for a thread that's available, if there isn't one
         // requeue the request
-        
+
         bool found = false;
 
-        for(int i = 0; i < serv->conf.numThreads; ++i) {
+        for (int i = 0; i < serv->conf.numThreads; ++i) {
             Tiny_StateThread* thread = &serv->loop.threads[i];
 
-            if(serv->loop.threads[i].pc >= 0) {
+            if (serv->loop.threads[i].pc >= 0) {
                 continue;
             }
 
@@ -391,29 +378,31 @@ static void LoopBody(Server* serv)
 
             const char* filename = GetFilenameForTarget(&serv->conf, req.r.target);
 
-            if(!filename) {
+            if (!filename) {
                 printf("Failed to match target '%s'\n", req.r.target);
 
-                const char* response = "HTTP/1.1 404 Not Found\r\n"
-                   "Content-Type: text/plain\r\n"
-                   "Content-Length: 30\r\n"
-                   "\r\n"
-                   "That webpage does not exist.\r\n"; 
+                const char* response =
+                    "HTTP/1.1 404 Not Found\r\n"
+                    "Content-Type: text/plain\r\n"
+                    "Content-Length: 30\r\n"
+                    "\r\n"
+                    "That webpage does not exist.\r\n";
 
                 SockSend(&req.client, response, strlen(response));
                 break;
             }
 
             Tiny_State* state = LoadState(serv, filename);
-            
-            if(!state) {
-				fprintf(stderr, "Missing script '%s'\n", filename);
 
-                const char* response = "HTTP/1.1 500 Internal Server Error\r\n"
-					"Content-Type: text/plain\r\n"
-					"Content-Length: 45\r\n"
-					"\r\n"
-					"I'm sorry but someone messed up the server.\r\n";
+            if (!state) {
+                fprintf(stderr, "Missing script '%s'\n", filename);
+
+                const char* response =
+                    "HTTP/1.1 500 Internal Server Error\r\n"
+                    "Content-Type: text/plain\r\n"
+                    "Content-Length: 45\r\n"
+                    "\r\n"
+                    "I'm sorry but someone messed up the server.\r\n";
 
                 SockSend(&req.client, response, strlen(response));
                 break;
@@ -423,8 +412,8 @@ static void LoopBody(Server* serv)
 
             ctx->req = req.r;
 
-            ctx->client = req.client;			
-			RetainSock(&ctx->client);
+            ctx->client = req.client;
+            RetainSock(&ctx->client);
 
             ctx->serv = serv;
 
@@ -432,14 +421,15 @@ static void LoopBody(Server* serv)
 
             Tiny_InitThread(thread, state);
 
-			thread->userdata = ctx;
+            thread->userdata = ctx;
             Tiny_StartThread(thread);
-		
-			printf("Started StateThread %d (%s) to handle %s %s\n", i, filename, req.r.method, req.r.target);
-			break;
+
+            printf("Started StateThread %d (%s) to handle %s %s\n", i, filename, req.r.method,
+                   req.r.target);
+            break;
         }
 
-        if(!found) {
+        if (!found) {
             ListPushBack(&serv->requestQueue, &req);
         }
     }
@@ -453,14 +443,14 @@ static void LoopBody(Server* serv)
     // pending and all StateThreads are idle (i.e. pc <= 0), we wait
     // on the condition variable notEmpty in the list. This means the
     // thread will idle until there's some processing to do (which makes sense).
-    // If there is at least one executing state, then we just unlock 
+    // If there is at least one executing state, then we just unlock
     // the mutex as soon as we see there are no immediate requests and then
     // the loop restarts.
     //
     // Once a request comes in (whether we see it when we're checking immediately
     // or the condition variable wakes this thread up), if there is a StateThread
-    // available, it is parsed, its context is allocated/setup (the parsed request, 
-    // the socket (with a refcount), and the server), and the StateThread is 
+    // available, it is parsed, its context is allocated/setup (the parsed request,
+    // the socket (with a refcount), and the server), and the StateThread is
     // started. It will be responsible for carrying out the request.
     //
     // For long, blocking operations, I can expose a function like:
@@ -475,7 +465,7 @@ static void LoopBody(Server* serv)
     // the given "function_name" passing in the args. Once the CallFunction
     // returns, it will set the retval to whatever the function returned,
     // it will atomically set the blocking flag to false and
-    // exit the thread. 
+    // exit the thread.
     //
     // Meanwhile, CallSuspend, after setting the thread to being blocked, will
     // return immediately. No further cycles would be executed on the thread.
@@ -484,11 +474,11 @@ static void LoopBody(Server* serv)
     // be pushed onto the stack (because the thread sets the retVal of the
     // StateThread to whatever function_name returned) once that GET_RETVAL
     // is executed.
-    // 
+    //
     // Basically, this will allow scripts to do things like:
     //
     // all_users: rows = call_suspend("db_run", "SELECT * FROM USERS;")
-    // 
+    //
     // Doing this without suspending would block this loop for a while, but we don't want
     // that, and we don't want many threads going at the same time either
     // which is why the fast stuff happens in the loop and the slow stuff
@@ -497,35 +487,34 @@ static void LoopBody(Server* serv)
 
 extern volatile bool KeepRunning;
 
-int MainLoop(void* pServ)
-{
+int MainLoop(void* pServ) {
     Server* serv = pServ;
 
     serv->loop.states = NULL;
-	
-	// Preload all states
-	for (int i = 0; i < sb_count(serv->conf.routes); ++i) {
-		LoadState(serv, serv->conf.routes[i].filename);
-	}
+
+    // Preload all states
+    for (int i = 0; i < sb_count(serv->conf.routes); ++i) {
+        LoadState(serv, serv->conf.routes[i].filename);
+    }
 
     serv->loop.threads = malloc(sizeof(Tiny_StateThread) * serv->conf.numThreads);
 
-    for(int i = 0; i < serv->conf.numThreads; ++i) {
+    for (int i = 0; i < serv->conf.numThreads; ++i) {
         serv->loop.threads[i].pc = -1;
     }
 
-    while(KeepRunning) {
+    while (KeepRunning) {
         LoopBody(serv);
     }
 
     // Finish up every StateThread
-    for(int i = 0; i < serv->conf.numThreads; ++i) {
+    for (int i = 0; i < serv->conf.numThreads; ++i) {
         Tiny_StateThread* thread = &serv->loop.threads[i];
 
         bool deleteContext = false;
 
-        if(Waiting(thread)) {
-            Context* ctx = thread->userdata;    
+        if (Waiting(thread)) {
+            Context* ctx = thread->userdata;
             thrd_join(&ctx->worker, NULL);
 
             deleteContext = true;
@@ -533,17 +522,18 @@ int MainLoop(void* pServ)
 
         deleteContext = deleteContext || thread->pc >= 0;
 
-        while(Tiny_ExecuteCycle(thread));
+        while (Tiny_ExecuteCycle(thread))
+            ;
 
-        if(deleteContext) {
+        if (deleteContext) {
             DeleteContext(thread->userdata);
             Tiny_DestroyThread(thread);
         }
     }
 
-    for(int i = 0; i < sb_count(serv->loop.states); ++i) {
+    for (int i = 0; i < sb_count(serv->loop.states); ++i) {
         Tiny_DeleteState(serv->loop.states[i].state);
     }
-	
-	return 0;
+
+    return 0;
 }
