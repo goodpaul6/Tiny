@@ -277,16 +277,16 @@ int main(int argc, char** argv) {
         Tiny_BindFunction(EntityStates[i], "get_player(): ent", GetPlayer);
         Tiny_BindFunction(EntityStates[i], "add_ent", LibAddEnt);
         Tiny_BindFunction(EntityStates[i], "add_bullet", AddBullet);
-        Tiny_BindFunction(EntityStates[i], "is_key_down", IsKeyDown);
+        Tiny_BindFunction(EntityStates[i], "is_key_down(int): bool", IsKeyDown);
         Tiny_BindFunction(EntityStates[i], "accel(float, float): void", Accel);
         Tiny_BindFunction(EntityStates[i], "accel_angle(float, float): void", AccelAngle);
         Tiny_BindFunction(EntityStates[i], "accel_towards", AccelTowards);
-        Tiny_BindFunction(EntityStates[i], "get_x", GetX);
-        Tiny_BindFunction(EntityStates[i], "get_y", GetY);
+        Tiny_BindFunction(EntityStates[i], "get_x(): float", GetX);
+        Tiny_BindFunction(EntityStates[i], "get_y(): float", GetY);
         Tiny_BindFunction(EntityStates[i], "kill", Kill);
         Tiny_BindFunction(EntityStates[i], "draw_rect", DrawRect);
         Tiny_BindFunction(EntityStates[i], "draw_text", DrawText);
-        Tiny_BindFunction(EntityStates[i], "rand", LibRand);
+        Tiny_BindFunction(EntityStates[i], "rand(): int", LibRand);
 
         Tiny_CompileFile(EntityStates[i], scripts[i]);
     }
