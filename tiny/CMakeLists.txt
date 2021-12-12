@@ -1,4 +1,11 @@
-file(GLOB SOURCES src/*.c)
+set(SOURCES
+    src/array.c
+    src/dict.c
+    src/lexer.c
+    src/std.c
+    src/tiny.c
+    src/util.c
+    src/pos.c)
 
 add_library(tiny STATIC ${SOURCES})
 

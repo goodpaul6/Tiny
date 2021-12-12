@@ -1,5 +1,7 @@
 #pragma once
 
+#include <stdbool.h>
+
 #include "tokens.h"
 
 typedef struct {

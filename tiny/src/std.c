@@ -7,7 +7,6 @@
 
 #include "detail.h"
 #include "dict.h"
-#include "mem.h"
 #include "tiny.h"
 
 #ifdef _WIN32
