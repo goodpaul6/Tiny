@@ -6,7 +6,6 @@
 #include <stdlib.h>
 #include <time.h>
 
-#include "mem.h"
 #include "tigr.h"
 #include "tiny.h"
 
@@ -249,8 +248,6 @@ static Tiny_Value GetPlayerKills(Tiny_StateThread* thread, const Tiny_Value* arg
 }
 
 int main(int argc, char** argv) {
-    tiny_init_mem();
-
     srand(time(NULL));
 
     Screen = tigrWindow(320, 240, "Tiny Game", 0);
@@ -412,8 +409,6 @@ int main(int argc, char** argv) {
     }
 
     tigrFree(Screen);
-
-    tiny_destroy_mem();
 
     return 0;
 }

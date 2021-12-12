@@ -3,9 +3,20 @@
 #include "array.h"
 #include "detail.h"
 #include "dict.h"
-#include "mem.h"
 #include "minctest.h"
+#include "pos.h"
 #include "tiny.h"
+
+static void test_PosToFriendlyPos(void) {
+    Tiny_Pos pos = {8};
+
+    const char src[] = "hello\nworld\n";
+
+    Tiny_FriendlyPos friendlyPos = Tiny_PosToFriendlyPos(pos, src, sizeof(src));
+
+    lequal(friendlyPos.lineIndex, 1);
+    lequal(friendlyPos.charIndex, 2);
+}
 
 static void test_InitArrayEx(void) {
     Array array;
@@ -525,8 +536,7 @@ static void test_RevPolishCalc(void) {
 }
 
 int main(int argc, char *argv[]) {
-    tiny_init_mem();
-
+    lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
     lrun("All Dict tests", test_Dict);
     lrun("Tiny State compilation and many threads", test_TinyState);
@@ -537,8 +547,6 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Stdlib Dict", test_TinyDict);
     lrun("Tiny RPN", test_RevPolishCalc);
     lresults();
-
-    tiny_destroy_mem();
 
     return lfails != 0;
 }

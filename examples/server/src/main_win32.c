@@ -2,14 +2,17 @@
 #define WIN32_LEAN_AND_MEAN
 #endif
 
+// clang-format off
 #include <assert.h>
-#include <iphlpapi.h>
+#include <basetsd.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <windows.h>
+#include <iphlpapi.h>
 #include <winsock2.h>
 #include <ws2tcpip.h>
+// clang-format on
 
 #include "server.h"
 #include "sock.h"

@@ -11,7 +11,6 @@
 
 #include "detail.h"
 #include "lexer.h"
-#include "mem.h"
 #include "opcodes.h"
 #include "stretchy_buffer.h"
 #include "util.h"
