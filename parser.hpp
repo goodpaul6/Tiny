@@ -5,7 +5,7 @@
 #include "ast.hpp"
 #include "function_view.hpp"
 #include "lexer.hpp"
-#include "token_type.hpp"
+#include "token_kind.hpp"
 #include "type_name_pool.hpp"
 
 namespace tiny {
@@ -21,16 +21,16 @@ private:
     Lexer& m_lex;
     TypeNamePool& m_type_name_pool;
 
-    TokenType m_cur_tok;
+    TokenKind m_cur_tok;
 
-    TokenType next_token();
+    TokenKind next_token();
 
     // Throws an error if the current token is not equal to type
-    void expect_token(TokenType type);
+    void expect_token(TokenKind type);
 
     // Throws an error if the current token is not equal to the type, or consumes
     // the token if it is
-    void eat_token(TokenType type);
+    void eat_token(TokenKind type);
 
     const TypeName& parse_type();
 

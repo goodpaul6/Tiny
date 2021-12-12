@@ -16,7 +16,7 @@ struct Entity {
 };
 
 constexpr std::array<Entity, static_cast<size_t>(tiny::PrimitiveType::COUNT)> PRIMITIVE_TYPES{
-    {{"void", tiny::PrimitiveType::NULLV},
+    {{"void", tiny::PrimitiveType::VOID},
      {"bool", tiny::PrimitiveType::BOOL},
      {"char", tiny::PrimitiveType::CHAR},
      {"int", tiny::PrimitiveType::INT},
@@ -24,11 +24,11 @@ constexpr std::array<Entity, static_cast<size_t>(tiny::PrimitiveType::COUNT)> PR
      {"str", tiny::PrimitiveType::STR},
      {"any", tiny::PrimitiveType::ANY}}};
 
-bool is_operator(tiny::TokenType token) {
+bool is_operator(tiny::TokenKind token) {
     using namespace tiny;
 
-    return token == TokenType::EQUAL || token == TokenType::PLUS || token == TokenType::MINUS ||
-           token == TokenType::STAR || token == TokenType::SLASH;
+    return token == TokenKind::EQUAL || token == TokenKind::PLUS || token == TokenKind::MINUS ||
+           token == TokenKind::STAR || token == TokenKind::SLASH;
 }
 
 }  // namespace
@@ -41,20 +41,20 @@ Parser::Parser(Lexer& lexer, TypeNamePool& type_name_pool)
 void Parser::parse_until_eof(const FunctionView<void(ASTPtr)>& ast_handler) {
     next_token();
 
-    while (m_cur_tok != TokenType::SUB) {
+    while (m_cur_tok != TokenKind::SUB) {
         ast_handler(parse_statement());
     }
 }
 
-TokenType Parser::next_token() { return (m_cur_tok = m_lex.next_token()); }
+TokenKind Parser::next_token() { return (m_cur_tok = m_lex.next_token()); }
 
-void Parser::expect_token(TokenType type) {
+void Parser::expect_token(TokenKind type) {
     if (m_cur_tok != type) {
         throw PosError{m_lex.pos(), "Unexpected token"};
     }
 }
 
-void Parser::eat_token(TokenType type) {
+void Parser::eat_token(TokenKind type) {
     expect_token(type);
     next_token();
 }
@@ -62,13 +62,13 @@ void Parser::eat_token(TokenType type) {
 const TypeName& Parser::parse_type() {
     const TypeName* type = nullptr;
 
-    if (m_cur_tok == TokenType::OPENSQUARE) {
+    if (m_cur_tok == TokenKind::OPENSQUARE) {
         // Parse a map
         next_token();
 
         const auto& key = parse_type();
 
-        eat_token(TokenType::CLOSESQUARE);
+        eat_token(TokenKind::CLOSESQUARE);
 
         const auto& value = parse_type();
 
@@ -76,7 +76,7 @@ const TypeName& Parser::parse_type() {
     } else {
         // We parse types as identifiers since it prevents us from
         // reserving their names as keywords, even for primitive types.
-        expect_token(TokenType::IDENT);
+        expect_token(TokenKind::IDENT);
 
         std::optional<PrimitiveType> primitive_type;
 
@@ -98,10 +98,10 @@ const TypeName& Parser::parse_type() {
 
     assert(type);
 
-    while (m_cur_tok == TokenType::OPENSQUARE) {
+    while (m_cur_tok == TokenKind::OPENSQUARE) {
         next_token();
 
-        eat_token(TokenType::CLOSESQUARE);
+        eat_token(TokenKind::CLOSESQUARE);
 
         type = &m_type_name_pool.array(*type);
     }
@@ -111,7 +111,7 @@ const TypeName& Parser::parse_type() {
 
 Parser::ASTPtr Parser::parse_factor() {
     switch (m_cur_tok) {
-        case TokenType::IDENT: {
+        case TokenKind::IDENT: {
             auto ast = make_ast<IdAST>();
 
             ast->name = m_lex.str();
@@ -120,7 +120,7 @@ Parser::ASTPtr Parser::parse_factor() {
             return ast;
         } break;
 
-        case TokenType::INT_VALUE: {
+        case TokenKind::INT_VALUE: {
             auto ast = make_ast<LiteralAST>();
 
             ast->value = m_lex.i_value();
@@ -129,7 +129,7 @@ Parser::ASTPtr Parser::parse_factor() {
             return ast;
         } break;
 
-        case TokenType::FLOAT_VALUE: {
+        case TokenKind::FLOAT_VALUE: {
             auto ast = make_ast<LiteralAST>();
 
             ast->value = m_lex.f_value();
@@ -138,7 +138,7 @@ Parser::ASTPtr Parser::parse_factor() {
             return ast;
         } break;
 
-        case TokenType::STRING_VALUE: {
+        case TokenKind::STRING_VALUE: {
             auto ast = make_ast<LiteralAST>();
 
             ast->value = m_lex.str();
@@ -174,12 +174,12 @@ Parser::ASTPtr Parser::parse_expr() {
 
 Parser::ASTPtr Parser::parse_statement() {
     switch (m_cur_tok) {
-        case TokenType::IDENT: {
+        case TokenKind::IDENT: {
             auto str = m_lex.str();
 
             next_token();
 
-            eat_token(TokenType::COLON);
+            eat_token(TokenKind::COLON);
 
             const auto& type = parse_type();
 
@@ -188,11 +188,11 @@ Parser::ASTPtr Parser::parse_statement() {
             var_ast->name = std::move(str);
             var_ast->type = &type;
 
-            eat_token(TokenType::EQUAL);
+            eat_token(TokenKind::EQUAL);
 
             auto bin_ast = make_ast<BinAST>();
 
-            bin_ast->op = TokenType::EQUAL;
+            bin_ast->op = TokenKind::EQUAL;
             bin_ast->lhs = std::move(var_ast);
             bin_ast->rhs = parse_expr();
 

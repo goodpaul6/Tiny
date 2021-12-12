@@ -5,14 +5,14 @@
 #include <string>
 
 #include "pos.hpp"
-#include "token_type.hpp"
+#include "token_kind.hpp"
 
 namespace tiny {
 
 struct Lexer {
     Lexer(std::istream& s, std::string filename);
 
-    TokenType next_token();
+    TokenKind next_token();
 
     const std::string& str() const;
 

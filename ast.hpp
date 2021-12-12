@@ -5,7 +5,7 @@
 #include <variant>
 
 #include "pos.hpp"
-#include "token_type.hpp"
+#include "token_kind.hpp"
 #include "type_name.hpp"
 
 namespace tiny {
@@ -21,7 +21,7 @@ struct AST {
 };
 
 struct LiteralAST final : AST {
-    std::variant<std::monostate, TokenType, bool, char, std::int64_t, float, std::string> value;
+    std::variant<std::monostate, TokenKind, bool, char, std::int64_t, float, std::string> value;
 
     void visit(ASTVisitor& v) override;
 };
@@ -40,7 +40,7 @@ struct VarDeclAST final : AST {
 };
 
 struct BinAST final : AST {
-    TokenType op;
+    TokenKind op;
 
     std::unique_ptr<AST> lhs;
     std::unique_ptr<AST> rhs;

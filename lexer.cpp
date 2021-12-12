@@ -10,44 +10,44 @@ namespace {
 
 struct Entity {
     std::string_view str;
-    tiny::TokenType token_type;
+    tiny::TokenKind token_type;
 };
 
-constexpr std::array<Entity, 8> SEPARATORS{{{"(", tiny::TokenType::OPENPAREN},
-                                            {")", tiny::TokenType::CLOSEPAREN},
-                                            {"{", tiny::TokenType::OPENCURLY},
-                                            {"}", tiny::TokenType::CLOSECURLY},
-                                            {",", tiny::TokenType::COMMA},
-                                            {";", tiny::TokenType::SEMI},
-                                            {"[", tiny::TokenType::OPENSQUARE},
-                                            {"]", tiny::TokenType::CLOSESQUARE}}};
+constexpr std::array<Entity, 8> SEPARATORS{{{"(", tiny::TokenKind::OPENPAREN},
+                                            {")", tiny::TokenKind::CLOSEPAREN},
+                                            {"{", tiny::TokenKind::OPENCURLY},
+                                            {"}", tiny::TokenKind::CLOSECURLY},
+                                            {",", tiny::TokenKind::COMMA},
+                                            {";", tiny::TokenKind::SEMI},
+                                            {"[", tiny::TokenKind::OPENSQUARE},
+                                            {"]", tiny::TokenKind::CLOSESQUARE}}};
 
-constexpr std::array<Entity, 12> OPERATORS{{{"=", tiny::TokenType::EQUAL},
+constexpr std::array<Entity, 12> OPERATORS{{{"=", tiny::TokenKind::EQUAL},
 
-                                            {"+", tiny::TokenType::PLUS},
-                                            {"-", tiny::TokenType::MINUS},
-                                            {"*", tiny::TokenType::STAR},
-                                            {"/", tiny::TokenType::SLASH},
-                                            {":", tiny::TokenType::COLON},
+                                            {"+", tiny::TokenKind::PLUS},
+                                            {"-", tiny::TokenKind::MINUS},
+                                            {"*", tiny::TokenKind::STAR},
+                                            {"/", tiny::TokenKind::SLASH},
+                                            {":", tiny::TokenKind::COLON},
 
-                                            {"+=", tiny::TokenType::PLUS_EQUAL},
-                                            {"-=", tiny::TokenType::MINUS_EQUAL},
-                                            {"*=", tiny::TokenType::STAR_EQUAL},
-                                            {"/=", tiny::TokenType::SLASH_EQUAL},
+                                            {"+=", tiny::TokenKind::PLUS_EQUAL},
+                                            {"-=", tiny::TokenKind::MINUS_EQUAL},
+                                            {"*=", tiny::TokenKind::STAR_EQUAL},
+                                            {"/=", tiny::TokenKind::SLASH_EQUAL},
 
-                                            {":=", tiny::TokenType::DECLARE},
-                                            {"::", tiny::TokenType::DECLARE_CONST}}};
+                                            {":=", tiny::TokenKind::DECLARE},
+                                            {"::", tiny::TokenKind::DECLARE_CONST}}};
 
-constexpr std::array<Entity, 10> KEYWORDS{{{"if", tiny::TokenType::IF},
-                                           {"else", tiny::TokenType::ELSE},
-                                           {"while", tiny::TokenType::WHILE},
-                                           {"for", tiny::TokenType::FOR},
-                                           {"return", tiny::TokenType::RETURN},
-                                           {"func", tiny::TokenType::FUNC},
-                                           {"struct", tiny::TokenType::STRUCT},
-                                           {"new", tiny::TokenType::NEW},
-                                           {"cast", tiny::TokenType::CAST},
-                                           {"null", tiny::TokenType::NULL_VALUE}}};
+constexpr std::array<Entity, 10> KEYWORDS{{{"if", tiny::TokenKind::IF},
+                                           {"else", tiny::TokenKind::ELSE},
+                                           {"while", tiny::TokenKind::WHILE},
+                                           {"for", tiny::TokenKind::FOR},
+                                           {"return", tiny::TokenKind::RETURN},
+                                           {"func", tiny::TokenKind::FUNC},
+                                           {"struct", tiny::TokenKind::STRUCT},
+                                           {"new", tiny::TokenKind::NEW},
+                                           {"cast", tiny::TokenKind::CAST},
+                                           {"null", tiny::TokenKind::NULL_VALUE}}};
 
 constexpr bool is_whitespace(int ch) {
     return ch == '\n' || ch == '\r' || ch == ' ' || ch == '\t' || ch == '\f';
@@ -69,7 +69,7 @@ namespace tiny {
 
 Lexer::Lexer(std::istream& s, std::string filename) : m_s{s}, m_pos{1, filename} {}
 
-TokenType Lexer::next_token() {
+TokenKind Lexer::next_token() {
     m_str.clear();
 
     const auto push_get = [this] {
@@ -94,10 +94,10 @@ TokenType Lexer::next_token() {
 
         if (m_str == "true" || m_str == "false") {
             m_b_value = m_str == "true";
-            return TokenType::BOOL_VALUE;
+            return TokenKind::BOOL_VALUE;
         }
 
-        return TokenType::IDENT;
+        return TokenKind::IDENT;
     }
 
     if (is_digit(m_last)) {
@@ -111,11 +111,11 @@ TokenType Lexer::next_token() {
 
         if (has_radix) {
             m_f_value = std::stof(m_str);
-            return TokenType::FLOAT_VALUE;
+            return TokenKind::FLOAT_VALUE;
         }
 
         m_i_value = std::stoll(m_str);
-        return TokenType::INT_VALUE;
+        return TokenKind::INT_VALUE;
     }
 
     if (m_last == '\'') {
@@ -130,7 +130,7 @@ TokenType Lexer::next_token() {
 
         m_last = m_s.get();
 
-        return TokenType::CHAR_VALUE;
+        return TokenKind::CHAR_VALUE;
     }
 
     if (m_last == '"') {
@@ -146,7 +146,7 @@ TokenType Lexer::next_token() {
 
         m_last = m_s.get();
 
-        return TokenType::STRING_VALUE;
+        return TokenKind::STRING_VALUE;
     }
 
     for (const auto& sep : SEPARATORS) {
@@ -157,7 +157,7 @@ TokenType Lexer::next_token() {
     }
 
     if (is_sub(m_last)) {
-        return TokenType::SUB;
+        return TokenKind::SUB;
     }
 
     // We look for the longest operator that matches

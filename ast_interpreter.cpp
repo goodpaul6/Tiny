@@ -16,7 +16,7 @@ struct Evaluator final : tiny::ASTVisitor {
         std::visit(
             [&](auto&& value) {
                 using T = std::decay_t<decltype(value)>;
-                if constexpr (std::is_same_v<T, tiny::TokenType>) {
+                if constexpr (std::is_same_v<T, tiny::TokenKind>) {
                     m_values.push(std::monostate{});
                 } else {
                     m_values.push(value);
@@ -44,7 +44,7 @@ struct Evaluator final : tiny::ASTVisitor {
         auto lhs_value = m_values.top();
         m_values.pop();
 
-        if (ast.op == tiny::TokenType::EQUAL) {
+        if (ast.op == tiny::TokenKind::EQUAL) {
             if (auto* var_decl_ast = dynamic_cast<tiny::VarDeclAST*>(ast.lhs.get())) {
                 auto found = m_env.find(var_decl_ast->name);
 
@@ -78,13 +78,13 @@ struct Evaluator final : tiny::ASTVisitor {
                         throw tiny::PosError{ast.pos, "Incompatible types in binary operation"};
                     } else if constexpr (!std::is_same_v<A, bool> && std::is_integral_v<A>) {
                         switch (ast.op) {
-                            case tiny::TokenType::PLUS:
+                            case tiny::TokenKind::PLUS:
                                 return std::plus<A>{}(a, b);
-                            case tiny::TokenType::MINUS:
+                            case tiny::TokenKind::MINUS:
                                 return std::minus<A>{}(a, b);
-                            case tiny::TokenType::STAR:
+                            case tiny::TokenKind::STAR:
                                 return std::multiplies<A>{}(a, b);
-                            case tiny::TokenType::SLASH:
+                            case tiny::TokenKind::SLASH:
                                 return std::divides<A>{}(a, b);
                             default:
                                 // TODO Implement other operators

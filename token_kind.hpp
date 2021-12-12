@@ -4,7 +4,7 @@
 
 namespace tiny {
 
-enum class TokenType : std::uint8_t {
+enum class TokenKind : std::uint8_t {
     OPENPAREN,
     CLOSEPAREN,
     OPENCURLY,
