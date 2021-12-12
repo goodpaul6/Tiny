@@ -21,8 +21,10 @@ constexpr std::array<Entity, static_cast<size_t>(tiny::PrimitiveType::COUNT)> PR
      {"char", tiny::PrimitiveType::CHAR},
      {"int", tiny::PrimitiveType::INT},
      {"float", tiny::PrimitiveType::FLOAT},
-     {"str", tiny::PrimitiveType::STR},
+     {"string", tiny::PrimitiveType::STR},
      {"any", tiny::PrimitiveType::ANY}}};
+
+constexpr std::string_view MAP_TYPE_NAME_PREFIX = "map";
 
 bool is_operator(tiny::TokenKind token) {
     using namespace tiny;
@@ -60,11 +62,25 @@ void Parser::eat_token(TokenKind type) {
 }
 
 const TypeName& Parser::parse_type() {
+    std::uint32_t array_count = 0;
+
+    while (m_cur_tok == TokenKind::OPENSQUARE) {
+        ++array_count;
+
+        next_token();
+        eat_token(TokenKind::CLOSESQUARE);
+    }
+
     const TypeName* type = nullptr;
 
-    if (m_cur_tok == TokenKind::OPENSQUARE) {
-        // Parse a map
+    // We parse types as identifiers since it prevents us from
+    // reserving their names as keywords, even for primitive types.
+    expect_token(TokenKind::IDENT);
+
+    if (m_lex.str() == MAP_TYPE_NAME_PREFIX) {
         next_token();
+
+        eat_token(TokenKind::OPENSQUARE);
 
         const auto& key = parse_type();
 
@@ -74,10 +90,6 @@ const TypeName& Parser::parse_type() {
 
         type = &m_type_name_pool.map(key, value);
     } else {
-        // We parse types as identifiers since it prevents us from
-        // reserving their names as keywords, even for primitive types.
-        expect_token(TokenKind::IDENT);
-
         std::optional<PrimitiveType> primitive_type;
 
         for (const auto& entity : PRIMITIVE_TYPES) {
@@ -98,11 +110,7 @@ const TypeName& Parser::parse_type() {
 
     assert(type);
 
-    while (m_cur_tok == TokenKind::OPENSQUARE) {
-        next_token();
-
-        eat_token(TokenKind::CLOSESQUARE);
-
+    for (std::uint32_t i = 0; i < array_count; ++i) {
         type = &m_type_name_pool.array(*type);
     }
 

@@ -9,7 +9,7 @@
 int main(int argc, char** argv) {
     using namespace tiny;
 
-    std::string str{"x: [int]int[][] = x * 10 + 20"};
+    std::string str{"x: [][][]map[int]string = x * 10 + 20"};
     std::istringstream ss{str};
 
     Lexer lexer{ss, "test"};

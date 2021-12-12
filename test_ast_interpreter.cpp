@@ -14,7 +14,7 @@ int main(int argc, char** argv) {
 
     // As it stands, the only type of statement we have is a variable declaration,
     // so we test arithmetic in terms of that.
-    std::string str{"x: int = 10 y: int = x * 10 + 20 z: str = \"hello \" + \"world\""};
+    std::string str{"x: int = 10 y: int = x * 10 + 20 z: string = \"hello \" + \"world\""};
     std::istringstream ss{str};
 
     Lexer lexer{ss, "test"};
