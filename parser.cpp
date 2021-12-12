@@ -182,19 +182,18 @@ Parser::ASTPtr Parser::parse_expr() {
 
 Parser::ASTPtr Parser::parse_statement() {
     switch (m_cur_tok) {
-        case TokenKind::IDENT: {
-            auto str = m_lex.str();
-
+        case TokenKind::VAR: {
             next_token();
 
-            eat_token(TokenKind::COLON);
-
-            const auto& type = parse_type();
+            expect_token(TokenKind::IDENT);
 
             auto var_ast = make_ast<VarDeclAST>();
 
-            var_ast->name = std::move(str);
-            var_ast->type = &type;
+            var_ast->name = m_lex.str();
+
+            next_token();
+
+            var_ast->type = &parse_type();
 
             eat_token(TokenKind::EQUAL);
 

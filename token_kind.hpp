@@ -56,6 +56,7 @@ enum class TokenKind : std::uint8_t {
 
     IDENT,
 
+    VAR,
     IF,
     ELSE,
     WHILE,

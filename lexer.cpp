@@ -38,7 +38,8 @@ constexpr std::array<Entity, 12> OPERATORS{{{"=", tiny::TokenKind::EQUAL},
                                             {":=", tiny::TokenKind::DECLARE},
                                             {"::", tiny::TokenKind::DECLARE_CONST}}};
 
-constexpr std::array<Entity, 10> KEYWORDS{{{"if", tiny::TokenKind::IF},
+constexpr std::array<Entity, 11> KEYWORDS{{{"var", tiny::TokenKind::VAR},
+                                           {"if", tiny::TokenKind::IF},
                                            {"else", tiny::TokenKind::ELSE},
                                            {"while", tiny::TokenKind::WHILE},
                                            {"for", tiny::TokenKind::FOR},
