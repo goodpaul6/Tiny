@@ -13,10 +13,6 @@
 #define TINY_THREAD_MAX_CALL_DEPTH 64
 #endif
 
-#ifndef TINY_SLOT_COUNT
-#define TINY_SLOT_COUNT 8
-#endif
-
 typedef struct Tiny_Object Tiny_Object;
 typedef struct Tiny_State Tiny_State;
 
