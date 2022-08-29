@@ -13,6 +13,10 @@
 #define TINY_THREAD_MAX_CALL_DEPTH 64
 #endif
 
+#ifndef TINY_SLOT_COUNT
+#define TINY_SLOT_COUNT 8
+#endif
+
 typedef struct Tiny_Object Tiny_Object;
 typedef struct Tiny_State Tiny_State;
 
@@ -108,7 +112,7 @@ Tiny_Value Tiny_NewLightNative(void *ptr);
 Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *string);
 Tiny_Value Tiny_NewNative(Tiny_StateThread *thread, void *ptr, const Tiny_NativeProp *prop);
 
-#define Tiny_IsNull(value) (value.type == TINY_VAL_NULL)
+static inline bool Tiny_IsNull(const Tiny_Value value) { return value.type == TINY_VAL_NULL; }
 
 static inline bool Tiny_ToBool(const Tiny_Value value) {
     if (value.type != TINY_VAL_BOOL) return false;
