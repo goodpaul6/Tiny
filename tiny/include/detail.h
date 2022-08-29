@@ -4,7 +4,7 @@
 #include "tiny.h"
 
 #define MAX_NUMBERS 512
-#define MAX_STRINGS 512
+#define MAX_STRINGS 1024
 
 typedef unsigned char Word;
 
@@ -69,7 +69,7 @@ typedef struct sSymbol {
             union {
                 bool bValue;  // for bool
                 int iValue;   // for char/int
-                int fIndex;   // for float
+                int fValue;   // for float
                 int sIndex;   // for string
             };
         } constant;
@@ -112,6 +112,9 @@ typedef struct sSymbol {
 typedef struct Tiny_State {
     // Program info
     Word *program;  // array
+
+    int numStrings;
+    char *strings[MAX_STRINGS];
 
     int numGlobalVars;
 

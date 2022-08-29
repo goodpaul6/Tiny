@@ -17,8 +17,6 @@ enum {
     TINY_OP_PUSH_CHAR,
 
     TINY_OP_PUSH_FLOAT,
-    // If the float is in the first 0xff constants, use this opcode
-    TINY_OP_PUSH_FLOAT_FF,
 
     TINY_OP_PUSH_STRING,
     // If the string is in the first 0xff constants, use this opcode

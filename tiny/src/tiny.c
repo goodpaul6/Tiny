@@ -27,12 +27,6 @@
 
 const Tiny_Value Tiny_Null = {TINY_VAL_NULL};
 
-static int NumNumbers = 0;
-static float Numbers[MAX_NUMBERS];
-
-static int NumStrings = 0;
-static char *Strings[MAX_STRINGS] = {0};
-
 #define emalloc(size) malloc(size)
 #define erealloc(mem, size) realloc(mem, size)
 
@@ -252,6 +246,8 @@ Tiny_State *Tiny_CreateState(void) {
     state->program = NULL;
     state->numGlobalVars = 0;
 
+    state->numStrings = 0;
+
     state->numFunctions = 0;
     state->functionPcs = NULL;
 
@@ -469,26 +465,15 @@ static void GenerateIntAt(Tiny_State *state, int value, int pc) {
     }
 }
 
-static int RegisterNumber(float value) {
-    for (int i = 0; i < NumNumbers; ++i) {
-        if (Numbers[i] == value) return i;
+static int RegisterString(Tiny_State *state, const char *string) {
+    for (int i = 0; i < state->numStrings; ++i) {
+        if (strcmp(state->strings[i], string) == 0) return i;
     }
 
-    assert(NumNumbers < MAX_NUMBERS);
-    Numbers[NumNumbers++] = value;
+    assert(state->numStrings < MAX_STRINGS);
+    state->strings[state->numStrings++] = Tiny_Strdup(string);
 
-    return NumNumbers - 1;
-}
-
-static int RegisterString(const char *string) {
-    for (int i = 0; i < NumStrings; ++i) {
-        if (strcmp(Strings[i], string) == 0) return i;
-    }
-
-    assert(NumStrings < MAX_STRINGS);
-    Strings[NumStrings++] = Tiny_Strdup(string);
-
-    return NumStrings - 1;
+    return state->numStrings - 1;
 }
 
 static Symbol *GetPrimTag(SymbolType type) {
@@ -873,21 +858,30 @@ void Tiny_BindConstInt(Tiny_State *state, const char *name, int i) {
 }
 
 void Tiny_BindConstFloat(Tiny_State *state, const char *name, float f) {
-    DeclareConst(state, name, GetPrimTag(SYM_TAG_FLOAT))->constant.fIndex = RegisterNumber(f);
+    DeclareConst(state, name, GetPrimTag(SYM_TAG_FLOAT))->constant.fValue = f;
 }
 
 void Tiny_BindConstString(Tiny_State *state, const char *name, const char *string) {
-    DeclareConst(state, name, GetPrimTag(SYM_TAG_STR))->constant.sIndex = RegisterString(string);
+    DeclareConst(state, name, GetPrimTag(SYM_TAG_STR))->constant.sIndex =
+        RegisterString(state, string);
 }
 
 static int ReadInteger(Tiny_StateThread *thread) {
-    assert(thread->state);
-
     // Move PC up to the next 4 aligned thing
     thread->pc += (thread->pc % 4 == 0) ? 0 : (4 - thread->pc % 4);
 
     int val = *(int *)(&thread->state->program[thread->pc]);
     thread->pc += sizeof(int) / sizeof(Word);
+
+    return val;
+}
+
+static float ReadFloat(Tiny_StateThread *thread) {
+    // Move PC up to the next 4 aligned thing
+    thread->pc += (thread->pc % 4 == 0) ? 0 : (4 - thread->pc % 4);
+
+    float val = *(float *)(&thread->state->program[thread->pc]);
+    thread->pc += sizeof(float) / sizeof(Word);
 
     return val;
 }
@@ -1021,16 +1015,7 @@ static bool ExecuteCycle(Tiny_StateThread *thread) {
         case TINY_OP_PUSH_FLOAT: {
             ++thread->pc;
 
-            int fIndex = ReadInteger(thread);
-
-            DoPush(thread, Tiny_NewFloat(Numbers[fIndex]));
-        } break;
-
-        case TINY_OP_PUSH_FLOAT_FF: {
-            ++thread->pc;
-
-            Word fIndex = thread->state->program[thread->pc++];
-            DoPush(thread, Tiny_NewFloat(Numbers[fIndex]));
+            DoPush(thread, Tiny_NewFloat(ReadFloat(thread)));
         } break;
 
         case TINY_OP_PUSH_STRING: {
@@ -1038,14 +1023,14 @@ static bool ExecuteCycle(Tiny_StateThread *thread) {
 
             int stringIndex = ReadInteger(thread);
 
-            DoPush(thread, Tiny_NewConstString(Strings[stringIndex]));
+            DoPush(thread, Tiny_NewConstString(thread->state->strings[stringIndex]));
         } break;
 
         case TINY_OP_PUSH_STRING_FF: {
             ++thread->pc;
 
             Word sIndex = thread->state->program[thread->pc++];
-            DoPush(thread, Tiny_NewConstString(Strings[sIndex]));
+            DoPush(thread, Tiny_NewConstString(thread->state->strings[sIndex]));
         } break;
 
         case TINY_OP_PUSH_STRUCT: {
@@ -1324,7 +1309,7 @@ static bool ExecuteCycle(Tiny_StateThread *thread) {
             ++thread->pc;
             int stringIndex = ReadInteger(thread);
 
-            thread->fileName = Strings[stringIndex];
+            thread->fileName = thread->state->strings[stringIndex];
         } break;
 
         case TINY_OP_LINE: {
@@ -1385,7 +1370,7 @@ typedef struct sExpr {
         bool boolean;
 
         int iValue;
-        int fIndex;
+        float fValue;
         int sIndex;
 
         struct {
@@ -1893,14 +1878,14 @@ static Expr *ParseFactor(Tiny_State *state) {
 
         case TINY_TOK_FLOAT: {
             Expr *exp = Expr_create(EXP_FLOAT, state);
-            exp->fIndex = RegisterNumber(state->l.fValue);
+            exp->fValue = state->l.fValue;
             GetNextToken(state);
             return exp;
         } break;
 
         case TINY_TOK_STRING: {
             Expr *exp = Expr_create(EXP_STRING, state);
-            exp->sIndex = RegisterString(state->l.lexeme);
+            exp->sIndex = RegisterString(state, state->l.lexeme);
             GetNextToken(state);
             return exp;
         } break;
@@ -2125,8 +2110,8 @@ static Expr *ParseStatement(Tiny_State *state) {
                     DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_INT))->constant.iValue =
                         rhs->iValue;
                 } else if (rhs->type == EXP_FLOAT) {
-                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_FLOAT))->constant.fIndex =
-                        rhs->fIndex;
+                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_FLOAT))->constant.fValue =
+                        rhs->fValue;
                 } else if (rhs->type == EXP_STRING) {
                     DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_STR))->constant.sIndex =
                         rhs->sIndex;
@@ -2697,14 +2682,18 @@ static void GeneratePushInt(Tiny_State *state, int iValue) {
     }
 }
 
-static void GeneratePushFloat(Tiny_State *state, int fIndex) {
-    if (fIndex <= 0xff) {
-        GenerateCode(state, TINY_OP_PUSH_FLOAT_FF);
-        GenerateCode(state, (Word)fIndex);
-    } else {
-        GenerateCode(state, TINY_OP_PUSH_FLOAT);
-        GenerateInt(state, fIndex);
-    }
+static void GeneratePushFloat(Tiny_State *state, float fValue) {
+    GenerateCode(state, TINY_OP_PUSH_FLOAT);
+
+    union {
+        float f;
+        int i;
+    } value;
+
+    value.f = fValue;
+
+    // We reinterpret the bits of the float as an int
+    GenerateInt(state, value.i);
 }
 
 static void GeneratePushString(Tiny_State *state, int sIndex) {
@@ -2743,7 +2732,7 @@ static void CompileGetIdOrDot(Tiny_State *state, Expr *exp) {
             } else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_INT)) {
                 GeneratePushInt(state, exp->id.sym->constant.iValue);
             } else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_FLOAT)) {
-                GeneratePushFloat(state, exp->id.sym->constant.fIndex);
+                GeneratePushFloat(state, exp->id.sym->constant.fValue);
             } else {
                 assert(0);
             }
@@ -2825,7 +2814,7 @@ static void CompileExpr(Tiny_State *state, Expr *exp) {
         } break;
 
         case EXP_FLOAT: {
-            GeneratePushFloat(state, exp->fIndex);
+            GeneratePushFloat(state, exp->fValue);
         } break;
 
         case EXP_STRING: {
@@ -3003,7 +2992,7 @@ static void CompileExpr(Tiny_State *state, Expr *exp) {
 static void CompileStatement(Tiny_State *state, Expr *exp) {
     if (state->l.fileName) {
         GenerateCode(state, TINY_OP_FILE);
-        GenerateInt(state, RegisterString(state->l.fileName));
+        GenerateInt(state, RegisterString(state, state->l.fileName));
     }
 
     GenerateCode(state, TINY_OP_LINE);
