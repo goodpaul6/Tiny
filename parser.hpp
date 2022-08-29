@@ -35,8 +35,11 @@ private:
     const TypeName& parse_type();
 
     ASTPtr parse_factor();
+    ASTPtr parse_call_rest(ASTPtr callee);
     ASTPtr parse_expr();
     ASTPtr parse_statement();
+    ASTPtr parse_block();
+    ASTPtr parse_function();
 
     template <typename T>
     std::unique_ptr<T> make_ast() {

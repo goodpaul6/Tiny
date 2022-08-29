@@ -8,9 +8,11 @@
 namespace tiny {
 
 struct AST;
+struct FunctionAST;
 
 struct ASTInterpreter {
-    using Value = std::variant<std::monostate, bool, char, std::int64_t, float, std::string>;
+    using Value =
+        std::variant<std::monostate, bool, char, std::int64_t, float, std::string, FunctionAST*>;
     using Env = std::unordered_map<std::string, Value>;
 
     Env env;

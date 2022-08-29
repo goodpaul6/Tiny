@@ -1,6 +1,9 @@
 #pragma once
 
+#include <cstdint>
+
 namespace tiny {
 
-enum class PrimitiveType : uint8_t { VOID, NULLV, BOOL, CHAR, INT, FLOAT, STR, ANY, COUNT };
+enum class PrimitiveType : std::uint8_t { NULLV, BOOL, CHAR, INT, FLOAT, STRING, COUNT };
+
 }

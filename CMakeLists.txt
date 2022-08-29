@@ -17,7 +17,8 @@ set(SOURCES
     ast.cpp
     parser.cpp
     ast_interpreter.cpp
-    type_name_pool.cpp)
+    type_name_pool.cpp
+    vm.cpp)
 
 add_library(tiny STATIC ${SOURCES})
 

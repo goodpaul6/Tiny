@@ -7,6 +7,7 @@
 #include "pos.hpp"
 #include "token_kind.hpp"
 #include "type_name.hpp"
+#include "var_decl.hpp"
 
 namespace tiny {
 
@@ -33,8 +34,7 @@ struct IdAST final : AST {
 };
 
 struct VarDeclAST final : AST {
-    std::string name;
-    const TypeName* type = nullptr;
+    VarDecl var_decl;
 
     void visit(ASTVisitor& v) override;
 };
@@ -44,6 +44,35 @@ struct BinAST final : AST {
 
     std::unique_ptr<AST> lhs;
     std::unique_ptr<AST> rhs;
+
+    void visit(ASTVisitor& v) override;
+};
+
+struct ReturnAST final : AST {
+    std::unique_ptr<AST> value;
+
+    void visit(ASTVisitor& v) override;
+};
+
+struct CallAST final : AST {
+    std::unique_ptr<AST> callee;
+    std::vector<std::unique_ptr<AST>> args;
+
+    void visit(ASTVisitor& v) override;
+};
+
+struct BlockAST final : AST {
+    std::vector<std::unique_ptr<AST>> statements;
+
+    void visit(ASTVisitor& v) override;
+};
+
+struct FunctionAST final : AST {
+    std::string name;
+    std::vector<VarDecl> args;
+    const TypeName* return_type = nullptr;
+
+    std::unique_ptr<AST> body;
 
     void visit(ASTVisitor& v) override;
 };

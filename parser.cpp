@@ -16,13 +16,11 @@ struct Entity {
 };
 
 constexpr std::array<Entity, static_cast<size_t>(tiny::PrimitiveType::COUNT)> PRIMITIVE_TYPES{
-    {{"void", tiny::PrimitiveType::VOID},
-     {"bool", tiny::PrimitiveType::BOOL},
+    {{"bool", tiny::PrimitiveType::BOOL},
      {"char", tiny::PrimitiveType::CHAR},
      {"int", tiny::PrimitiveType::INT},
      {"float", tiny::PrimitiveType::FLOAT},
-     {"string", tiny::PrimitiveType::STR},
-     {"any", tiny::PrimitiveType::ANY}}};
+     {"string", tiny::PrimitiveType::STRING}}};
 
 constexpr std::string_view MAP_TYPE_NAME_PREFIX = "map";
 
@@ -44,7 +42,7 @@ void Parser::parse_until_eof(const FunctionView<void(ASTPtr)>& ast_handler) {
     next_token();
 
     while (m_cur_tok != TokenKind::SUB) {
-        ast_handler(parse_statement());
+        ast_handler(parse_function());
     }
 }
 
@@ -162,8 +160,36 @@ Parser::ASTPtr Parser::parse_factor() {
     throw PosError{m_lex.pos(), "Expected factor"};
 }
 
+Parser::ASTPtr Parser::parse_call_rest(ASTPtr callee) {
+    expect_token(TokenKind::OPENPAREN);
+
+    auto ast = make_ast<CallAST>();
+
+    ast->callee = std::move(callee);
+
+    next_token();
+
+    while (m_cur_tok != TokenKind::CLOSEPAREN) {
+        ast->args.emplace_back(parse_expr());
+
+        if (m_cur_tok == TokenKind::COMMA) {
+            next_token();
+        } else {
+            expect_token(TokenKind::CLOSEPAREN);
+        }
+    }
+
+    next_token();
+
+    return ast;
+}
+
 Parser::ASTPtr Parser::parse_expr() {
     auto ast = parse_factor();
+
+    if (m_cur_tok == TokenKind::OPENPAREN) {
+        ast = parse_call_rest(std::move(ast));
+    }
 
     while (is_operator(m_cur_tok)) {
         auto bin_ast = make_ast<BinAST>();
@@ -182,6 +208,16 @@ Parser::ASTPtr Parser::parse_expr() {
 
 Parser::ASTPtr Parser::parse_statement() {
     switch (m_cur_tok) {
+        case TokenKind::IDENT: {
+            auto ast = make_ast<IdAST>();
+
+            ast->name = m_lex.str();
+
+            next_token();
+
+            return parse_call_rest(std::move(ast));
+        } break;
+
         case TokenKind::VAR: {
             next_token();
 
@@ -189,11 +225,11 @@ Parser::ASTPtr Parser::parse_statement() {
 
             auto var_ast = make_ast<VarDeclAST>();
 
-            var_ast->name = m_lex.str();
+            var_ast->var_decl.name = m_lex.str();
 
             next_token();
 
-            var_ast->type = &parse_type();
+            var_ast->var_decl.type = &parse_type();
 
             eat_token(TokenKind::EQUAL);
 
@@ -206,10 +242,81 @@ Parser::ASTPtr Parser::parse_statement() {
             return bin_ast;
         } break;
 
+        case TokenKind::RETURN: {
+            auto ast = make_ast<ReturnAST>();
+
+            next_token();
+
+            if (m_cur_tok == TokenKind::SEMI) {
+                return ast;
+            }
+
+            ast->value = parse_expr();
+
+            return ast;
+        } break;
+
         default: {
             throw PosError{m_lex.pos(), "Expected identifier at start of statement."};
         } break;
     }
+}
+
+Parser::ASTPtr Parser::parse_block() {
+    auto ast = make_ast<BlockAST>();
+
+    eat_token(TokenKind::OPENCURLY);
+
+    while (m_cur_tok != TokenKind::CLOSECURLY) {
+        ast->statements.emplace_back(parse_statement());
+    }
+
+    next_token();
+
+    return ast;
+}
+
+Parser::ASTPtr Parser::parse_function() {
+    auto ast = make_ast<FunctionAST>();
+
+    eat_token(TokenKind::FUNC);
+
+    expect_token(TokenKind::IDENT);
+
+    ast->name = m_lex.str();
+
+    next_token();
+
+    eat_token(TokenKind::OPENPAREN);
+
+    while (m_cur_tok != TokenKind::CLOSEPAREN) {
+        expect_token(TokenKind::IDENT);
+
+        VarDecl var_decl;
+
+        var_decl.name = m_lex.str();
+
+        next_token();
+
+        var_decl.type = &parse_type();
+
+        if (m_cur_tok == TokenKind::COMMA) {
+            next_token();
+        } else {
+            expect_token(TokenKind::CLOSEPAREN);
+        }
+    }
+
+    // Eat the CLOSEPAREN
+    next_token();
+
+    if (m_cur_tok != TokenKind::OPENCURLY) {
+        ast->return_type = &parse_type();
+    }
+
+    ast->body = parse_block();
+
+    return ast;
 }
 
 }  // namespace tiny
