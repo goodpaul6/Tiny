@@ -85,7 +85,7 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
     MATCH2("-=", MINUSEQUAL);
     MATCH2("*=", STAREQUAL);
     MATCH2("/=", SLASHEQUAL);
-    MATCH2("+=", PERCENTEQUAL);
+    MATCH2("%=", PERCENTEQUAL);
     MATCH2("|=", OREQUAL);
     MATCH2("&=", ANDEQUAL);
 
