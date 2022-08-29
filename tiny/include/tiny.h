@@ -153,8 +153,42 @@ Tiny_State *Tiny_CreateState(void);
 // Exposes an opaque type of the given name.
 // The same typename can be registered multiple times, but it will only be
 // defined once.
+//
+// This can be used to create fully statically typed APIs from your C code.
+//
+// For example:
+//
+// Tiny_RegisterType(state, "DBConn");
+// Tiny_RegisterType(state, "DBCursor");
+//
+// Tiny_BindFunction(state, "db_conn_create(str): DBConn", DBConnCreate);
+// Tiny_BindFunction(state, "db_query(DBConn, str): DBCursor", DBQuery);
+// Tiny_BindFunction(state, "db_conn_delete(DBConn): void", DBConnDelete);
 void Tiny_RegisterType(Tiny_State *state, const char *name);
 
+// Exposes the provided C function as a callable function in
+// Tiny code.
+//
+// You can declare a Tiny_ForeignFunction by using the TINY_FOREIGN_FUNCTION
+// macro above (or explicitly typing out the prototype).
+//
+// The sig string provides the signature of the function in tiny
+// code. The syntax of the signature is similar to the equivalent
+// declaration in Tiny, except parameter names are omitted.
+//
+// For example, if I had a foreign function which added two
+// integers, I could expose it as follows:
+//
+// Tiny_BindFunction(state, "add(int, int): int", Add);
+//
+// You can also use ... to indicate a varargs function:
+//
+// Tiny_BindFunction(state, "myprint(str, ...): void", MyPrint);
+//
+// Lastly, you can omit all the types if you want this to be
+// an untyped function:
+//
+// Tiny_BindFunction(state, "myprint", MyPrint);
 void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction func);
 
 void Tiny_BindConstBool(Tiny_State *state, const char *name, bool b);
