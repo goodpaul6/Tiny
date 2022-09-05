@@ -44,6 +44,8 @@ while op != quit_op {
 You can use CMake to build a static library which you can integrate into your project
 like any other. Alternatively, you can just copy the few files inside `include` and `src` into your project.
 
+See [Embedding Tiny](Embedding-Tiny) for a quick tour of how to get started.
+
 ## Examples
 Here are a few examples of how Tiny can be used.
 
