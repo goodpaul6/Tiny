@@ -30,10 +30,13 @@ const Tiny_Value Tiny_Null = {TINY_VAL_NULL};
 #define emalloc(size) malloc(size)
 #define erealloc(mem, size) realloc(mem, size)
 
-char *estrdup(const char *string) {
-    char *dupString = malloc(strlen(string) + 1);
-    strcpy(dupString, string);
-    return dupString;
+char *estrdup(const char *str) {
+    size_t len = strlen(str);
+
+    char *dup = emalloc(len + 1);
+    memcpy(dup, str, len + 1);
+
+    return dup;
 }
 
 static void DeleteObject(Tiny_Object *obj) {
