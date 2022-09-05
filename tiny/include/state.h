@@ -53,6 +53,8 @@ typedef struct Tiny_LocalRoots {
 
 Tiny_State* Tiny_CreateState(Tiny_Context* ctx);
 
-void Tiny_CompileString(Tiny_State* state, const char* moduleName, const char* str, size_t length);
+// If compilation fails, this returns false. At that point, the state is useless, so you
+// should call Tiny_DeleteState below on it.
+bool Tiny_CompileString(Tiny_State* state, const char* moduleName, const char* str, size_t length);
 
 void Tiny_DeleteState(Tiny_State* state);

@@ -1,6 +1,13 @@
 // Symbol table
 
-typedef enum SymType { SYM_VAR, SYM_CONST, SYM_FUNC, SYM_FOREIGN_FUNC, SYM_TYPE } SymType;
+typedef enum SymType {
+    SYM_VAR,
+    SYM_CONST,
+    SYM_FUNC,
+    SYM_FOREIGN_FUNC,
+    SYM_TYPE,
+    SYM_MODULE
+} SymType;
 
 typedef struct Sym {
     SymType type;
@@ -48,6 +55,11 @@ typedef struct Sym {
         } foreignFunc;
 
         Typetag* typetag;
+
+        // Used to look up the module in the State.
+        // Can't store any hard reference because the module
+        // may not even exist yet.
+        const char* moduleName;
     };
 } Sym;
 
@@ -59,7 +71,9 @@ typedef struct Symbols {
     Sym** types;
     Sym** globals;
     Sym** functions;
+    Sym** modules;
 
+    // Function currently being parsed
     Sym* func;
     int scope;
 
@@ -76,6 +90,7 @@ static void InitSymbols(Symbols* s, Tiny_Context* ctx, Tiny_StringPool* sp, Type
     INIT_BUF(s->types, ctx);
     INIT_BUF(s->globals, ctx);
     INIT_BUF(s->functions, ctx);
+    INIT_BUF(s->modules, ctx);
 
     const char* primitiveTypetagNames[TYPETAG_ANY + 1] = {
         Tiny_StringPoolInsert(sp, "void"),  Tiny_StringPoolInsert(sp, "bool"),
@@ -128,6 +143,16 @@ static void PopScope(Symbols* s) {
     --s->scope;
 }
 
+static Sym* FindModuleSym(Symbols* sym, const char* name) {
+    for (int i = 0; i < BUF_LEN(sym->modules); ++i) {
+        if (Tiny_StringPoolEqual(sym->modules[i]->name, name)) {
+            return sym->modules[i];
+        }
+    }
+
+    return NULL;
+}
+
 static Sym* ReferenceVar(Symbols* s, const char* name) {
     if (s->func) {
         // Shadowing is not allowed, so we always just look for the first thing that
@@ -164,7 +189,7 @@ static Sym* ReferenceVar(Symbols* s, const char* name) {
         }
     }
 
-    return NULL;
+    return FindModuleSym(s, name);
 }
 
 static Sym* DeclareVar(Symbols* sym, const char* name, TokenPos pos, bool arg) {
@@ -271,6 +296,7 @@ static Sym* FindTypeSym(Symbols* sym, const char* name) {
 }
 
 static Sym* DefineTypeSym(Symbols* sym, const char* name, TokenPos pos, Typetag* typetag) {
+    // FIXME(Apaar): Why is this an assert and not a runtime SYMBOLS_ERROR?
     assert(FindTypeSym(sym, name) == NULL);
 
     Sym* s = AllocSym(sym, SYM_TYPE, name, pos);
@@ -290,6 +316,22 @@ static const char* GetTypeName(Symbols* sym, const Typetag* type) {
     }
 
     return NULL;
+}
+
+static Sym* DefineModuleSym(Symbols* sym, const char* name, TokenPos pos, const char* moduleName) {
+    const Sym* prevModule = FindModuleSym(sym, name);
+
+    if (FindModuleSym(sym, name)) {
+        return SYMBOLS_ERROR(sym, "You have already imported a module {} with the name {}.",
+                             prevModule->moduleName, name);
+    }
+
+    Sym* s = AllocSym(sym, SYM_MODULE, name, pos);
+    s->moduleName = moduleName;
+
+    BUF_PUSH(sym->modules, s);
+
+    return s;
 }
 
 static void ClearSymbolsError(Symbols* s) {

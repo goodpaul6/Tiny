@@ -1,7 +1,7 @@
+#include "map.h"
+
 #include <stdbool.h>
 #include <stddef.h>
-
-#include "map.h"
 
 void Tiny_InitMap(Tiny_Map* map, Tiny_Context* ctx) {
     map->ctx = ctx;

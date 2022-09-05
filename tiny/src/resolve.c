@@ -127,11 +127,10 @@ static void ResolveTypes(Resolver* r, AST* ast) {
 
             for (int i = 0; i < BUF_LEN(funcType->func.args); ++i) {
                 if (!CompareTypes(ast->call.args[i]->tag, funcType->func.args[i])) {
-                    RESOLVER_ERROR_AST(
-                        r, ast->call.args[i],
-                        "Argument %i is supposed to be a %s but you supplied a %s.", i + 1,
-                        GetTypeName(r->sym, funcType->func.args[i]),
-                        GetTypeName(r->sym, ast->call.args[i]->tag));
+                    RESOLVER_ERROR_AST(r, ast->call.args[i],
+                                       "Argument %i is supposed to be a %s but you supplied a %s.",
+                                       i + 1, GetTypeName(r->sym, funcType->func.args[i]),
+                                       GetTypeName(r->sym, ast->call.args[i]->tag));
                 }
             }
 

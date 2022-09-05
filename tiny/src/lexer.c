@@ -71,6 +71,7 @@ typedef enum {
     TOK_CAST,
     TOK_BREAK,
     TOK_CONTINUE,
+    TOK_IMPORT,
 
     TOK_EOF,
 
@@ -261,6 +262,7 @@ static TokenType GetToken(Lexer* l) {
         if (strcmp(l->lexeme, "cast") == 0) return TOK_CAST;
         if (strcmp(l->lexeme, "break") == 0) return TOK_BREAK;
         if (strcmp(l->lexeme, "continue") == 0) return TOK_CONTINUE;
+        if (strcmp(l->lexeme, "import") == 0) return TOK_IMPORT;
 
         return TOK_IDENT;
     }

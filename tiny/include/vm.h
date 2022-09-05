@@ -9,6 +9,11 @@
 // semantics; then reference semantics can be done using a 'ref' type maybe. Too much for
 // now though. Stick to reference semantics for struct instances.
 
+// Note that the VM does not actually store types anywhere. This could pose a security
+// risk if you are loading untrusted bytecode directly. As such, you should avoid doing
+// so, and instead load Tiny source code. This ensures the appropriate type checking
+// is done at compile time.
+
 // Notice that this header defines value types. These would be an implementation
 // detail were it not for the fact that the "any" type exists.
 

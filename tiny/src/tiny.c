@@ -12,4 +12,5 @@
 #include "parser.c"
 #include "resolve.c"
 #include "state.c"
+#include "codegen.c"
 #include "vm.c"

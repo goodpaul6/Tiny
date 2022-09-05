@@ -43,7 +43,12 @@ typedef struct Typetag {
         } tstruct;
 
         // Resolved later via the symbol table
-        const char* name;
+        struct {
+            // This is NULL if the type reference was
+            // unqualified.
+            const char* moduleName;
+            const char* typeName;
+        } name;
     };
 } Typetag;
 
@@ -201,16 +206,19 @@ static Typetag* InternStructTypetag(TypetagPool* pool, const char** names, Typet
     return type;
 }
 
-static Typetag* InternNameTypetag(TypetagPool* pool, const char* name) {
+static Typetag* InternNameTypetag(TypetagPool* pool, const char* moduleName, const char* typeName) {
     for (int i = 0; i < BUF_LEN(pool->types); ++i) {
         Typetag* type = pool->types[i];
-        if (type->type == TYPETAG_NAME && type->name == name) {
+        if (type->type == TYPETAG_NAME && Tiny_StringPoolEqual(type->name.moduleName, moduleName) &&
+            Tiny_StringPoolEqual(type->name.typeName, name)) {
             return type;
         }
     }
 
     Typetag* type = AllocTypetag(pool, TYPETAG_NAME);
-    type->name = name;
+
+    type->name.moduleName = moduleName;
+    type->name.typeName = name;
 
     BUF_PUSH(pool->types, type);
 
