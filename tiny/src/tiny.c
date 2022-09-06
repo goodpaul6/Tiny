@@ -27,26 +27,34 @@
 
 const Tiny_Value Tiny_Null = {TINY_VAL_NULL};
 
-#define emalloc(size) malloc(size)
-#define erealloc(mem, size) realloc(mem, size)
+static void *DefaultAlloc(void *ptr, size_t size, void *userdata) {
+    if (size == 0) {
+        free(ptr);
+        return NULL;
+    }
 
-char *estrdup(const char *str) {
+    return realloc(ptr, size);
+}
+
+static Tiny_Context DefaultContext = {DefaultAlloc, NULL};
+
+char *CloneString(Tiny_Context *ctx, const char *str) {
     size_t len = strlen(str);
 
-    char *dup = emalloc(len + 1);
+    char *dup = TMalloc(ctx, len + 1);
     memcpy(dup, str, len + 1);
 
     return dup;
 }
 
-static void DeleteObject(Tiny_Object *obj) {
+static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj) {
     if (obj->type == TINY_VAL_STRING)
-        free(obj->string);
+        TFree(ctx, obj->string);
     else if (obj->type == TINY_VAL_NATIVE) {
         if (obj->nat.prop && obj->nat.prop->finalize) obj->nat.prop->finalize(obj->nat.addr);
     }
 
-    free(obj);
+    TFree(ctx, obj);
 }
 
 static inline bool IsObject(Tiny_Value val) {
@@ -82,7 +90,7 @@ static void Sweep(Tiny_StateThread *thread) {
             Tiny_Object *unreached = *object;
             --thread->numObjects;
             *object = unreached->next;
-            DeleteObject(unreached);
+            DeleteObject(&thread->ctx, unreached);
         } else {
             (*object)->marked = 0;
             object = &(*object)->next;
@@ -125,7 +133,7 @@ Tiny_Value Tiny_GetField(const Tiny_Value value, int index) {
 static Tiny_Object *NewObject(Tiny_StateThread *thread, Tiny_ValueType type) {
     assert(type != TINY_VAL_STRUCT);
 
-    Tiny_Object *obj = emalloc(sizeof(Tiny_Object));
+    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object));
 
     obj->type = type;
     obj->next = thread->gcHead;
@@ -139,7 +147,7 @@ static Tiny_Object *NewObject(Tiny_StateThread *thread, Tiny_ValueType type) {
 
 static Tiny_Object *NewStructObject(Tiny_StateThread *thread, Word n) {
     assert(n >= 0);
-    Tiny_Object *obj = emalloc(sizeof(Tiny_Object) + sizeof(Tiny_Value) * n);
+    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + sizeof(Tiny_Value) * n);
 
     obj->type = TINY_VAL_STRUCT;
     obj->next = thread->gcHead;
@@ -233,7 +241,7 @@ Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *string) {
     return val;
 }
 
-static void Symbol_destroy(Symbol *sym);
+static void Symbol_destroy(Symbol *sym, Tiny_Context *ctx);
 
 static Tiny_Value Lib_ToInt(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     return Tiny_NewInt((int)Tiny_ToFloat(args[0]));
@@ -243,8 +251,10 @@ static Tiny_Value Lib_ToFloat(Tiny_StateThread *thread, const Tiny_Value *args, 
     return Tiny_NewFloat((float)Tiny_ToInt(args[0]));
 }
 
-Tiny_State *Tiny_CreateState(void) {
-    Tiny_State *state = emalloc(sizeof(Tiny_State));
+Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx) {
+    g Tiny_State *state = TMalloc(&ctx, sizeof(Tiny_State));
+
+    state->ctx = ctx;
 
     state->program = NULL;
     state->numGlobalVars = 0;
@@ -267,24 +277,29 @@ Tiny_State *Tiny_CreateState(void) {
     return state;
 }
 
+Tiny_State *Tiny_CreateState(void) { return Tiny_CreateStateWithContext(DefaultContext); }
+
 void Tiny_DeleteState(Tiny_State *state) {
-    sb_free(state->program);
+    sb_free(&state->ctx, state->program);
 
     // Delete all symbols
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Symbol_destroy(state->globalSymbols[i]);
+        Symbol_destroy(state->globalSymbols[i], &state->ctx);
     }
 
-    sb_free(state->globalSymbols);
+    sb_free(&state->ctx, state->globalSymbols);
 
     // Reset function and variable data
-    free(state->functionPcs);
-    free(state->foreignFunctions);
+    TFree(&state->ctx, state->functionPcs);
+    TFree(&state->ctx, state->foreignFunctions);
 
-    free(state);
+    TFree(&state->ctx, state);
 }
 
-void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state) {
+void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *state,
+                                Tiny_Context ctx) {
+    thread->ctx = ctx;
+
     thread->state = state;
 
     thread->gcHead = NULL;
@@ -307,11 +322,16 @@ void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state) {
     thread->userdata = NULL;
 }
 
+void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state) {
+    Tiny_InitThreadWithContext(thread, state, DefaultContext);
+}
+
 static void AllocGlobals(Tiny_StateThread *thread) {
     // If the global variables haven't been allocated yet,
     // do that
     if (!thread->globalVars) {
-        thread->globalVars = emalloc(sizeof(Tiny_Value) * thread->state->numGlobalVars);
+        thread->globalVars =
+            TMalloc(&thread->ctx, sizeof(Tiny_Value) * thread->state->numGlobalVars);
         memset(thread->globalVars, 0, sizeof(Tiny_Value) * thread->state->numGlobalVars);
     }
 }
@@ -392,9 +412,8 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const 
     DoPushIndir(thread, count);
 
     // Keep executing until the indir stack is restored (i.e. function is done)
-    while (thread->fc > fc) {
-        ExecuteCycle(thread);
-    }
+    while (thread->fc > fc && ExecuteCycle(thread))
+        ;
 
     Tiny_Value newRetVal = thread->retVal;
 
@@ -419,12 +438,12 @@ void Tiny_DestroyThread(Tiny_StateThread *thread) {
     // Free all objects in the gc list
     while (thread->gcHead) {
         Tiny_Object *next = thread->gcHead->next;
-        DeleteObject(thread->gcHead);
+        DeleteObject(&thread->ctx, thread->gcHead);
         thread->gcHead = next;
     }
 
     // Free all global variables
-    free(thread->globalVars);
+    TFree(&thread->ctx, thread->globalVars);
 }
 
 static void MarkAll(Tiny_StateThread *thread) {
@@ -438,7 +457,9 @@ static void MarkAll(Tiny_StateThread *thread) {
         Tiny_ProtectFromGC(thread->globalVars[i]);
 }
 
-static void GenerateCode(Tiny_State *state, Word inst) { sb_push(state->program, inst); }
+static void GenerateCode(Tiny_State *state, Word inst) {
+    sb_push(&state->ctx, state->program, inst);
+}
 
 static int GenerateInt(Tiny_State *state, int value) {
     // TODO(Apaar): Don't hardcode alignment of int
@@ -474,7 +495,7 @@ static int RegisterString(Tiny_State *state, const char *string) {
     }
 
     assert(state->numStrings < MAX_STRINGS);
-    state->strings[state->numStrings++] = Tiny_Strdup(string);
+    state->strings[state->numStrings++] = CloneString(&state->ctx, string);
 
     return state->numStrings - 1;
 }
@@ -496,49 +517,49 @@ static Symbol *GetPrimTag(SymbolType type) {
     return &prims[type - SYM_TAG_VOID];
 }
 
-static Symbol *Symbol_create(SymbolType type, const char *name, const Tiny_State *state) {
-    Symbol *sym = emalloc(sizeof(Symbol));
+static Symbol *Symbol_create(SymbolType type, const char *name, Tiny_State *state) {
+    Symbol *sym = TMalloc(&state->ctx, sizeof(Symbol));
 
-    sym->name = estrdup(name);
+    sym->name = CloneString(&state->ctx, name);
     sym->type = type;
     sym->pos = state->l.pos;
 
     return sym;
 }
 
-static void Symbol_destroy(Symbol *sym) {
+static void Symbol_destroy(Symbol *sym, Tiny_Context *ctx) {
     if (sym->type == SYM_FUNCTION) {
         for (int i = 0; i < sb_count(sym->func.args); ++i) {
             Symbol *arg = sym->func.args[i];
 
             assert(arg->type == SYM_LOCAL);
 
-            Symbol_destroy(arg);
+            Symbol_destroy(arg, ctx);
         }
 
-        sb_free(sym->func.args);
+        sb_free(ctx, sym->func.args);
 
         for (int i = 0; i < sb_count(sym->func.locals); ++i) {
             Symbol *local = sym->func.locals[i];
 
             assert(local->type == SYM_LOCAL);
 
-            Symbol_destroy(local);
+            Symbol_destroy(local, ctx);
         }
 
-        sb_free(sym->func.locals);
+        sb_free(ctx, sym->func.locals);
     } else if (sym->type == SYM_FOREIGN_FUNCTION) {
-        sb_free(sym->foreignFunc.argTags);
+        sb_free(ctx, sym->foreignFunc.argTags);
     } else if (sym->type == SYM_TAG_STRUCT) {
         for (int i = 0; i < sb_count(sym->sstruct.fields); ++i) {
-            Symbol_destroy(sym->sstruct.fields[i]);
+            Symbol_destroy(sym->sstruct.fields[i], ctx);
         }
 
-        sb_free(sym->sstruct.fields);
+        sb_free(ctx, sym->sstruct.fields);
     }
 
-    free(sym->name);
-    free(sym);
+    TFree(ctx, sym->name);
+    TFree(ctx, sym);
 }
 
 static void OpenScope(Tiny_State *state) { ++state->currScope; }
@@ -617,7 +638,7 @@ static Symbol *DeclareGlobalVar(Tiny_State *state, const char *name) {
     newNode->var.scope = 0;  // Global variable scope don't matter
     newNode->var.scopeEnded = false;
 
-    sb_push(state->globalSymbols, newNode);
+    sb_push(&state->ctx, state->globalSymbols, newNode);
 
     state->numGlobalVars += 1;
 
@@ -652,7 +673,7 @@ static Symbol *DeclareArgument(Tiny_State *state, const char *name, Symbol *tag,
     newNode->var.scope = 0;  // These should be accessible anywhere in the function
     newNode->var.tag = tag;
 
-    sb_push(state->currFunc->func.args, newNode);
+    sb_push(&state->ctx, state->currFunc->func.args, newNode);
 
     return newNode;
 }
@@ -680,7 +701,7 @@ static Symbol *DeclareLocal(Tiny_State *state, const char *name) {
     newNode->var.index = sb_count(state->currFunc->func.locals);
     newNode->var.scope = state->currScope;
 
-    sb_push(state->currFunc->func.locals, newNode);
+    sb_push(&state->ctx, state->currFunc->func.locals, newNode);
 
     return newNode;
 }
@@ -705,7 +726,7 @@ static Symbol *DeclareConst(Tiny_State *state, const char *name, Symbol *tag) {
 
     newNode->constant.tag = tag;
 
-    sb_push(state->globalSymbols, newNode);
+    sb_push(&state->ctx, state->globalSymbols, newNode);
 
     return newNode;
 }
@@ -717,7 +738,7 @@ static Symbol *DeclareFunction(Tiny_State *state, const char *name) {
     newNode->func.args = NULL;
     newNode->func.locals = NULL;
 
-    sb_push(state->globalSymbols, newNode);
+    sb_push(&state->ctx, state->globalSymbols, newNode);
 
     state->numFunctions += 1;
 
@@ -758,7 +779,7 @@ static void BindFunction(Tiny_State *state, const char *name, Symbol **argTags, 
 
     newNode->foreignFunc.callee = func;
 
-    sb_push(state->globalSymbols, newNode);
+    sb_push(&state->ctx, state->globalSymbols, newNode);
 
     state->numForeignFunctions += 1;
 }
@@ -772,10 +793,10 @@ void Tiny_RegisterType(Tiny_State *state, const char *name) {
 
     s = Symbol_create(SYM_TAG_FOREIGN, name, state);
 
-    sb_push(state->globalSymbols, s);
+    sb_push(&state->ctx, state->globalSymbols, s);
 }
 
-static void ScanUntilDelim(const char **ps, char **buf) {
+static void ScanUntilDelim(const char **ps, char **buf, Tiny_Context *ctx) {
     const char *s = *ps;
 
     while (*s && *s != '(' && *s != ')' && *s != ',') {
@@ -784,10 +805,10 @@ static void ScanUntilDelim(const char **ps, char **buf) {
             continue;
         }
 
-        sb_push(*buf, *s++);
+        sb_push(ctx, *buf, *s++);
     }
 
-    sb_push(*buf, 0);
+    sb_push(ctx, *buf, 0);
 
     *ps = s;
 }
@@ -795,7 +816,7 @@ static void ScanUntilDelim(const char **ps, char **buf) {
 void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction func) {
     char *name = NULL;
 
-    ScanUntilDelim(&sig, &name);
+    ScanUntilDelim(&sig, &name, &state->ctx);
 
     if (!sig[0]) {
         // Just the name
@@ -810,12 +831,12 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
     char *buf = NULL;
 
     while (*sig != ')' && !varargs) {
-        ScanUntilDelim(&sig, &buf);
+        ScanUntilDelim(&sig, &buf, &state->ctx);
 
         if (strcmp(buf, "...") == 0) {
             varargs = true;
 
-            sb_free(buf);
+            sb_free(&state->ctx, buf);
             buf = NULL;
             break;
         } else {
@@ -823,9 +844,9 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
 
             assert(s);
 
-            sb_push(argTags, s);
+            sb_push(&state->ctx, argTags, s);
 
-            sb_free(buf);
+            sb_free(&state->ctx, buf);
             buf = NULL;
         }
 
@@ -841,12 +862,12 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
     if (*sig == ':') {
         sig += 1;
 
-        ScanUntilDelim(&sig, &buf);
+        ScanUntilDelim(&sig, &buf, &state->ctx);
 
         returnTag = GetTagFromName(state, buf, false);
         assert(returnTag);
 
-        sb_free(buf);
+        sb_free(&state->ctx, buf);
     }
 
     BindFunction(state, name, argTags, varargs, returnTag, func);
@@ -896,9 +917,9 @@ static void DoPush(Tiny_StateThread *thread, Tiny_Value value) {
 static inline Tiny_Value DoPop(Tiny_StateThread *thread) { return thread->stack[--thread->sp]; }
 
 static void DoRead(Tiny_StateThread *thread) {
-    char *buffer = emalloc(1);
+    char *buffer = TMalloc(&thread->ctx, 8);
     size_t bufferLength = 0;
-    size_t bufferCapacity = 1;
+    size_t bufferCapacity = 8;
 
     int c = getc(stdin);
     int i = 0;
@@ -906,7 +927,7 @@ static void DoRead(Tiny_StateThread *thread) {
     while (c != '\n') {
         if (bufferLength + 1 >= bufferCapacity) {
             bufferCapacity *= 2;
-            buffer = erealloc(buffer, bufferCapacity);
+            buffer = TRealloc(&thread->ctx, buffer, bufferCapacity);
         }
 
         buffer[i++] = c;
@@ -1443,8 +1464,8 @@ typedef struct sExpr {
     };
 } Expr;
 
-static Expr *Expr_create(ExprType type, const Tiny_State *state) {
-    Expr *exp = emalloc(sizeof(Expr));
+static Expr *Expr_create(ExprType type, Tiny_State *state) {
+    Expr *exp = TMalloc(&state->ctx, sizeof(Expr));
 
     exp->pos = state->l.pos;
     exp->lineNumber = state->l.lineNumber;
@@ -1520,7 +1541,7 @@ static Symbol *DeclareStruct(Tiny_State *state, const char *name, bool search) {
     s->sstruct.defined = false;
     s->sstruct.fields = NULL;
 
-    sb_push(state->globalSymbols, s);
+    sb_push(&state->ctx, state->globalSymbols, s);
 
     return s;
 }
@@ -1622,7 +1643,7 @@ static Expr *ParseBlock(Tiny_State *state) {
         Expr *e = ParseStatement(state);
         assert(e);
 
-        sb_push(exp->block, e);
+        sb_push(&state->ctx, exp->block, e);
     }
 
     GetNextToken(state);
@@ -1666,7 +1687,7 @@ static Expr *ParseFunc(Tiny_State *state) {
 
         Arg arg;
 
-        arg.name = Tiny_Strdup(state->l.lexeme);
+        arg.name = CloneString(&state->ctx, state->l.lexeme);
         GetNextToken(state);
 
         if (CurTok != TINY_TOK_COLON) {
@@ -1677,7 +1698,7 @@ static Expr *ParseFunc(Tiny_State *state) {
 
         arg.tag = ParseType(state);
 
-        sb_push(args, arg);
+        sb_push(&state->ctx, args, arg);
 
         if (CurTok != TINY_TOK_CLOSEPAREN && CurTok != TINY_TOK_COMMA) {
             ReportError(state,
@@ -1690,10 +1711,10 @@ static Expr *ParseFunc(Tiny_State *state) {
 
     for (int i = 0; i < sb_count(args); ++i) {
         DeclareArgument(state, args[i].name, args[i].tag, sb_count(args));
-        free(args[i].name);
+        TFree(&state->ctx, args[i].name);
     }
 
-    sb_free(args);
+    sb_free(&state->ctx, args);
 
     GetNextToken(state);
 
@@ -1768,7 +1789,7 @@ static Symbol *ParseStruct(Tiny_State *state) {
 
         f->fieldTag = ParseType(state);
 
-        sb_push(s->sstruct.fields, f);
+        sb_push(&state->ctx, s->sstruct.fields, f);
     }
 
     GetNextToken(state);
@@ -1790,7 +1811,7 @@ static Expr *ParseCall(Tiny_State *state, char *ident) {
     GetNextToken(state);
 
     while (CurTok != TINY_TOK_CLOSEPAREN) {
-        sb_push(exp->call.args, ParseExpr(state));
+        sb_push(&state->ctx, exp->call.args, ParseExpr(state));
 
         if (CurTok == TINY_TOK_COMMA)
             GetNextToken(state);
@@ -1826,7 +1847,7 @@ static Expr *ParseFactor(Tiny_State *state) {
         } break;
 
         case TINY_TOK_IDENT: {
-            char *ident = Tiny_Strdup(state->l.lexeme);
+            char *ident = CloneString(&state->ctx, state->l.lexeme);
             GetNextToken(state);
 
             if (CurTok == TINY_TOK_OPENPAREN) return ParseCall(state, ident);
@@ -1844,7 +1865,7 @@ static Expr *ParseFactor(Tiny_State *state) {
                 ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
                 e->dot.lhs = exp;
-                e->dot.field = Tiny_Strdup(state->l.lexeme);
+                e->dot.field = CloneString(&state->ctx, state->l.lexeme);
 
                 GetNextToken(state);
 
@@ -1924,7 +1945,7 @@ static Expr *ParseFactor(Tiny_State *state) {
             while (CurTok != TINY_TOK_CLOSECURLY) {
                 Expr *e = ParseExpr(state);
 
-                sb_push(exp->constructor.args, e);
+                sb_push(&state->ctx, exp->constructor.args, e);
 
                 if (CurTok != TINY_TOK_CLOSECURLY && CurTok != TINY_TOK_COMMA) {
                     ReportError(state, "Expected '}' or ',' in constructor arg list.");
@@ -2041,7 +2062,7 @@ static Expr *ParseStatement(Tiny_State *state) {
             return ParseBlock(state);
 
         case TINY_TOK_IDENT: {
-            char *ident = Tiny_Strdup(state->l.lexeme);
+            char *ident = CloneString(&state->ctx, state->l.lexeme);
             GetNextToken(state);
 
             if (CurTok == TINY_TOK_OPENPAREN) return ParseCall(state, ident);
@@ -2059,7 +2080,7 @@ static Expr *ParseStatement(Tiny_State *state) {
                 ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
                 e->dot.lhs = lhs;
-                e->dot.field = Tiny_Strdup(state->l.lexeme);
+                e->dot.field = CloneString(&state->ctx, state->l.lexeme);
 
                 GetNextToken(state);
 
@@ -2223,7 +2244,7 @@ static Expr **ParseProgram(Tiny_State *state) {
                 ParseStruct(state);
             } else {
                 Expr *stmt = ParseStatement(state);
-                sb_push(arr, stmt);
+                sb_push(&state->ctx, arr, stmt);
             }
         }
 
@@ -3238,12 +3259,12 @@ static void CompileProgram(Tiny_State *state, Expr **program) {
     }
 }
 
-static void DeleteProgram(Expr **program);
+static void DeleteProgram(Expr **program, Tiny_Context *ctx);
 
-static void Expr_destroy(Expr *exp) {
+static void Expr_destroy(Expr *exp, Tiny_Context *ctx) {
     switch (exp->type) {
         case EXP_ID: {
-            free(exp->id.name);
+            TFree(ctx, exp->id.name);
         } break;
 
         case EXP_NULL:
@@ -3255,87 +3276,88 @@ static void Expr_destroy(Expr *exp) {
             break;
 
         case EXP_CALL: {
-            free(exp->call.calleeName);
-            for (int i = 0; i < sb_count(exp->call.args); ++i) Expr_destroy(exp->call.args[i]);
+            TFree(ctx, exp->call.calleeName);
+            for (int i = 0; i < sb_count(exp->call.args); ++i) Expr_destroy(exp->call.args[i], ctx);
 
-            sb_free(exp->call.args);
+            sb_free(ctx, exp->call.args);
         } break;
 
         case EXP_BLOCK: {
             for (int i = 0; i < sb_count(exp->block); ++i) {
-                Expr_destroy(exp->block[i]);
+                Expr_destroy(exp->block[i], ctx);
             }
 
-            sb_free(exp->block);
+            sb_free(ctx, exp->block);
         } break;
 
         case EXP_BINARY:
-            Expr_destroy(exp->binary.lhs);
-            Expr_destroy(exp->binary.rhs);
+            Expr_destroy(exp->binary.lhs, ctx);
+            Expr_destroy(exp->binary.rhs, ctx);
             break;
         case EXP_PAREN:
-            Expr_destroy(exp->paren);
+            Expr_destroy(exp->paren, ctx);
             break;
 
         case EXP_PROC: {
-            if (exp->proc.body) Expr_destroy(exp->proc.body);
+            if (exp->proc.body) Expr_destroy(exp->proc.body, ctx);
         } break;
 
         case EXP_IF:
-            Expr_destroy(exp->ifx.cond);
-            if (exp->ifx.body) Expr_destroy(exp->ifx.body);
-            if (exp->ifx.alt) Expr_destroy(exp->ifx.alt);
+            Expr_destroy(exp->ifx.cond, ctx);
+            if (exp->ifx.body) Expr_destroy(exp->ifx.body, ctx);
+            if (exp->ifx.alt) Expr_destroy(exp->ifx.alt, ctx);
             break;
         case EXP_WHILE:
-            Expr_destroy(exp->whilex.cond);
-            if (exp->whilex.body) Expr_destroy(exp->whilex.body);
+            Expr_destroy(exp->whilex.cond, ctx);
+            if (exp->whilex.body) Expr_destroy(exp->whilex.body, ctx);
             break;
         case EXP_RETURN:
-            if (exp->retExpr) Expr_destroy(exp->retExpr);
+            if (exp->retExpr) Expr_destroy(exp->retExpr, ctx);
             break;
         case EXP_UNARY:
-            Expr_destroy(exp->unary.exp);
+            Expr_destroy(exp->unary.exp, ctx);
             break;
 
         case EXP_FOR: {
-            Expr_destroy(exp->forx.init);
-            Expr_destroy(exp->forx.cond);
-            Expr_destroy(exp->forx.step);
+            Expr_destroy(exp->forx.init, ctx);
+            Expr_destroy(exp->forx.cond, ctx);
+            Expr_destroy(exp->forx.step, ctx);
 
-            Expr_destroy(exp->forx.body);
+            Expr_destroy(exp->forx.body, ctx);
         } break;
 
         case EXP_DOT: {
-            Expr_destroy(exp->dot.lhs);
-            free(exp->dot.field);
+            Expr_destroy(exp->dot.lhs, ctx);
+            TFree(ctx, exp->dot.field);
         } break;
 
         case EXP_CONSTRUCTOR: {
             for (int i = 0; i < sb_count(exp->constructor.args); ++i) {
-                Expr_destroy(exp->constructor.args[i]);
+                Expr_destroy(exp->constructor.args[i], ctx);
             }
 
-            sb_free(exp->constructor.args);
+            sb_free(ctx, exp->constructor.args);
         } break;
 
         case EXP_CAST: {
-            Expr_destroy(exp->cast.value);
+            Expr_destroy(exp->cast.value, ctx);
         } break;
 
         default:
             assert(false);
             break;
     }
-    free(exp);
+
+    TFree(ctx, exp);
 }
 
-void DeleteProgram(Expr **program) {
+void DeleteProgram(Expr **program, Tiny_Context *ctx) {
     Expr **arr = program;
     for (int i = 0; i < sb_count(program); ++i) {
-        Expr_destroy(arr[i]);
+        Expr_destroy(arr[i], ctx);
     }
 
-    sb_free(program);
+    sb_free(ctx, program);
 }
 
 static void CheckInitialized(Tiny_State *state) {
@@ -3415,7 +3437,7 @@ static void CompileState(Tiny_State *state, Expr **prog) {
 }
 
 void Tiny_CompileString(Tiny_State *state, const char *name, const char *string) {
-    Tiny_InitLexer(&state->l, name, string);
+    Tiny_InitLexer(&state->l, name, string, state->ctx);
 
     CurTok = 0;
     Expr **prog = ParseProgram(state);
@@ -3432,7 +3454,7 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
 
     Tiny_DestroyLexer(&state->l);
 
-    DeleteProgram(prog);
+    DeleteProgram(prog, &state->ctx);
 }
 
 void Tiny_CompileFile(Tiny_State *state, const char *filename) {
@@ -3447,7 +3469,7 @@ void Tiny_CompileFile(Tiny_State *state, const char *filename) {
 
     long len = ftell(file);
 
-    char *s = malloc(len + 1);
+    char *s = TMalloc(&state->ctx, len + 1);
 
     rewind(file);
 
@@ -3458,5 +3480,5 @@ void Tiny_CompileFile(Tiny_State *state, const char *filename) {
 
     Tiny_CompileString(state, filename, s);
 
-    free(s);
+    TFree(&state->ctx, s);
 }

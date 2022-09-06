@@ -4,7 +4,11 @@
 
 #include "tokens.h"
 
-char *Tiny_Strdup(const char *s);
+typedef struct Tiny_Context Tiny_Context;
+
+void *TMalloc(Tiny_Context *ctx, size_t size);
+void *TRealloc(Tiny_Context *ctx, void *ptr, size_t size);
+void TFree(Tiny_Context *ctx, void *ptr);
 
 int Tiny_TranslatePosToLineNumber(const char *src, Tiny_TokenPos pos);
 

@@ -110,6 +110,8 @@ typedef struct sSymbol {
 } Symbol;
 
 typedef struct Tiny_State {
+    Tiny_Context ctx;
+
     // Program info
     Word *program;  // array
 

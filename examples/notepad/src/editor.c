@@ -8,9 +8,16 @@
 #include "display.h"
 #include "tigr.h"
 
-char* estrdup(const char* str);
-
 static float StatusTime = 0;
+
+static char* estrdup(const char* str) {
+    size_t len = strlen(str);
+
+    char* dup = malloc(len + 1);
+    memcpy(dup, str, len + 1);
+
+    return dup;
+}
 
 static void MoveTo(Editor* ed, int x, int y) {
     ed->cur.x = x;

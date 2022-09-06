@@ -6,11 +6,15 @@
 #include <stdlib.h>
 #include <string.h>
 
-char *Tiny_Strdup(const char *s) {
-    char *ss = malloc(strlen(s) + 1);
-    strcpy(ss, s);
-    return ss;
+#include "tiny.h"
+
+void *TMalloc(Tiny_Context *ctx, size_t size) { return ctx->alloc(NULL, size, ctx->userdata); }
+
+void *TRealloc(Tiny_Context *ctx, void *ptr, size_t size) {
+    return ctx->alloc(ptr, size, ctx->userdata);
 }
+
+void TFree(Tiny_Context *ctx, void *ptr) { ctx->alloc(ptr, 0, ctx->userdata); }
 
 int Tiny_TranslatePosToLineNumber(const char *src, Tiny_TokenPos pos) {
     int curPos = 0;

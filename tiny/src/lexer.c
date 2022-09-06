@@ -2,6 +2,7 @@
 
 #include <ctype.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "stretchy_buffer.h"
@@ -28,7 +29,9 @@ static void ReportError(Tiny_Lexer *l, const char *s, ...) {
     exit(1);
 }
 
-void Tiny_InitLexer(Tiny_Lexer *l, const char *fileName, const char *src) {
+void Tiny_InitLexer(Tiny_Lexer *l, const char *fileName, const char *src, Tiny_Context ctx) {
+    l->ctx = ctx;
+
     l->fileName = fileName;
     l->src = src;
 
@@ -66,9 +69,9 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
     do {                                          \
         if (l->last == s[0] && Peek(l) == s[1]) { \
             ResetLexeme(l);                       \
-            sb_push(l->lexeme, s[0]);             \
-            sb_push(l->lexeme, s[1]);             \
-            sb_push(l->lexeme, 0);                \
+            sb_push(&l->ctx, l->lexeme, s[0]);    \
+            sb_push(&l->ctx, l->lexeme, s[1]);    \
+            sb_push(&l->ctx, l->lexeme, 0);       \
             l->pos += 1;                          \
             l->last = GetChar(l);                 \
             return TINY_TOK_##tok;                \
@@ -95,15 +98,15 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
     MATCH2("<=", LTE);
     MATCH2(">=", GTE);
 
-#define MATCH(c, tok)              \
-    do {                           \
-        if (l->last == c) {        \
-            ResetLexeme(l);        \
-            sb_push(l->lexeme, c); \
-            sb_push(l->lexeme, 0); \
-            l->last = GetChar(l);  \
-            return TINY_TOK_##tok; \
-        }                          \
+#define MATCH(c, tok)                       \
+    do {                                    \
+        if (l->last == c) {                 \
+            ResetLexeme(l);                 \
+            sb_push(&l->ctx, l->lexeme, c); \
+            sb_push(&l->ctx, l->lexeme, 0); \
+            l->last = GetChar(l);           \
+            return TINY_TOK_##tok;          \
+        }                                   \
     } while (0)
 
     MATCH('(', OPENPAREN);
@@ -130,11 +133,11 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
         ResetLexeme(l);
 
         while (isalnum(l->last) || l->last == '_') {
-            sb_push(l->lexeme, l->last);
+            sb_push(&l->ctx, l->lexeme, l->last);
             l->last = GetChar(l);
         }
 
-        sb_push(l->lexeme, 0);
+        sb_push(&l->ctx, l->lexeme, 0);
 
         if (strcmp(l->lexeme, "null") == 0) return TINY_TOK_NULL;
 
@@ -170,14 +173,14 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
         while (isdigit(l->last) || (l->last == '.' && !isFloat)) {
             if (l->last == '.') isFloat = true;
 
-            sb_push(l->lexeme, l->last);
+            sb_push(&l->ctx, l->lexeme, l->last);
             l->last = GetChar(l);
         }
 
-        sb_push(l->lexeme, 0);
+        sb_push(&l->ctx, l->lexeme, 0);
 
         if (isFloat) {
-            l->fValue = strtof(l->lexeme, NULL);
+            l->fValue = (float)strtod(l->lexeme, NULL);
         } else {
             l->iValue = strtol(l->lexeme, NULL, 10);
         }
@@ -238,11 +241,11 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
         while (l->last != '"') {
             CHECK_ESCAPE();
 
-            sb_push(l->lexeme, l->last);
+            sb_push(&l->ctx, l->lexeme, l->last);
             l->last = GetChar(l);
         }
 
-        sb_push(l->lexeme, 0);
+        sb_push(&l->ctx, l->lexeme, 0);
 
         l->last = GetChar(l);
 
@@ -253,4 +256,4 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
     return -1;
 }
 
-void Tiny_DestroyLexer(Tiny_Lexer *l) { sb_free(l->lexeme); }
+void Tiny_DestroyLexer(Tiny_Lexer *l) { sb_free(&l->ctx, l->lexeme); }

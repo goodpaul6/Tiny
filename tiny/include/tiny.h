@@ -13,6 +13,28 @@
 #define TINY_THREAD_MAX_CALL_DEPTH 64
 #endif
 
+// This function should be able to handle all of `malloc`,
+// `realloc`, and `free`:
+//
+// malloc => ptr is NULL, size is provided
+// realloc => ptr is not NULL, size is provided
+// free => ptr is not NULL, size is 0
+typedef void *(*Tiny_AllocFunction)(void *ptr, size_t size, void *userdata);
+
+// You can provide this when you create a Tiny_State
+// to override how memory is allocated within the Tiny
+// library.
+//
+// Note that the userdata pointer here is non-const. That
+// means if you have context that is shared in a Tiny_State
+// used across multiple threads, you have to ensure it is
+// synchronized appropriately.
+typedef struct Tiny_Context {
+    Tiny_AllocFunction alloc;
+
+    void *userdata;
+} Tiny_Context;
+
 typedef struct Tiny_Object Tiny_Object;
 typedef struct Tiny_State Tiny_State;
 
@@ -22,7 +44,7 @@ struct Tiny_Value;
 // object. This should be statically allocated
 // and only one should exist for each type of
 // Native value.
-typedef struct {
+typedef struct Tiny_NativeProp {
     const char *name;
 
     void (*protectFromGC)(void *);
@@ -60,6 +82,11 @@ typedef struct Tiny_Frame {
 } Tiny_Frame;
 
 typedef struct Tiny_StateThread {
+    // Each thread can maintain its own context
+    // so that you can e.g. override allocation
+    // on a per-thread basis.
+    Tiny_Context ctx;
+
     // Each thread stores a reference
     // to its state
     const Tiny_State *state;
@@ -150,6 +177,9 @@ Tiny_Value Tiny_GetField(const Tiny_Value value, int index);
 
 Tiny_State *Tiny_CreateState(void);
 
+// Note how the Context is copied.
+Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx);
+
 // Exposes an opaque type of the given name.
 // The same typename can be registered multiple times, but it will only be
 // defined once.
@@ -202,6 +232,8 @@ void Tiny_CompileFile(Tiny_State *state, const char *filename);
 void Tiny_DeleteState(Tiny_State *state);
 
 void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state);
+void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *state,
+                                Tiny_Context ctx);
 
 // Sets the PC of the thread to the entry point of the program
 // and allocates space for global variables if they're not already

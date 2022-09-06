@@ -13,15 +13,14 @@
 
 #endif
 
-// This is already present in tiny_lib.h
-#if 0
-char* estrdup(const char* s)
-{
-    char* ss = malloc(strlen(s) + 1);
-    strcpy(ss, s);
-    return ss;
+char* estrdup(const char* str) {
+    size_t len = strlen(str);
+
+    char* dup = malloc(len + 1);
+    memcpy(dup, str, len + 1);
+
+    return dup;
 }
-#endif
 
 bool GetLastWriteTime(const char* filename, long long* time) {
 #ifdef _WIN32

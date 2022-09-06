@@ -212,6 +212,7 @@ static Tiny_State* CreateState(const Config* c, const char* filename) {
     Tiny_BindStandardLib(state);
     Tiny_BindStandardArray(state);
     Tiny_BindStandardDict(state);
+    Tiny_BindStandardIO(state);
 
     BindBuffer(state);
     BindIO(state);
