@@ -252,7 +252,7 @@ static Tiny_Value Lib_ToFloat(Tiny_StateThread *thread, const Tiny_Value *args, 
 }
 
 Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx) {
-    g Tiny_State *state = TMalloc(&ctx, sizeof(Tiny_State));
+    Tiny_State *state = TMalloc(&ctx, sizeof(Tiny_State));
 
     state->ctx = ctx;
 
