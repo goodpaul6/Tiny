@@ -821,6 +821,8 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
     if (!sig[0]) {
         // Just the name
         BindFunction(state, name, NULL, true, GetPrimTag(SYM_TAG_ANY), func);
+
+        sb_free(&state->ctx, name);
         return;
     }
 
