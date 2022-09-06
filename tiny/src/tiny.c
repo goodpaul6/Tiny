@@ -871,6 +871,9 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
     }
 
     BindFunction(state, name, argTags, varargs, returnTag, func);
+
+    // BindFunction copies name
+    sb_free(&state->ctx, name);
 }
 
 void Tiny_BindConstBool(Tiny_State *state, const char *name, bool b) {
