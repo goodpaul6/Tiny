@@ -283,7 +283,7 @@ void Tiny_DeleteState(Tiny_State *state) {
     sb_free(&state->ctx, state->program);
 
     // Delete all the Strings
-    for(int i = 0; i < state->numStrings; ++i) {
+    for (int i = 0; i < state->numStrings; ++i) {
         TFree(&state->ctx, state->strings[i]);
     }
 
@@ -2281,12 +2281,7 @@ static bool CompareTags(const Symbol *a, const Symbol *b) {
     }
 
     if (a->type == b->type) {
-        if (a->type == SYM_TAG_FOREIGN) {
-            // Foreign tags are singletons
-            return a == b;
-        }
-
-        return true;
+        return strcmp(a->name, b->name) == 0;
     }
 
     return false;

@@ -590,6 +590,24 @@ static void test_Arena() {
     DestroyArena(&a);
 }
 
+static void test_StructTypeSafe() {
+    Tiny_State *state = CreateState();
+
+    Tiny_BindStandardArray(state);
+    Tiny_BindStandardLib(state);
+
+    Tiny_BindFunction(state, "my_input", Lib_MyInput);
+
+    const char *code =
+        "struct X { x: int }\n"
+        "struct Y { x: int }\n"
+        "func do(x: X) {}\n"
+        "do(new X{10})\n";
+
+    Tiny_CompileString(state, "test_struct_type_safe", code);
+    Tiny_DeleteState(state);
+}
+
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
@@ -603,6 +621,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny RPN", test_RevPolishCalc);
     lrun("Tests Allocations Occur", test_CheckMallocs);
     lrun("Test Arena Allocator", test_Arena);
+    lrun("Tiny Struct Type Safe", test_StructTypeSafe);
 
     lresults();
 
