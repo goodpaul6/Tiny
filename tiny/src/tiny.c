@@ -282,6 +282,11 @@ Tiny_State *Tiny_CreateState(void) { return Tiny_CreateStateWithContext(DefaultC
 void Tiny_DeleteState(Tiny_State *state) {
     sb_free(&state->ctx, state->program);
 
+    // Delete all the Strings
+    for(int i = 0; i < state->numStrings; ++i) {
+        TFree(&state->ctx, state->strings[i]);
+    }
+
     // Delete all symbols
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
         Symbol_destroy(state->globalSymbols[i], &state->ctx);
