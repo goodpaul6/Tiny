@@ -5,7 +5,8 @@ set(SOURCES
     src/std.c
     src/tiny.c
     src/util.c
-    src/pos.c)
+    src/pos.c
+    src/arena.c)
 
 add_library(tiny STATIC ${SOURCES})
 

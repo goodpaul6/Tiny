@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#include "arena.h"
 #include "array.h"
 #include "detail.h"
 #include "dict.h"
@@ -558,9 +559,35 @@ static void test_RevPolishCalc(void) {
     Tiny_DeleteState(state);
 }
 
-static void test_CheckMallocs() { 
+static void test_CheckMallocs() {
     lok(MallocCalls > 0);
     lok(FreeCalls > 0);
+}
+
+static void test_Arena() {
+    Arena a;
+
+    InitArena(&a, Context);
+
+    void *data = ArenaAlloc(&a, 10, 1);
+
+    lequal((int)a.head->used, 10);
+
+    char s[10] = "hello wor\0";
+    strcpy(data, s);
+
+    void *data2 = ArenaAlloc(&a, ARENA_PAGE_SIZE + 10, 1);
+
+    // This is checking that the large allocation we perform above
+    // does not cause the "small allocation" page to be moved back.
+    lequal((int)a.head->used, 10);
+
+    void *data3 = ArenaAlloc(&a, 7, 8);
+
+    lequal((int)((uintptr_t)data3 % 8), 0);
+    lequal((int)a.head->used, 23);
+
+    DestroyArena(&a);
 }
 
 int main(int argc, char *argv[]) {
@@ -575,6 +602,8 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Stdlib Dict", test_TinyDict);
     lrun("Tiny RPN", test_RevPolishCalc);
     lrun("Tests Allocations Occur", test_CheckMallocs);
+    lrun("Test Arena Allocator", test_Arena);
+
     lresults();
 
     return lfails != 0;

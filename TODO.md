@@ -1,4 +1,7 @@
 # Todo
+
+* Pass in alignment to used provided allocation function
+
 * Refactor VM from compiler
 
 * First class types (store a "type" which is just an integer in the VM)
