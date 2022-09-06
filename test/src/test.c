@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <stdlib.h>
 
 #include "array.h"
 #include "detail.h"
@@ -6,6 +7,29 @@
 #include "minctest.h"
 #include "pos.h"
 #include "tiny.h"
+
+static int MallocCalls = 0;
+static int FreeCalls = 0;
+
+static void *Alloc(void *ptr, size_t size, void *userdata) {
+    if (ptr == NULL) {
+        MallocCalls += 1;
+    } else if (size == 0) {
+        FreeCalls += 1;
+        free(ptr);
+        return NULL;
+    }
+
+    return realloc(ptr, size);
+}
+
+static Tiny_Context Context = {Alloc, NULL};
+
+static Tiny_State *CreateState(void) { return Tiny_CreateStateWithContext(Context); }
+
+static void InitThread(Tiny_StateThread *thread, const Tiny_State *state) {
+    Tiny_InitThreadWithContext(thread, state, Context);
+}
 
 static void test_PosToFriendlyPos(void) {
     Tiny_Pos pos = {8};
@@ -271,7 +295,7 @@ static Tiny_Value Lib_Lequal(Tiny_StateThread *thread, const Tiny_Value *args, i
 }
 
 static void test_StateCompile(void) {
-    Tiny_State *state = Tiny_CreateState();
+    Tiny_State *state = CreateState();
 
     Tiny_BindFunction(state, "lequal", Lib_Lequal);
 
@@ -282,7 +306,7 @@ static void test_StateCompile(void) {
     static Tiny_StateThread threads[1000];
 
     for (int i = 0; i < 1000; ++i) {
-        Tiny_InitThread(&threads[i], state);
+        InitThread(&threads[i], state);
         Tiny_StartThread(&threads[i]);
     }
 
@@ -306,14 +330,14 @@ static void test_StateCompile(void) {
 static void test_TinyState(void) { test_StateCompile(); }
 
 static void test_MultiCompileString(void) {
-    Tiny_State *state = Tiny_CreateState();
+    Tiny_State *state = CreateState();
 
     Tiny_CompileString(state, "test_compile_1", "func add(x: int, y: int): int { return x + y }");
     Tiny_CompileString(state, "test_compile_2", "func sub(x: int, y: int): int { return x - y }");
 
     Tiny_StateThread thread;
 
-    Tiny_InitThread(&thread, state);
+    InitThread(&thread, state);
 
     Tiny_Value args[] = {Tiny_NewInt(10), Tiny_NewInt(20)};
 
@@ -333,14 +357,14 @@ static void test_MultiCompileString(void) {
 }
 
 static void test_TinyStateCallFunction(void) {
-    Tiny_State *state = Tiny_CreateState();
+    Tiny_State *state = CreateState();
 
     Tiny_CompileString(state, "test_compile",
                        "func fact(n : int) : int { if n <= 1 return 1 return n * fact(n - 1) }");
 
     Tiny_StateThread thread;
 
-    Tiny_InitThread(&thread, state);
+    InitThread(&thread, state);
 
     int fact = Tiny_GetFunctionIndex(state, "fact");
 
@@ -367,7 +391,7 @@ static Tiny_Value CallFunc(Tiny_StateThread *thread, const Tiny_Value *args, int
 }
 
 static void test_TinyStateCallMidRun(void) {
-    Tiny_State *state = Tiny_CreateState();
+    Tiny_State *state = CreateState();
 
     Tiny_BindFunction(state, "call_func(str, ...): any", CallFunc);
 
@@ -377,7 +401,7 @@ static void test_TinyStateCallMidRun(void) {
 
     Tiny_StateThread thread;
 
-    Tiny_InitThread(&thread, state);
+    InitThread(&thread, state);
 
     Tiny_StartThread(&thread);
 
@@ -395,7 +419,7 @@ static Tiny_Value Lib_GetStaticNative(Tiny_StateThread *thread, const Tiny_Value
 }
 
 static void test_TinyEquality(void) {
-    Tiny_State *state = Tiny_CreateState();
+    Tiny_State *state = CreateState();
 
     Tiny_BindStandardLib(state);
 
@@ -408,7 +432,7 @@ static void test_TinyEquality(void) {
 
     Tiny_StateThread thread;
 
-    Tiny_InitThread(&thread, state);
+    InitThread(&thread, state);
 
     Tiny_StartThread(&thread);
 
@@ -436,7 +460,7 @@ static void test_TinyEquality(void) {
 }
 
 static void test_TinyDict(void) {
-    Tiny_State *state = Tiny_CreateState();
+    Tiny_State *state = CreateState();
 
     Tiny_BindStandardDict(state);
 
@@ -444,7 +468,7 @@ static void test_TinyDict(void) {
 
     Tiny_StateThread thread;
 
-    Tiny_InitThread(&thread, state);
+    InitThread(&thread, state);
 
     Tiny_StartThread(&thread);
 
@@ -483,7 +507,7 @@ static Tiny_Value Lib_MyInput(Tiny_StateThread *thread, const Tiny_Value *args, 
 }
 
 static void test_RevPolishCalc(void) {
-    Tiny_State *state = Tiny_CreateState();
+    Tiny_State *state = CreateState();
 
     Tiny_BindStandardArray(state);
     Tiny_BindStandardLib(state);
@@ -509,7 +533,7 @@ static void test_RevPolishCalc(void) {
 
     Tiny_StateThread thread;
 
-    Tiny_InitThread(&thread, state);
+    InitThread(&thread, state);
 
     Tiny_StartThread(&thread);
 
@@ -535,6 +559,8 @@ static void test_RevPolishCalc(void) {
     Tiny_DeleteState(state);
 }
 
+static void test_CheckMallocs() { lequal(MallocCalls, FreeCalls); }
+
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
@@ -546,6 +572,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Equality", test_TinyEquality);
     lrun("Tiny Stdlib Dict", test_TinyDict);
     lrun("Tiny RPN", test_RevPolishCalc);
+    lrun("Tests Do Not Leak", test_CheckMallocs);
     lresults();
 
     return lfails != 0;
