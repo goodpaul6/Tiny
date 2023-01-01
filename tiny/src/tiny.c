@@ -3417,12 +3417,14 @@ static void CompileState(Tiny_State *state, Expr **prog) {
     // We realloc because this state might be compiled multiple times (if, e.g.,
     // Tiny_CompileString is called twice with same state)
     if (state->numFunctions > 0) {
-        state->functionPcs = realloc(state->functionPcs, state->numFunctions * sizeof(int));
+        state->functionPcs =
+            TRealloc(&state->ctx, state->functionPcs, state->numFunctions * sizeof(int));
     }
 
     if (state->numForeignFunctions > 0) {
-        state->foreignFunctions = realloc(
-            state->foreignFunctions, state->numForeignFunctions * sizeof(Tiny_ForeignFunction));
+        state->foreignFunctions =
+            TRealloc(&state->ctx, state->foreignFunctions,
+                     state->numForeignFunctions * sizeof(Tiny_ForeignFunction));
     }
 
     assert(state->numForeignFunctions == 0 || state->foreignFunctions);
