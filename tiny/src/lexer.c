@@ -169,9 +169,15 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
         ResetLexeme(l);
 
         bool isFloat = false;
+        bool isHex = false;
 
-        while (isdigit(l->last) || (l->last == '.' && !isFloat)) {
-            if (l->last == '.') isFloat = true;
+        while (isdigit(l->last) || (l->last == 'x' && !isHex) || (isHex && isxdigit(l->last)) ||
+               (l->last == '.' && !isFloat)) {
+            if (l->last == 'x') {
+                isHex = true;
+            } else if (l->last == '.') {
+                isFloat = true;
+            }
 
             sb_push(&l->ctx, l->lexeme, l->last);
             l->last = GetChar(l);
@@ -181,6 +187,10 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
 
         if (isFloat) {
             l->fValue = (float)strtod(l->lexeme, NULL);
+        } else if (isHex) {
+            int64_t value = strtoll(l->lexeme, NULL, 16);
+
+            l->iValue = (int)value;
         } else {
             l->iValue = strtol(l->lexeme, NULL, 10);
         }

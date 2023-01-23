@@ -593,11 +593,6 @@ static void test_Arena() {
 static void test_StructTypeSafe() {
     Tiny_State *state = CreateState();
 
-    Tiny_BindStandardArray(state);
-    Tiny_BindStandardLib(state);
-
-    Tiny_BindFunction(state, "my_input", Lib_MyInput);
-
     const char *code =
         "struct X { x: int }\n"
         "struct Y { x: int }\n"
@@ -605,6 +600,30 @@ static void test_StructTypeSafe() {
         "do(new X{10})\n";
 
     Tiny_CompileString(state, "test_struct_type_safe", code);
+    Tiny_DeleteState(state);
+}
+
+static void test_HexLiteral() {
+    Tiny_State *state = CreateState();
+
+    const char *code = "x := 0xffffffff";
+
+    Tiny_CompileString(state, "test_hexliteral", code);
+
+    int idx = Tiny_GetGlobalIndex(state, "x");
+
+    Tiny_StateThread thread;
+
+    Tiny_InitThread(&thread, state);
+
+    Tiny_StartThread(&thread);
+    while (Tiny_ExecuteCycle(&thread))
+        ;
+
+    int x = Tiny_ToInt(Tiny_GetGlobal(&thread, idx));
+
+    lequal(x, 0xffffffff);
+
     Tiny_DeleteState(state);
 }
 
@@ -622,6 +641,7 @@ int main(int argc, char *argv[]) {
     lrun("Tests Allocations Occur", test_CheckMallocs);
     lrun("Test Arena Allocator", test_Arena);
     lrun("Tiny Struct Type Safe", test_StructTypeSafe);
+    lrun("Tiny Hex Literal", test_HexLiteral);
 
     lresults();
 

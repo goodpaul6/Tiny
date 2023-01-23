@@ -1,4 +1,6 @@
-# Todo
+# TODO
+
+* Make `CurTok` local or at least thread local
 
 * Pass in alignment to used provided allocation function
 

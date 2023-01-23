@@ -2702,10 +2702,17 @@ static void GeneratePushInt(Tiny_State *state, int iValue) {
         GenerateCode(state, TINY_OP_PUSH_0);
     } else if (iValue == 1) {
         GenerateCode(state, TINY_OP_PUSH_1);
-    } else if (iValue >= -128 && iValue <= 127) {
+    }
+#if 0
+    // HACK(Apaar): I've commented this out beause this is wrong.
+    // It loses information because we're casting here, so negative
+    // values get converted into positive, etc.
+    else if (iValue >= -128 && iValue <= 127) {
         GenerateCode(state, TINY_OP_PUSH_CHAR);
-        GenerateCode(state, (Word)iValue);
-    } else {
+        GenerateCode(state, (Word)iValue); 
+    }
+#endif
+    else {
         GenerateCode(state, TINY_OP_PUSH_INT);
         GenerateInt(state, iValue);
     }
