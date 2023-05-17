@@ -60,6 +60,8 @@ typedef enum {
     TINY_TOK_STRUCT,
     TINY_TOK_NEW,
     TINY_TOK_CAST,
+    TINY_TOK_BREAK,
+    TINY_TOK_CONTINUE,
 
     TINY_TOK_EOF,
 } Tiny_TokenKind;

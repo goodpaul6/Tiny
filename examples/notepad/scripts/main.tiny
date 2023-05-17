@@ -425,7 +425,20 @@ func update_normal_mode(): void {
                 remove_char()
             }
         } else {
-            move_to(get_next_word_x(), get_y())
+            // Loop up to twice because the first time we may go down
+            // a line, and then go to the word.
+            for i := 0; i < 2; i += 1 {
+                cur_x := get_x()
+                next_x := get_next_word_x()
+                
+                // End of the line
+                if cur_x == next_x {
+                    move_to(0, get_y() + 1)
+                } else {
+                    move_to(get_next_word_x(), get_y())
+                    break
+                }
+            }
         }
 
         last_char = ' '
@@ -433,11 +446,22 @@ func update_normal_mode(): void {
     }
     
     if ch == 'b' {
-        move_to(get_prev_word_x(), get_y())
+        cur_x := get_x()
+        prev_x := get_prev_word_x()
+            
+        // Start of line
+        if cur_x == prev_x && get_y() != 0 {
+            move(0, -1)
+            move(strlen(get_line()), 0)
+        } else {
+            move_to(get_prev_word_x(), get_y())
+            break
+        }
+        
         last_char = ' '
         return;
     }
-
+    
     if ch == 'p' || ch == 'P' {
         if temp_line_count() == 0 {
             set_status("You have no lines in the temporary buffer.")
@@ -460,7 +484,6 @@ func update_normal_mode(): void {
         for i := 0; i < count; i += 1 {
             insert_empty_line()
             insert_string(get_temp_line(i))
-            move(0, 1)
         }
 
         move_to(cur_x, cur_y)
@@ -659,7 +682,6 @@ func update_insert_mode(): void {
     if ch == 27 {
         // escape
         set_mode(MODE_NORMAL)
-        move(-1, 0)
     } else if ch == 8 {
         // backspace
         if get_x() == 0 {

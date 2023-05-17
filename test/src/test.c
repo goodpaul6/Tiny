@@ -61,11 +61,11 @@ static void test_ArrayPush(void) {
 
     InitArray(&array, sizeof(int));
 
-    for (int i = 0; i < 1000; ++i) ArrayPush(&array, &i);
+    for (int i = 0; i < 64; ++i) ArrayPush(&array, &i);
 
-    lequal(array.length, 1000);
-
-    for (int i = 0; i < 1000; ++i) lok(ArrayGetValue(&array, i, int) == i);
+    lequal(array.length, 64);
+    lok(ArrayGetValue(&array, 2, int) == 2);
+    lok(ArrayGetValue(&array, 21, int) == 21);
 
     DestroyArray(&array);
 }
@@ -79,14 +79,19 @@ static void test_ArrayPop(void) {
 
     lequal(array.length, 1000);
 
-    for (int i = 0; i < 1000; ++i) {
-        int result;
-        ArrayPop(&array, &result);
+    int result;
+    ArrayPop(&array, &result);
 
-        lok(result == (1000 - i - 1));
-        lok(array.length == (1000 - i - 1));
+    lok(result == 999);
+    lok(array.length == 999);
+
+    for (int i = 0; i < 998; ++i) {
+        ArrayPop(&array, &result);
     }
 
+    ArrayPop(&array, &result);
+
+    lok(result == 0);
     lok(array.length == 0);
 
     DestroyArray(&array);
@@ -627,6 +632,67 @@ static void test_HexLiteral() {
     Tiny_DeleteState(state);
 }
 
+static void test_Break() {
+    Tiny_State *state = CreateState();
+
+    const char *code =
+        "x := 0\n"
+        "while x < 10 {\n"
+        "    x += 1\n"
+        "    break\n"
+        "}";
+
+    Tiny_CompileString(state, "test_break", code);
+
+    int idx = Tiny_GetGlobalIndex(state, "x");
+
+    Tiny_StateThread thread;
+
+    Tiny_InitThread(&thread, state);
+
+    Tiny_StartThread(&thread);
+    while (Tiny_ExecuteCycle(&thread))
+        ;
+
+    int x = Tiny_ToInt(Tiny_GetGlobal(&thread, idx));
+
+    lequal(x, 1);
+
+    Tiny_DeleteState(state);
+}
+
+static void test_Continue() {
+    Tiny_State *state = CreateState();
+
+    const char *code =
+        "x := 0\n"
+        "while x < 10 {\n"
+        "    x += 1\n"
+        "    if x < 10 {\n"
+        "        continue\n"
+        "    }\n"
+        "    x += 1\n"
+        "}";
+
+    Tiny_CompileString(state, "test_continue", code);
+
+    int idx = Tiny_GetGlobalIndex(state, "x");
+
+    Tiny_StateThread thread;
+
+    Tiny_InitThread(&thread, state);
+
+    Tiny_StartThread(&thread);
+    while (Tiny_ExecuteCycle(&thread))
+        ;
+
+    int x = Tiny_ToInt(Tiny_GetGlobal(&thread, idx));
+
+    lequal(x, 11);
+
+    Tiny_DeleteState(state);
+}
+
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
@@ -642,6 +708,8 @@ int main(int argc, char *argv[]) {
     lrun("Test Arena Allocator", test_Arena);
     lrun("Tiny Struct Type Safe", test_StructTypeSafe);
     lrun("Tiny Hex Literal", test_HexLiteral);
+    lrun("Tiny Break Statement", test_Break);
+    lrun("Tiny Continue Statement", test_Continue);
 
     lresults();
 

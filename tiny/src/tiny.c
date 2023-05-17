@@ -1389,7 +1389,9 @@ typedef enum {
     EXP_FOR,
     EXP_DOT,
     EXP_CONSTRUCTOR,
-    EXP_CAST
+    EXP_CAST,
+    EXP_BREAK,
+    EXP_CONTINUE
 } ExprType;
 
 typedef struct sExpr {
@@ -1471,6 +1473,13 @@ typedef struct sExpr {
         } cast;
 
         struct sExpr *retExpr;
+
+        struct {
+            // For a break, this index in the bytecode should be patched with the pc at the exit of
+            // the loop. For a continue, this index should be patched with the PC before the
+            // conditional.
+            int patchLoc;
+        } breakContinue;
     };
 } Expr;
 
@@ -2187,6 +2196,7 @@ static Expr *ParseStatement(Tiny_State *state) {
 
         case TINY_TOK_FOR: {
             GetNextToken(state);
+
             Expr *exp = Expr_create(EXP_FOR, state);
 
             // Every local declared after this is scoped to the for
@@ -2235,6 +2245,27 @@ static Expr *ParseStatement(Tiny_State *state) {
             }
 
             exp->retExpr = ParseExpr(state);
+            return exp;
+        } break;
+
+        // TODO(Apaar): Labeled break/continue
+        case TINY_TOK_BREAK: {
+            GetNextToken(state);
+            Expr *exp = Expr_create(EXP_BREAK, state);
+
+            // Set to -1 to make sure we don't get into trouble
+            exp->breakContinue.patchLoc = -1;
+
+            return exp;
+        } break;
+
+        case TINY_TOK_CONTINUE: {
+            GetNextToken(state);
+            Expr *exp = Expr_create(EXP_CONTINUE, state);
+
+            // Set to -1 to make sure we don't get into trouble
+            exp->breakContinue.patchLoc = -1;
+
             return exp;
         } break;
     }
@@ -2702,17 +2733,8 @@ static void GeneratePushInt(Tiny_State *state, int iValue) {
         GenerateCode(state, TINY_OP_PUSH_0);
     } else if (iValue == 1) {
         GenerateCode(state, TINY_OP_PUSH_1);
-    }
-#if 0
-    // HACK(Apaar): I've commented this out beause this is wrong.
-    // It loses information because we're casting here, so negative
-    // values get converted into positive, etc.
-    else if (iValue >= -128 && iValue <= 127) {
-        GenerateCode(state, TINY_OP_PUSH_CHAR);
-        GenerateCode(state, (Word)iValue); 
-    }
-#endif
-    else {
+    } else {
+        // TODO(Apaar): Add small integer optimization
         GenerateCode(state, TINY_OP_PUSH_INT);
         GenerateInt(state, iValue);
     }
@@ -3025,6 +3047,54 @@ static void CompileExpr(Tiny_State *state, Expr *exp) {
     }
 }
 
+static void PatchBreakContinue(Tiny_State *state, Expr *body, int breakPC, int continuePC) {
+    // For convenience
+    if (!body) {
+        return;
+    }
+
+    // If this encounters a loop, it will stop recursing since the
+    // break/continue is lexical (and we don't support nested break
+    // yet).
+
+    switch (body->type) {
+        // TODO(Apaar): These are the only types of blocks that are not loops, right? right?
+        case EXP_IF: {
+            PatchBreakContinue(state, body->ifx.body, breakPC, continuePC);
+            PatchBreakContinue(state, body->ifx.alt, breakPC, continuePC);
+        } break;
+
+        case EXP_BLOCK: {
+            for (int i = 0; i < sb_count(body->block); ++i) {
+                PatchBreakContinue(state, body->block[i], breakPC, continuePC);
+            }
+        } break;
+
+        case EXP_BREAK: {
+            if (breakPC < 0) {
+                ReportErrorE(
+                    state, body,
+                    "A break statement does not make sense here. It must be inside a loop.");
+            }
+
+            GenerateIntAt(state, breakPC, body->breakContinue.patchLoc);
+        } break;
+
+        case EXP_CONTINUE: {
+            if (continuePC < 0) {
+                ReportErrorE(state, body,
+                             "A continue statement does not make sense here. It must be "
+                             "inside a loop.");
+            }
+
+            GenerateIntAt(state, continuePC, body->breakContinue.patchLoc);
+        } break;
+
+        default:
+            break;
+    }
+}
+
 static void CompileStatement(Tiny_State *state, Expr *exp) {
     if (state->l.fileName) {
         GenerateCode(state, TINY_OP_FILE);
@@ -3229,6 +3299,8 @@ static void CompileStatement(Tiny_State *state, Expr *exp) {
             GenerateInt(state, condPc);
 
             GenerateIntAt(state, sb_count(state->program), skipGotoPc);
+
+            PatchBreakContinue(state, exp->whilex.body, sb_count(state->program), condPc);
         } break;
 
         case EXP_FOR: {
@@ -3248,6 +3320,8 @@ static void CompileStatement(Tiny_State *state, Expr *exp) {
             GenerateInt(state, condPc);
 
             GenerateIntAt(state, sb_count(state->program), skipGotoPc);
+
+            PatchBreakContinue(state, exp->forx.body, sb_count(state->program), condPc);
         } break;
 
         case EXP_RETURN: {
@@ -3258,8 +3332,16 @@ static void CompileStatement(Tiny_State *state, Expr *exp) {
                 GenerateCode(state, TINY_OP_RETURN);
         } break;
 
+        case EXP_BREAK:
+        case EXP_CONTINUE: {
+            GenerateCode(state, TINY_OP_GOTO);
+            exp->breakContinue.patchLoc = GenerateInt(state, 0);
+        } break;
+
         default:
-            ReportErrorE(state, exp, "Got expression when expecting statement.\n");
+            ReportErrorE(state, exp,
+                         "So this parsed successfully but when compiling I saw an expression where "
+                         "I was expecting a statement.\n");
             break;
     }
 }
@@ -3285,6 +3367,8 @@ static void Expr_destroy(Expr *exp, Tiny_Context *ctx) {
         case EXP_INT:
         case EXP_FLOAT:
         case EXP_STRING:
+        case EXP_BREAK:
+        case EXP_CONTINUE:
             break;
 
         case EXP_CALL: {
