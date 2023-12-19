@@ -3,3 +3,9 @@ i := int_to_i64(0)
 i = i64_add_many(int_to_i64(1000))
 
 printf("%s\n", i64_to_string(i))
+
+arr := array()
+
+array_push(arr, 10)
+
+printf("%q\n", arr)

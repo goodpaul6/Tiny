@@ -698,7 +698,7 @@ void Tiny_BindI64(Tiny_State* state) {
 
     Tiny_BindFunction(state, "int_to_i64(int): i64", Lib_IntToI64);
     Tiny_BindFunction(state, "i64_add_many(i64, ...): i64", Lib_I64AddMany);
-    Tiny_BindFunction(state, "i64_mul_many(i64, ...): i64", Lib_I64AddMany);
+    Tiny_BindFunction(state, "i64_mul_many(i64, ...): i64", Lib_I64MulMany);
     Tiny_BindFunction(state, "i64_to_string(i64): str", Lib_I64ToString);
 }
 
