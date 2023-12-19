@@ -1,5 +1,31 @@
 # TODO
 
+* BUG `continue` doesn't seem to run the "step" part of the for loop
+
+* SAD No named struct initializer
+* SAD No char type
+* SAD No polymorphism of any kind
+
+* BUG Assigning to arguments doesn't seem to work, repro
+
+```
+func mutate_arg(i: int) {
+    i = 10
+    // Prints 5
+    printf("%i\n", i)
+}
+
+mutate_arg(5)
+```
+
+* BUG The following compiles without error
+
+```
+func split_lines(s: str): array {
+    return ""
+}
+```
+
 * Make `CurTok` local or at least thread local
 
 * Pass in alignment to used provided allocation function

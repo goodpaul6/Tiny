@@ -3314,6 +3314,8 @@ static void CompileStatement(Tiny_State *state, Expr *exp) {
 
             if (exp->forx.body) CompileStatement(state, exp->forx.body);
 
+            int stepPc = sb_count(state->program);
+
             CompileStatement(state, exp->forx.step);
 
             GenerateCode(state, TINY_OP_GOTO);
@@ -3321,7 +3323,7 @@ static void CompileStatement(Tiny_State *state, Expr *exp) {
 
             GenerateIntAt(state, sb_count(state->program), skipGotoPc);
 
-            PatchBreakContinue(state, exp->forx.body, sb_count(state->program), condPc);
+            PatchBreakContinue(state, exp->forx.body, sb_count(state->program), stepPc);
         } break;
 
         case EXP_RETURN: {

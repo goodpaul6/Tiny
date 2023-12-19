@@ -420,6 +420,15 @@ static Tiny_Value Lib_Ston(Tiny_StateThread *thread, const Tiny_Value *args, int
     return Tiny_NewFloat(value);
 }
 
+static Tiny_Value Lib_Stoi(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+    const char *str = Tiny_ToString(args[0]);
+    int base = Tiny_ToInt(args[1]);
+
+    long value = strtol(str, NULL, base);
+
+    return Tiny_NewInt((int)value);
+}
+
 #define NUMTOSTR_CONV_BUFFER_SIZE 32
 
 static Tiny_Value Lib_Ntos(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
@@ -636,6 +645,8 @@ void Tiny_BindStandardLib(Tiny_State *state) {
 
     Tiny_BindFunction(state, "ston(str): float", Lib_Ston);
     Tiny_BindFunction(state, "ntos(...): str", Lib_Ntos);
+
+    Tiny_BindFunction(state, "stoi(str, int): int", Lib_Stoi);
 
     Tiny_BindFunction(state, "time(): int", Lib_Time);
     Tiny_BindFunction(state, "srand(int): void", SeedRand);
