@@ -2994,8 +2994,24 @@ static void CompileExpr(Tiny_State *state, Expr *exp) {
 
                 case TINY_TOK_LOG_AND: {
                     CompileExpr(state, exp->binary.lhs);
+
+                    // Don't even bother running the RHS of the &&
+                    GenerateCode(state, TINY_OP_GOTOZ);
+                    int shortCircuitLoc = GenerateInt(state, 0);
+
+                    // If we here here, the top of the stack will be whatever the result of this
+                    // final call was, which fine
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, TINY_OP_LOG_AND);
+
+                    // Skip over the "push false"
+                    GenerateCode(state, TINY_OP_GOTO);
+                    int exitLoc = GenerateInt(state, 0);
+
+                    // We push a false in the event
+                    GenerateIntAt(state, sb_count(state->program), shortCircuitLoc);
+                    GenerateCode(state, TINY_OP_PUSH_FALSE);
+
+                    GenerateIntAt(state, sb_count(state->program), exitLoc);
                 } break;
 
                 case TINY_TOK_LOG_OR: {
