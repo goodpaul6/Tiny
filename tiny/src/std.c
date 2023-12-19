@@ -483,6 +483,9 @@ static Tiny_Value Lib_Input(Tiny_StateThread *thread, const Tiny_Value *args, in
 
 static void Print(Tiny_Value val) {
     switch (val.type) {
+        case TINY_VAL_NULL:
+            printf("<null>");
+            break;
         case TINY_VAL_INT:
             printf("%i", val.i);
             break;
@@ -644,9 +647,12 @@ static Tiny_Value Lib_I64MulMany(Tiny_StateThread *thread, const Tiny_Value *arg
 static Tiny_Value Lib_I64ToString(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     char buf[32] = { 0 };
 
-    snprintf(buf, sizeof(buf), "%ld", (int64_t)(intptr_t)Tiny_ToAddr(args[0]));
+    int len = snprintf(buf, sizeof(buf), "%ld", (int64_t)(intptr_t)Tiny_ToAddr(args[0]));
 
-    return Tiny_NewString(thread, buf);
+    char* str = thread->ctx.alloc(NULL, len + 1, thread->ctx.userdata);
+    memcpy(str, buf, len + 1);
+
+    return Tiny_NewString(thread, str);
 }
 
 void Tiny_BindStandardArray(Tiny_State *state) {

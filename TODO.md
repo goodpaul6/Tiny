@@ -3,6 +3,7 @@
 * TEST Short circuting &&
 * TEST Break and continue in for loops
 
+* BAD No panics??
 * BAD Memory unsafety introduced by varargs functions (unless we do runtime type checking)
     * For example, `i64_add_many`
 * BAD Sometimes error messages point to the wrong line (off by one?)
