@@ -1,6 +1,6 @@
 # TODO
 
-* BUG `continue` doesn't seem to run the "step" part of the for loop
+* BUG `&&` doesn't short circuit?
 
 * SAD No named struct initializer
 * SAD No char type
@@ -108,5 +108,7 @@ Tiny_BindFunction(state, "get(array($t), int): t");
 ```
 
 # Done
+
+* BUG `continue` doesn't seem to run the "step" part of the for loop
 * Make sure VM bytecode instructions and data are aligned properly
 * Safer "any" type: must be explicitly converted
