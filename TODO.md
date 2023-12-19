@@ -1,7 +1,20 @@
 # TODO
 
 * TEST Short circuting &&
+* TEST Break and continue in for loops
 
+* BAD Sometimes error messages point to the wrong line (off by one?)
+* BAD No functions-as-values (not even without captures)
+    * Could patch this hole with runtime polymorphism but ehhhhh
+* BAD No ranges/range-based loops
+* BAD All reference types are nullable?
+* BAD No multiline comments
+* BAD No builtin array or dict
+    * Mainly for type safety; parametric polymorphism (at the library level only?) could solve this
+    * The library-only parapoly prevents the script code from becoming too complex
+    * Builtin array or dict will probably cover most use cases though (see Golang)
+* BAD NULL TERMINATED STRINGS?? 
+* BAD 64-bit integers
 * BAD || does not short circuit
 
 * SAD No named struct initializer
@@ -112,6 +125,7 @@ Tiny_BindFunction(state, "get(array($t), int): t");
 
 # Done
 
+* BAD %c is not handled as a format specifier
 * BUG `&&` doesn't short circuit?
 * BUG `continue` doesn't seem to run the "step" part of the for loop
 * Make sure VM bytecode instructions and data are aligned properly

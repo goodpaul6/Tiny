@@ -495,7 +495,26 @@ static void Print(Tiny_Value val) {
             printf("<light native at %p>", val.addr);
             break;
         case TINY_VAL_NATIVE: {
-            if (val.obj->nat.prop && val.obj->nat.prop->name)
+            if (val.obj->nat.prop == &ArrayProp) {
+                printf("[");
+
+                const Array* array = val.obj->nat.addr;
+
+                bool first = true;
+
+                for(int i = 0; i < array->length; ++i) {
+                    if(!first) {
+                        printf(",");
+                    }
+                    first = false;
+
+                    Tiny_Value value = ArrayGetValue(array, i, Tiny_Value);
+
+                    Print(value);
+                }
+
+                printf("]");
+            } else if (val.obj->nat.prop && val.obj->nat.prop->name)
                 printf("<native '%s' at %p>", val.obj->nat.prop->name, val.obj->nat.addr);
             else
                 printf("<native at %p>", val.obj->nat.addr);
@@ -535,6 +554,9 @@ static Tiny_Value Lib_Printf(Tiny_StateThread *thread, const Tiny_Value *args, i
                     break;
                 case 's':
                     printf("%s", Tiny_ToString(args[arg]));
+                    break;
+                case 'c':
+                    printf("%c", args[arg].i);
                     break;
 
                 case 'q':
@@ -592,6 +614,41 @@ static Tiny_Value Lib_Sleep(Tiny_StateThread *thread, const Tiny_Value *args, in
 }
 #endif
 
+static Tiny_Value Lib_IntToI64(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+    int64_t i = (int64_t)Tiny_ToInt(args[0]);
+    
+    // HACK(Apaar): Reinterpret as an address
+    return Tiny_NewLightNative((void*)(intptr_t)i);
+}
+
+static Tiny_Value Lib_I64AddMany(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+    int64_t sum = (int64_t)(intptr_t)Tiny_ToAddr(args[0]);
+
+    for(int i = 1; i < count; ++i) {
+        sum += (int64_t)(intptr_t)Tiny_ToAddr(args[i]);
+    }
+
+    return Tiny_NewLightNative((void*)(intptr_t)sum);
+}
+
+static Tiny_Value Lib_I64MulMany(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+    int64_t product = (int64_t)(intptr_t)Tiny_ToAddr(args[0]);
+
+    for(int i = 1; i < count; ++i) {
+        product *= (int64_t)(intptr_t)Tiny_ToAddr(args[i]);
+    }
+
+    return Tiny_NewLightNative((void*)(intptr_t)product);
+}
+
+static Tiny_Value Lib_I64ToString(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+    char buf[32] = { 0 };
+
+    snprintf(buf, sizeof(buf), "%ld", (int64_t)(intptr_t)Tiny_ToAddr(args[0]));
+
+    return Tiny_NewString(thread, buf);
+}
+
 void Tiny_BindStandardArray(Tiny_State *state) {
     Tiny_RegisterType(state, "array");
 
@@ -634,6 +691,15 @@ void Tiny_BindStandardIO(Tiny_State *state) {
 
     Tiny_BindFunction(state, "input(...): void", Lib_Input);
     Tiny_BindFunction(state, "printf(str, ...): void", Lib_Printf);
+}
+
+void Tiny_BindI64(Tiny_State* state) {
+    Tiny_RegisterType(state, "i64");
+
+    Tiny_BindFunction(state, "int_to_i64(int): i64", Lib_IntToI64);
+    Tiny_BindFunction(state, "i64_add_many(i64, ...): i64", Lib_I64AddMany);
+    Tiny_BindFunction(state, "i64_mul_many(i64, ...): i64", Lib_I64AddMany);
+    Tiny_BindFunction(state, "i64_to_string(i64): str", Lib_I64ToString);
 }
 
 void Tiny_BindStandardLib(Tiny_State *state) {

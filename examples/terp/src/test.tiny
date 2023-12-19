@@ -1,1 +1,5 @@
-printf("Hello, world!\n")
+i := int_to_i64(0)
+
+i = i64_add_many(int_to_i64(1000))
+
+printf("%s\n", i64_to_string(i))

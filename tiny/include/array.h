@@ -5,6 +5,7 @@
 
 typedef struct {
     size_t itemSize;
+    // TODO(Apaar): Make these size_t
     int length, capacity;
     unsigned char *data;
 } Array;

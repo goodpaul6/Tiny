@@ -14,6 +14,7 @@ int main(int argc, char** argv) {
     Tiny_BindStandardArray(state);
     Tiny_BindStandardDict(state);
     Tiny_BindStandardLib(state);
+    Tiny_BindI64(state);
 
     Tiny_CompileFile(state, argv[1]);
 
