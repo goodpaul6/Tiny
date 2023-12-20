@@ -1253,6 +1253,8 @@ static bool ExecuteCycle(Tiny_StateThread *thread) {
                     DoPush(thread, Tiny_NewBool(a.obj->nat.addr == b.obj->nat.addr));
                 else if (a.type == TINY_VAL_LIGHT_NATIVE)
                     DoPush(thread, Tiny_NewBool(a.addr == b.addr));
+                else if (a.type == TINY_VAL_STRUCT)
+                    DoPush(thread, Tiny_NewBool(a.obj == b.obj));
             }
         } break;
 

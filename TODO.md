@@ -5,6 +5,9 @@
 * TEST Break and continue in for loops
 * TEST Got rid of null-terminated strings but didn't really add too many tests
 
+
+* BAD Cannot cast reference types to any
+* BAD No ternary operator
 * BAD Accessing null values causes segfault
 * BAD No type aliases (strong)
 
@@ -129,6 +132,7 @@ Tiny_BindFunction(state, "get(array($t), int): t");
 
 # Done
 
+* BUG Comparing structs does nothing
 * BUG Assigning to arguments doesn't seem to work, repro
 
 
