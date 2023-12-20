@@ -19,11 +19,10 @@
     * The library-only parapoly prevents the script code from becoming too complex
     * Builtin array or dict will probably cover most use cases though (see Golang)
 * BAD NULL TERMINATED STRINGS?? 
-* BAD 64-bit integers
-
-* SAD No named struct initializer
-* SAD No char type
-* SAD No polymorphism of any kind
+* BAD No 64-bit integers
+* BAD No named struct initializer
+* BAD No char type
+* BAD No polymorphism of any kind
 
 * BUG Assigning to arguments doesn't seem to work, repro
 

@@ -15,3 +15,10 @@ s := ""
 if strlen(s) == 0 || stridx(s, 0) == 'a' {
     printf("Short circuit or works\n")
 }
+
+struct Test {
+    x: int
+    y: int
+}
+
+printf("%q\n", new Test{10, 20})
