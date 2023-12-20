@@ -22,3 +22,7 @@ struct Test {
 }
 
 printf("%q\n", new Test{10, 20})
+
+//func should_not_compile(): int {
+//    return ""
+//}

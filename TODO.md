@@ -4,6 +4,7 @@
 * TEST Short circuiting ||
 * TEST Break and continue in for loops
 
+* BAD No syntax highlighting
 * BAD Pretty printing `%q` in printf
 * BAD No panics??
 * BAD Memory unsafety introduced by varargs functions (unless we do runtime type checking)
@@ -35,14 +36,6 @@ func mutate_arg(i: int) {
 }
 
 mutate_arg(5)
-```
-
-* BUG The following compiles without error
-
-```
-func split_lines(s: str): array {
-    return ""
-}
 ```
 
 * Make `CurTok` local or at least thread local
@@ -127,6 +120,13 @@ Tiny_BindFunction(state, "get(array($t), int): t");
 ```
 
 # Done
+
+* BUG The following compiles without error
+```
+func split_lines(s: str): array {
+    return ""
+}
+```
 
 * BAD || does not short circuit
 * BAD %c is not handled as a format specifier

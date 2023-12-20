@@ -2604,7 +2604,12 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
         } break;
 
         case EXP_PROC: {
+            Symbol *prevCurrFunc = state->currFunc;
+            state->currFunc = exp->proc.decl;
+
             ResolveTypes(state, exp->proc.body);
+
+            state->currFunc = prevCurrFunc;
 
             exp->tag = GetPrimTag(SYM_TAG_VOID);
         } break;
@@ -2627,8 +2632,23 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
         } break;
 
         case EXP_RETURN: {
+            assert(state->currFunc);
+
             if (exp->retExpr) {
                 ResolveTypes(state, exp->retExpr);
+
+                if (!CompareTags(state->currFunc->func.returnTag, exp->retExpr->tag)) {
+                    ReportErrorE(
+                        state, exp,
+                        "You tried to return a '%s' from function '%s' but its return type is '%s'",
+                        GetTagName(exp->retExpr->tag), state->currFunc->name,
+                        GetTagName(state->currFunc->func.returnTag));
+                }
+            } else if (!CompareTags(state->currFunc->func.returnTag, GetPrimTag(SYM_TAG_VOID))) {
+                ReportErrorE(state, exp,
+                             "Attempted to return without value in function '%s' even though its "
+                             "return type is %s",
+                             state->currFunc->name, GetTagName(state->currFunc->func.returnTag));
             }
 
             exp->tag = GetPrimTag(SYM_TAG_VOID);
