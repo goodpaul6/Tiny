@@ -526,8 +526,11 @@ static void Print(Tiny_Value val) {
             printf("struct {");
 
             for (int i = 0; i < val.obj->ostruct.n; ++i) {
+                if(i > 0) {
+                    printf(", ");
+                }
+
                 Print(val.obj->ostruct.fields[i]);
-                putc(',', stdout);
             }
 
             putc('}', stdout);

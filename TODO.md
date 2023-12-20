@@ -4,6 +4,7 @@
 * TEST Short circuiting ||
 * TEST Break and continue in for loops
 
+* BAD Pretty printing `%q` in printf
 * BAD No panics??
 * BAD Memory unsafety introduced by varargs functions (unless we do runtime type checking)
     * For example, `i64_add_many`
