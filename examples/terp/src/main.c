@@ -3,7 +3,7 @@
 #include "tiny.h"
 
 int main(int argc, char** argv) {
-    if(argc < 2) {
+    if (argc < 2) {
         fprintf(stderr, "Usage: %s (path to tiny file)\n", argv[0]);
         return 1;
     }
@@ -24,7 +24,10 @@ int main(int argc, char** argv) {
 
     Tiny_StartThread(&stateThread);
 
-    while(Tiny_ExecuteCycle(&stateThread));
+    while (Tiny_ExecuteCycle(&stateThread))
+        ;
+
+    Tiny_DestroyThread(&stateThread);
 
     Tiny_DeleteState(state);
 

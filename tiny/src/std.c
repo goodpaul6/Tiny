@@ -60,9 +60,10 @@ static Tiny_Value Stridx(Tiny_StateThread *thread, const Tiny_Value *args, int c
 
 static TINY_FOREIGN_FUNCTION(Strchr) {
     const char *s = Tiny_ToString(args[0]);
+    size_t len = Tiny_StringLen(args[0]);
     char c = Tiny_ToInt(args[1]);
 
-    const char *cs = strchr(s, c);
+    const char *cs = memchr(s, c, len);
 
     if (cs) {
         return Tiny_NewInt((int)(cs - s));
@@ -306,29 +307,67 @@ static Tiny_Value CreateDict(Tiny_StateThread *thread, const Tiny_Value *args, i
     return Tiny_NewNative(thread, dict, &DictProp);
 }
 
+static char *MakeNullTerminated(Tiny_StateThread *thread, char *staticBuf, size_t staticBufLen,
+                                Tiny_Value str) {
+    const char *s = Tiny_ToString(str);
+    size_t len = Tiny_StringLen(str);
+
+    assert(s);
+
+    if (len < staticBufLen) {
+        memcpy(staticBuf, s, len);
+        staticBuf[len] = '\0';
+        return staticBuf;
+    }
+
+    char *buf = Tiny_AllocUsingContext(thread, NULL, len + 1);
+    memcpy(buf, s, len);
+    buf[len] = '\0';
+
+    return buf;
+}
+
 static Tiny_Value Lib_DictPut(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     Dict *dict = args[0].obj->nat.addr;
-    const char *key = Tiny_ToString(args[1]);
-    Tiny_Value value = args[2];
 
-    DictSet(dict, key, &value);
+    char buf[1024];
+    char *key = MakeNullTerminated(thread, buf, sizeof(buf), args[1]);
+
+    DictSet(dict, key, &args[2]);
+
+    if (key != buf) {
+        Tiny_AllocUsingContext(thread, key, 0);
+    }
+
     return Tiny_Null;
 }
 
 static Tiny_Value Lib_DictExists(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     Dict *dict = args[0].obj->nat.addr;
-    const char *key = Tiny_ToString(args[1]);
+
+    char buf[1024];
+    char *key = MakeNullTerminated(thread, buf, sizeof(buf), args[1]);
 
     const Tiny_Value *value = DictGet(dict, key);
+
+    if (key != buf) {
+        Tiny_AllocUsingContext(thread, key, 0);
+    }
 
     return Tiny_NewBool(value);
 }
 
 static Tiny_Value Lib_DictGet(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     Dict *dict = args[0].obj->nat.addr;
-    const char *key = Tiny_ToString(args[1]);
+
+    char buf[1024];
+    char *key = MakeNullTerminated(thread, buf, sizeof(buf), args[1]);
 
     const Tiny_Value *value = DictGet(dict, key);
+
+    if (key != buf) {
+        Tiny_AllocUsingContext(thread, key, 0);
+    }
 
     if (value) return *value;
 
@@ -337,9 +376,16 @@ static Tiny_Value Lib_DictGet(Tiny_StateThread *thread, const Tiny_Value *args, 
 
 static Tiny_Value Lib_DictRemove(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     Dict *dict = args[0].obj->nat.addr;
-    const char *key = Tiny_ToString(args[1]);
+
+    char buf[1024];
+    char *key = MakeNullTerminated(thread, buf, sizeof(buf), args[1]);
 
     DictRemove(dict, key);
+
+    if (key != buf) {
+        Tiny_AllocUsingContext(thread, key, 0);
+    }
+
     return Tiny_Null;
 }
 
@@ -361,7 +407,7 @@ static Tiny_Value Lib_DictKeys(Tiny_StateThread *thread, const Tiny_Value *args,
         const char *key = ArrayGetValue(&dict->keys, i, const char *);
         if (key) {
             *((Tiny_Value *)array->data + array->length) =
-                ArrayGetValue(&dict->values, i, Tiny_Value);
+                Tiny_NewStringCopyNullTerminated(thread, key);
             array->length += 1;
         }
     }
@@ -483,7 +529,7 @@ static Tiny_Value Lib_Input(Tiny_StateThread *thread, const Tiny_Value *args, in
     return Tiny_NewString(thread, buffer, bufferLength);
 }
 
-static void Print(Tiny_Value val) {
+static void Print(Tiny_Value val, bool repr) {
     switch (val.type) {
         case TINY_VAL_NULL:
             printf("<null>");
@@ -494,13 +540,25 @@ static void Print(Tiny_Value val) {
         case TINY_VAL_FLOAT:
             printf("%f", val.f);
             break;
+        case TINY_VAL_CONST_STRING:
+            if (repr) {
+                printf("\"%s\"", val.cstr);
+            } else {
+                printf("%s", val.cstr);
+            }
+            break;
         case TINY_VAL_STRING:
-            printf("%.*s", (int)val.obj->string.len, val.obj->string.ptr);
+            if (repr) {
+                printf("\"%.*s\"", (int)val.obj->string.len, val.obj->string.ptr);
+            } else {
+                printf("%.*s", (int)val.obj->string.len, val.obj->string.ptr);
+            }
+            break;
         case TINY_VAL_LIGHT_NATIVE:
             printf("<light native at %p>", val.addr);
             break;
         case TINY_VAL_NATIVE: {
-            if (val.obj->nat.prop == &ArrayProp) {
+            if (repr && val.obj->nat.prop == &ArrayProp) {
                 printf("[");
 
                 const Array *array = val.obj->nat.addr;
@@ -509,13 +567,13 @@ static void Print(Tiny_Value val) {
 
                 for (int i = 0; i < array->length; ++i) {
                     if (!first) {
-                        printf(",");
+                        printf(", ");
                     }
                     first = false;
 
                     Tiny_Value value = ArrayGetValue(array, i, Tiny_Value);
 
-                    Print(value);
+                    Print(value, true);
                 }
 
                 printf("]");
@@ -532,7 +590,7 @@ static void Print(Tiny_Value val) {
                     printf(", ");
                 }
 
-                Print(val.obj->ostruct.fields[i]);
+                Print(val.obj->ostruct.fields[i], true);
             }
 
             putc('}', stdout);
@@ -561,14 +619,14 @@ static Tiny_Value Lib_Printf(Tiny_StateThread *thread, const Tiny_Value *args, i
                     printf("%f", args[arg].f);
                     break;
                 case 's':
-                    printf("%s", Tiny_ToString(args[arg]));
+                    printf("%.*s", (int)Tiny_StringLen(args[arg]), Tiny_ToString(args[arg]));
                     break;
                 case 'c':
                     printf("%c", args[arg].i);
                     break;
 
                 case 'q':
-                    Print(args[arg]);
+                    Print(args[arg], true);
                     break;
                 case '%':
                     putc('%', stdout);
@@ -669,6 +727,19 @@ void Tiny_BindStandardArray(Tiny_State *state) {
     Tiny_BindFunction(state, "array_push(array, any): void", Lib_ArrayPush);
     Tiny_BindFunction(state, "array_pop(array): any", Lib_ArrayPop);
     Tiny_BindFunction(state, "array_shift(array): any", Lib_ArrayShift);
+
+    // HACK(Apaar): Who needs generics when 90% of arrays are just string and int arrays?
+    Tiny_RegisterType(state, "array_str");
+
+    Tiny_BindFunction(state, "array_str(...): array_str", CreateArray);
+    Tiny_BindFunction(state, "array_str_clear(array_str): void", Lib_ArrayClear);
+    Tiny_BindFunction(state, "array_str_resize(array_str, int): void", Lib_ArrayResize);
+    Tiny_BindFunction(state, "array_str_get(array_str, int): str", Lib_ArrayGet);
+    Tiny_BindFunction(state, "array_str_set(array_str, int, str): void", Lib_ArraySet);
+    Tiny_BindFunction(state, "array_str_len(array_str): int", Lib_ArrayLen);
+    Tiny_BindFunction(state, "array_str_push(array_str, str): void", Lib_ArrayPush);
+    Tiny_BindFunction(state, "array_str_pop(array_str): str", Lib_ArrayPop);
+    Tiny_BindFunction(state, "array_str_shift(array_str): str", Lib_ArrayShift);
 }
 
 void Tiny_BindStandardDict(Tiny_State *state) {
@@ -682,6 +753,16 @@ void Tiny_BindStandardDict(Tiny_State *state) {
     Tiny_BindFunction(state, "dict_remove(dict, str): void", Lib_DictRemove);
     Tiny_BindFunction(state, "dict_keys(dict): array", Lib_DictKeys);
     Tiny_BindFunction(state, "dict_clear(dict): void", Lib_DictClear);
+
+    Tiny_RegisterType(state, "dict_str_int");
+
+    Tiny_BindFunction(state, "dict_str_int(...): dict_str_int", CreateDict);
+    Tiny_BindFunction(state, "dict_str_int_put(dict_str_int, str, int): void", Lib_DictPut);
+    Tiny_BindFunction(state, "dict_str_int_exists(dict_str_int, str): bool", Lib_DictExists);
+    Tiny_BindFunction(state, "dict_str_int_get(dict_str_int, str): int", Lib_DictGet);
+    Tiny_BindFunction(state, "dict_str_int_remove(dict_str_int, str): void", Lib_DictRemove);
+    Tiny_BindFunction(state, "dict_str_int_keys(dict_str_int): array_str", Lib_DictKeys);
+    Tiny_BindFunction(state, "dict_str_int_clear(dict_str_int): void", Lib_DictClear);
 }
 
 void Tiny_BindStandardIO(Tiny_State *state) {

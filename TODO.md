@@ -5,6 +5,14 @@
 * TEST Break and continue in for loops
 * TEST Got rid of null-terminated strings but didn't really add too many tests
 
+* BAD Accessing null values causes segfault
+* BAD No type aliases (strong)
+
+* BUG The following compiles without error (no checking of whether function returns value)
+```
+func test(): int {}
+```
+
 * BAD No error types/error info
     * Add "error" primitive type which is just an error code (int? string? it's own primitive type)
     and a pointer to a context object
