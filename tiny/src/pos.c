@@ -31,7 +31,7 @@ Tiny_FriendlyPos Tiny_PosToFriendlyPos(Tiny_Pos pos, const char* src, uint32_t s
         }
 
         ++friendlyPos.lineIndex;
-        src = newLine + 1; 
+        src = newLine + 1;
     }
 
     return friendlyPos;
