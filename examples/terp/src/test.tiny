@@ -9,3 +9,9 @@ arr := array()
 array_push(arr, 10)
 
 printf("%q\n", arr)
+
+s := ""
+
+if strlen(s) == 0 || stridx(s, 0) == 'a' {
+    printf("Short circuit or works\n")
+}

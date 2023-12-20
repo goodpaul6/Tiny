@@ -1,6 +1,7 @@
 # TODO
 
 * TEST Short circuting &&
+* TEST Short circuiting ||
 * TEST Break and continue in for loops
 
 * BAD No panics??
@@ -18,7 +19,6 @@
     * Builtin array or dict will probably cover most use cases though (see Golang)
 * BAD NULL TERMINATED STRINGS?? 
 * BAD 64-bit integers
-* BAD || does not short circuit
 
 * SAD No named struct initializer
 * SAD No char type
@@ -128,6 +128,7 @@ Tiny_BindFunction(state, "get(array($t), int): t");
 
 # Done
 
+* BAD || does not short circuit
 * BAD %c is not handled as a format specifier
 * BUG `&&` doesn't short circuit?
 * BUG `continue` doesn't seem to run the "step" part of the for loop

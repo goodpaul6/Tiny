@@ -3016,8 +3016,22 @@ static void CompileExpr(Tiny_State *state, Expr *exp) {
 
                 case TINY_TOK_LOG_OR: {
                     CompileExpr(state, exp->binary.lhs);
+
+                    // Skip over to the RHS
+                    GenerateCode(state, TINY_OP_GOTOZ);
+                    int nextExprLoc = GenerateInt(state, 0);
+
+                    // Otherwise push true and jump out
+                    GenerateCode(state, TINY_OP_PUSH_TRUE);
+
+                    GenerateCode(state, TINY_OP_GOTO);
+                    int exitPatchLoc = GenerateInt(state, 0);
+
+                    GenerateIntAt(state, sb_count(state->program), nextExprLoc);
+
                     CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, TINY_OP_LOG_OR);
+
+                    GenerateIntAt(state, sb_count(state->program), exitPatchLoc);
                 } break;
 
                 default:
