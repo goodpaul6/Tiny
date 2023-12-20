@@ -25,19 +25,6 @@
 * BAD No char type
 * BAD No polymorphism of any kind
 
-* BUG Assigning to arguments doesn't seem to work, repro
-
-
-```
-func mutate_arg(i: int) {
-    i = 10
-    // Prints 5
-    printf("%i\n", i)
-}
-
-mutate_arg(5)
-```
-
 * Make `CurTok` local or at least thread local
 
 * Pass in alignment to used provided allocation function
@@ -120,6 +107,19 @@ Tiny_BindFunction(state, "get(array($t), int): t");
 ```
 
 # Done
+
+* BUG Assigning to arguments doesn't seem to work, repro
+
+
+```
+func mutate_arg(i: int) {
+    i = 10
+    // Prints 5
+    printf("%i\n", i)
+}
+
+mutate_arg(5)
+```
 
 * BUG The following compiles without error
 ```

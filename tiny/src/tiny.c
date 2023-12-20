@@ -1322,7 +1322,7 @@ static bool ExecuteCycle(Tiny_StateThread *thread) {
 
         case TINY_OP_SETLOCAL: {
             ++thread->pc;
-            Word localIdx = thread->state->program[thread->pc++];
+            int localIdx = ReadInteger(thread);
             Tiny_Value val = DoPop(thread);
             thread->stack[thread->fp + localIdx] = val;
         } break;
@@ -3256,9 +3256,7 @@ static void CompileStatement(Tiny_State *state, Expr *exp) {
                                 GenerateInt(state, exp->binary.lhs->id.sym->var.index);
                             } else if (exp->binary.lhs->id.sym->type == SYM_LOCAL) {
                                 GenerateCode(state, TINY_OP_SETLOCAL);
-                                assert(exp->binary.lhs->id.sym->var.index <= 0xff);
-
-                                GenerateCode(state, (Word)exp->binary.lhs->id.sym->var.index);
+                                GenerateInt(state, exp->binary.lhs->id.sym->var.index);
                             } else  // Probably a constant, can't change it
                             {
                                 ReportErrorE(state, exp, "Cannot assign to id '%s'.\n",
