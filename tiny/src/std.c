@@ -400,6 +400,7 @@ static Tiny_Value Lib_DictKeys(Tiny_StateThread *thread, const Tiny_Value *args,
     Array *array = malloc(sizeof(Array));
 
     array->capacity = dict->filledCount;
+    array->itemSize = sizeof(Tiny_Value);
     array->length = 0;
     array->data = malloc(sizeof(Tiny_Value) * dict->filledCount);
 

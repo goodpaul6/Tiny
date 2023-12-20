@@ -2571,6 +2571,13 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                     exp->tag = GetPrimTag(SYM_TAG_VOID);
                 } break;
 
+                case TINY_TOK_PLUSEQUAL:
+                case TINY_TOK_MINUSEQUAL:
+                case TINY_TOK_STAREQUAL:
+                case TINY_TOK_SLASHEQUAL:
+                case TINY_TOK_PERCENTEQUAL:
+                case TINY_TOK_OREQUAL:
+                case TINY_TOK_ANDEQUAL:
                 case TINY_TOK_EQUAL: {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
