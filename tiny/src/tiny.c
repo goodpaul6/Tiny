@@ -48,9 +48,16 @@ char *CloneString(Tiny_Context *ctx, const char *str) {
 }
 
 static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj) {
-    if (obj->type == TINY_VAL_STRING)
-        TFree(ctx, obj->string);
-    else if (obj->type == TINY_VAL_NATIVE) {
+    if (obj->type == TINY_VAL_STRING) {
+        char *internalStr = (char *)obj + sizeof(Tiny_Object);
+
+        if (obj->string.ptr == internalStr) {
+            // If the string pointer is directly after the object then it is part of the object
+            // allocation and does not need to be freed separately
+        } else {
+            TFree(ctx, obj->string.ptr);
+        }
+    } else if (obj->type == TINY_VAL_NATIVE) {
         if (obj->nat.prop && obj->nat.prop->finalize) obj->nat.prop->finalize(obj->nat.addr);
     }
 
@@ -108,7 +115,14 @@ const char *Tiny_ToString(const Tiny_Value value) {
     if (value.type == TINY_VAL_CONST_STRING) return value.cstr;
     if (value.type != TINY_VAL_STRING) return NULL;
 
-    return value.obj->string;
+    return value.obj->string.ptr;
+}
+
+size_t Tiny_StringLen(const Tiny_Value value) {
+    if (value.type == TINY_VAL_CONST_STRING) return strlen(value.cstr);
+    if (value.type != TINY_VAL_STRING) return 0;
+
+    return value.obj->string.len;
 }
 
 void *Tiny_ToAddr(const Tiny_Value value) {
@@ -139,6 +153,26 @@ static Tiny_Object *NewObject(Tiny_StateThread *thread, Tiny_ValueType type) {
     obj->next = thread->gcHead;
     thread->gcHead = obj;
     obj->marked = 0;
+
+    thread->numObjects++;
+
+    return obj;
+}
+
+// Allocates memory for and copies the given string contiguously with the object, resulting in
+// a single allocation for the entire thing.
+static Tiny_Object *NewStringObjectEmbedString(Tiny_StateThread *thread, const char *str,
+                                               size_t len) {
+    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + len);
+
+    obj->type = TINY_VAL_STRING;
+    obj->next = thread->gcHead;
+    thread->gcHead = obj;
+    obj->marked = 0;
+
+    obj->string.len = len;
+    obj->string.ptr = (char *)obj + sizeof(Tiny_Object);
+    memcpy(obj->string.ptr, str, len);
 
     thread->numObjects++;
 
@@ -227,11 +261,15 @@ Tiny_Value Tiny_NewConstString(const char *str) {
     return val;
 }
 
-Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *string) {
-    assert(thread && thread->state && string);
+// This assumes the given char* was allocated using Tiny_AllocUsingContext or equivalent.
+// It takes ownership of the char*, avoiding any intermediate copies.
+Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *str, size_t len) {
+    assert(thread && thread->state && str);
 
     Tiny_Object *obj = NewObject(thread, TINY_VAL_STRING);
-    obj->string = string;
+
+    obj->string.len = len;
+    obj->string.ptr = str;
 
     Tiny_Value val;
 
@@ -239,6 +277,31 @@ Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *string) {
     val.obj = obj;
 
     return val;
+}
+
+// This is equivalent to Tiny_NewString but it figures out the length assuming
+// the given pointer is null-terminated.
+Tiny_Value Tiny_NewStringNullTerminated(Tiny_StateThread *thread, char *str) {
+    return Tiny_NewString(thread, str, strlen(str));
+}
+
+// Same as Tiny_NewString but it allocate memory for and copies the given string.
+Tiny_Value Tiny_NewStringCopy(Tiny_StateThread *thread, const char *src, size_t len) {
+    assert(thread && thread->state && src);
+
+    Tiny_Object *obj = NewStringObjectEmbedString(thread, src, len);
+
+    Tiny_Value val;
+
+    val.type = TINY_VAL_STRING;
+    val.obj = obj;
+
+    return val;
+}
+
+// Same as Tiny_NewStringCopy but assumes the given string is null terminated.
+Tiny_Value Tiny_NewStringCopyNullTerminated(Tiny_StateThread *thread, const char *src) {
+    return Tiny_NewStringCopy(thread, src, strlen(src));
 }
 
 static void Symbol_destroy(Symbol *sym, Tiny_Context *ctx);
@@ -926,37 +989,6 @@ static void DoPush(Tiny_StateThread *thread, Tiny_Value value) {
 
 static inline Tiny_Value DoPop(Tiny_StateThread *thread) { return thread->stack[--thread->sp]; }
 
-static void DoRead(Tiny_StateThread *thread) {
-    char *buffer = TMalloc(&thread->ctx, 8);
-    size_t bufferLength = 0;
-    size_t bufferCapacity = 8;
-
-    int c = getc(stdin);
-    int i = 0;
-
-    while (c != '\n') {
-        if (bufferLength + 1 >= bufferCapacity) {
-            bufferCapacity *= 2;
-            buffer = TRealloc(&thread->ctx, buffer, bufferCapacity);
-        }
-
-        buffer[i++] = c;
-        c = getc(stdin);
-    }
-
-    buffer[i] = '\0';
-
-    Tiny_Object *obj = NewObject(thread, TINY_VAL_STRING);
-    obj->string = buffer;
-
-    Tiny_Value val;
-
-    val.type = TINY_VAL_STRING;
-    val.obj = obj;
-
-    DoPush(thread, val);
-}
-
 static void DoPushIndir(Tiny_StateThread *thread, int nargs) {
     assert(thread->fc < TINY_THREAD_MAX_CALL_DEPTH);
 
@@ -1193,13 +1225,30 @@ static bool ExecuteCycle(Tiny_StateThread *thread) {
                     DoPush(thread, Tiny_NewBool(a.i == b.i));
                 else if (a.type == TINY_VAL_FLOAT)
                     DoPush(thread, Tiny_NewBool(a.f == b.f));
-                else if (a.type == TINY_VAL_STRING)
-                    DoPush(thread, Tiny_NewBool(strcmp(a.obj->string, Tiny_ToString(b)) == 0));
-                else if (a.type == TINY_VAL_CONST_STRING) {
-                    if (b.type == TINY_VAL_CONST_STRING && a.cstr == b.cstr)
+                else if (a.type == TINY_VAL_STRING) {
+                    size_t aLen = Tiny_StringLen(a);
+                    size_t bLen = Tiny_StringLen(b);
+
+                    if (aLen != bLen) {
+                        DoPush(thread, Tiny_NewBool(false));
+                    } else {
+                        DoPush(thread, Tiny_NewBool(strncmp(a.obj->string.ptr, Tiny_ToString(b),
+                                                            aLen) == 0));
+                    }
+                } else if (a.type == TINY_VAL_CONST_STRING) {
+                    if (b.type == TINY_VAL_CONST_STRING && a.cstr == b.cstr) {
                         DoPush(thread, Tiny_NewBool(true));
-                    else
-                        DoPush(thread, Tiny_NewBool(strcmp(a.cstr, Tiny_ToString(b)) == 0));
+                    } else {
+                        size_t aLen = Tiny_StringLen(a);
+                        size_t bLen = Tiny_StringLen(b);
+
+                        if (aLen != bLen) {
+                            DoPush(thread, Tiny_NewBool(false));
+                        } else {
+                            DoPush(thread,
+                                   Tiny_NewBool(strncmp(a.cstr, Tiny_ToString(b), aLen) == 0));
+                        }
+                    }
                 } else if (a.type == TINY_VAL_NATIVE)
                     DoPush(thread, Tiny_NewBool(a.obj->nat.addr == b.obj->nat.addr));
                 else if (a.type == TINY_VAL_LIGHT_NATIVE)
@@ -1230,23 +1279,6 @@ static bool ExecuteCycle(Tiny_StateThread *thread) {
             DoPush(thread, Tiny_NewBool(ExpectBool(a) || ExpectBool(b)));
         } break;
 
-        case TINY_OP_PRINT: {
-            Tiny_Value val = DoPop(thread);
-            if (val.type == TINY_VAL_INT)
-                printf("%d\n", val.i);
-            else if (val.type == TINY_VAL_FLOAT)
-                printf("%f\n", val.f);
-            else if (val.obj->type == TINY_VAL_STRING)
-                printf("%s\n", val.obj->string);
-            else if (val.obj->type == TINY_VAL_CONST_STRING)
-                printf("%s\n", val.cstr);
-            else if (val.obj->type == TINY_VAL_NATIVE)
-                printf("<native at %p>\n", val.obj->nat.addr);
-            else if (val.obj->type == TINY_VAL_LIGHT_NATIVE)
-                printf("<light native at %p>\n", val.obj->nat.addr);
-            ++thread->pc;
-        } break;
-
         case TINY_OP_SET: {
             ++thread->pc;
             int varIdx = ReadInteger(thread);
@@ -1257,11 +1289,6 @@ static bool ExecuteCycle(Tiny_StateThread *thread) {
             ++thread->pc;
             int varIdx = ReadInteger(thread);
             DoPush(thread, thread->globalVars[varIdx]);
-        } break;
-
-        case TINY_OP_READ: {
-            DoRead(thread);
-            ++thread->pc;
         } break;
 
         case TINY_OP_GOTO: {

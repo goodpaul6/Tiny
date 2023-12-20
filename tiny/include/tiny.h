@@ -132,7 +132,26 @@ Tiny_Value Tiny_NewInt(int i);
 Tiny_Value Tiny_NewFloat(float f);
 Tiny_Value Tiny_NewConstString(const char *string);
 Tiny_Value Tiny_NewLightNative(void *ptr);
-Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *string);
+
+// This assumes the given char* was allocated using Tiny_AllocUsingContext or equivalent.
+// It takes ownership of the char*, avoiding any intermediate copies.
+Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *str, size_t len);
+
+// This is equivalent to Tiny_NewStringAssumeNullTerminated but it figures out the length assuming
+// the given pointer is null-terminated.
+Tiny_Value Tiny_NewStringNullTerminated(Tiny_StateThread *thread, char *str);
+
+// Same as Tiny_NewString but it allocates memory for and copies the given string.
+//
+// Note that this is internally optimized to ensure there is only one allocation for
+// both the Tiny object "metadata" and the string itself. If you haven't already
+// allocated memory for your string and are ready to hand it off, I highly recommend
+// using this instead of Tiny_NewString.
+Tiny_Value Tiny_NewStringCopy(Tiny_StateThread *thread, const char *src, size_t len);
+
+// Same as Tiny_NewStringCopy but assumes the given string is null terminated.
+Tiny_Value Tiny_NewStringCopyNullTerminated(Tiny_StateThread *thread, const char *src);
+
 Tiny_Value Tiny_NewNative(Tiny_StateThread *thread, void *ptr, const Tiny_NativeProp *prop);
 
 static inline bool Tiny_IsNull(const Tiny_Value value) { return value.type == TINY_VAL_NULL; }
@@ -161,6 +180,9 @@ static inline float Tiny_ToNumber(const Tiny_Value value) {
 
 // Returns NULL if the value isn't a string/const string
 const char *Tiny_ToString(const Tiny_Value value);
+
+// Returns 0 if the value isn't a string/const string
+size_t Tiny_StringLen(const Tiny_Value value);
 
 // Returns value.addr if its a LIGHT_NATIVE
 // Returns the normal native address otherwise
@@ -278,6 +300,15 @@ static inline bool Tiny_IsThreadDone(const Tiny_StateThread *thread) { return th
 // at the end of the cycle.
 // Returns whether the cycle was executed or not.
 bool Tiny_ExecuteCycle(Tiny_StateThread *thread);
+
+// Uses the allocator provided to the StateThread to allocate/free memory.
+// This should be used instead of global malloc to ensure you play nice with
+// all the situations in which Tiny is used.
+//
+// See Tiny_AllocFunction above for how this can be used.
+static inline void *Tiny_AllocUsingContext(Tiny_StateThread *thread, void *ptr, size_t size) {
+    return thread->ctx.alloc(ptr, size, thread->ctx.userdata);
+}
 
 // Gives access to fast dynamically allocated array type.
 // Requires std.c and array.h/array.c

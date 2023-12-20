@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <errno.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -101,12 +102,16 @@ static Tiny_Value Lib_Fread(Tiny_StateThread *thread, const Tiny_Value *args, in
     FILE *file = Tiny_ToAddr(args[0]);
     int num = (int)Tiny_ToNumber(args[1]);
 
-    char *str = malloc(num + 1);
+    char *str = Tiny_AllocUsingContext(thread, NULL, num);
 
-    fread(str, 1, num, file);
-    str[num] = '\0';
+    int readCount = fread(str, 1, num, file);
 
-    return Tiny_NewString(thread, str);
+    if (readCount < 0) {
+        Tiny_AllocUsingContext(thread, str, 0);
+        return Tiny_NewConstString("");
+    }
+
+    return Tiny_NewString(thread, str, readCount);
 }
 
 static Tiny_Value Lib_Fseek(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
@@ -145,14 +150,12 @@ static Tiny_Value Lib_ReadFile(Tiny_StateThread *thread, const Tiny_Value *args,
     long len = ftell(file);
     rewind(file);
 
-    char *s = malloc(len + 1);
-
+    char *s = Tiny_AllocUsingContext(thread, NULL, len);
     fread(s, 1, len, file);
-    s[len] = 0;
 
     fclose(file);
 
-    return Tiny_NewString(thread, s);
+    return Tiny_NewString(thread, s, len);
 }
 
 static Tiny_Value Lib_WriteFile(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
@@ -370,28 +373,33 @@ static Tiny_Value Strcat(Tiny_StateThread *thread, const Tiny_Value *args, int c
     size_t totalLen = 0;
 
     for (int i = 0; i < count; ++i) {
-        totalLen += strlen(Tiny_ToString(args[i]));
+        totalLen += Tiny_StringLen(args[i]);
     }
 
-    char *newString = malloc(totalLen + 1);
-    newString[0] = 0;
+    char *newString = Tiny_AllocUsingContext(thread, NULL, totalLen);
+    char *ptr = newString;
 
     for (int i = 0; i < count; ++i) {
-        strcat(newString, Tiny_ToString(args[i]));
+        size_t len = Tiny_StringLen(args[i]);
+        memcpy(ptr, Tiny_ToString(args[i]), len);
+
+        ptr += len;
     }
 
-    return Tiny_NewString(thread, newString);
+    return Tiny_NewString(thread, newString, totalLen);
 }
 
 static Tiny_Value Lib_Substr(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     assert(count == 3);
 
     const char *s = Tiny_ToString(args[0]);
+    size_t sLen = Tiny_StringLen(args[0]);
+
     int start = (int)Tiny_ToNumber(args[1]);
     int end = (int)Tiny_ToNumber(args[2]);
 
     if (end == -1) {
-        end = strlen(s);
+        end = sLen;
     }
 
     assert(start >= 0 && start <= end);
@@ -400,17 +408,17 @@ static Tiny_Value Lib_Substr(Tiny_StateThread *thread, const Tiny_Value *args, i
         return Tiny_NewConstString("");
     }
 
-    assert(end <= strlen(s));
+    assert(end <= sLen);
 
-    char *sub = malloc(end - start + 1);
+    char *sub = Tiny_AllocUsingContext(thread, NULL, end - start);
     for (int i = start; i < end; ++i) {
         sub[i - start] = s[i];
     }
 
-    sub[end - start] = '\0';
-
     // TODO(Apaar): Figure out if there's a way we can just not allocate for this
-    return Tiny_NewString(thread, sub);
+    // TODO(Apaar): If strings are immutable and refcounted, we could just point
+    // to the same string if we had some kind of "slice" primitive.
+    return Tiny_NewString(thread, sub, (size_t)(end - start));
 }
 
 static Tiny_Value Lib_Ston(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
@@ -429,17 +437,14 @@ static Tiny_Value Lib_Stoi(Tiny_StateThread *thread, const Tiny_Value *args, int
     return Tiny_NewInt((int)value);
 }
 
-#define NUMTOSTR_CONV_BUFFER_SIZE 32
-
 static Tiny_Value Lib_Ntos(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     float num = Tiny_ToNumber(args[0]);
 
-    char *string = malloc(NUMTOSTR_CONV_BUFFER_SIZE + 1);
-    int c = sprintf(string, "%g", num);
+    char buf[32];
 
-    string[c] = '\0';
+    int c = snprintf(buf, sizeof(buf), "%g", num);
 
-    return Tiny_NewString(thread, string);
+    return Tiny_NewStringCopy(thread, buf, c);
 }
 
 static Tiny_Value Lib_Time(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
@@ -458,9 +463,9 @@ static Tiny_Value Rand(Tiny_StateThread *thread, const Tiny_Value *args, int cou
 static Tiny_Value Lib_Input(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     if (count >= 1) printf("%s", Tiny_ToString(args[0]));
 
-    char *buffer = malloc(1);
-    size_t bufferLength = 1;
-    size_t bufferCapacity = 1;
+    char *buffer = Tiny_AllocUsingContext(thread, NULL, 8);
+    size_t bufferLength = 0;
+    size_t bufferCapacity = 8;
 
     int c = getc(stdin);
     int i = 0;
@@ -468,17 +473,14 @@ static Tiny_Value Lib_Input(Tiny_StateThread *thread, const Tiny_Value *args, in
     while (c != '\n') {
         if (bufferLength + 1 >= bufferCapacity) {
             bufferCapacity *= 2;
-            buffer = realloc(buffer, bufferCapacity);
+            buffer = Tiny_AllocUsingContext(thread, buffer, bufferCapacity);
         }
 
-        ++bufferLength;
-        buffer[i++] = c;
+        buffer[bufferLength++] = c;
         c = getc(stdin);
     }
 
-    buffer[i] = '\0';
-
-    return Tiny_NewString(thread, buffer);
+    return Tiny_NewString(thread, buffer, bufferLength);
 }
 
 static void Print(Tiny_Value val) {
@@ -493,7 +495,7 @@ static void Print(Tiny_Value val) {
             printf("%f", val.f);
             break;
         case TINY_VAL_STRING:
-            printf("%s", val.obj->string);
+            printf("%.*s", (int)val.obj->string.len, val.obj->string.ptr);
         case TINY_VAL_LIGHT_NATIVE:
             printf("<light native at %p>", val.addr);
             break;
@@ -652,10 +654,7 @@ static Tiny_Value Lib_I64ToString(Tiny_StateThread *thread, const Tiny_Value *ar
 
     int len = snprintf(buf, sizeof(buf), "%ld", (int64_t)(intptr_t)Tiny_ToAddr(args[0]));
 
-    char *str = thread->ctx.alloc(NULL, len + 1, thread->ctx.userdata);
-    memcpy(str, buf, len + 1);
-
-    return Tiny_NewString(thread, str);
+    return Tiny_NewStringCopy(thread, buf, len);
 }
 
 void Tiny_BindStandardArray(Tiny_State *state) {

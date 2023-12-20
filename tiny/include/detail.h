@@ -15,7 +15,14 @@ typedef struct Tiny_Object {
     struct Tiny_Object *next;
 
     union {
-        char *string;
+        struct {
+            size_t len;
+            // NOTE(Apaar): If the user calls "NewStringWithLen" then this is just
+            // a pointer to the same allocation as this object!
+            //
+            // Otherwise (if calling NewString)
+            char *ptr;
+        } string;
 
         struct {
             void *addr;

@@ -48,12 +48,8 @@ enum {
     TINY_OP_LOG_AND,
     TINY_OP_LOG_OR,
 
-    TINY_OP_PRINT,
-
     TINY_OP_SET,
     TINY_OP_GET,
-
-    TINY_OP_READ,
 
     TINY_OP_GOTO,
     TINY_OP_GOTOZ,

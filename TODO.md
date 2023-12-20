@@ -4,6 +4,19 @@
 * TEST Short circuiting ||
 * TEST Break and continue in for loops
 
+* BAD No error types/error info
+    * Add "error" primitive type which is just an error code (int? string? it's own primitive type)
+    and a pointer to a context object
+* BAD No runtime type information on struct object (could probably stuff a uint16_t struct ID somewhere at least?)
+    * Could even just get rid of teh `nfields` since I think that's only used for pretty printing
+    and debug checks
+* BAD Cannot access type information in C binding functions
+    * Would be mega useful to make things type-safe
+    * For example, could allow you to succinctly define a `delegate` binding
+        * Just need the function name, nothing else
+* BAD NULL TERMINATED STRINGS?? 
+* BAD No interface to allocate/deallocate using the thread's context allocator
+* BAD No standard regex
 * BAD No syntax highlighting
 * BAD Pretty printing `%q` in printf
 * BAD No panics??
@@ -12,6 +25,7 @@
 * BAD Sometimes error messages point to the wrong line (off by one?)
 * BAD No functions-as-values (not even without captures)
     * Could patch this hole with runtime polymorphism but ehhhhh
+    * Could also technically implement this with a C library haha
 * BAD No ranges/range-based loops
 * BAD All reference types are nullable?
 * BAD No multiline comments
@@ -19,7 +33,6 @@
     * Mainly for type safety; parametric polymorphism (at the library level only?) could solve this
     * The library-only parapoly prevents the script code from becoming too complex
     * Builtin array or dict will probably cover most use cases though (see Golang)
-* BAD NULL TERMINATED STRINGS?? 
 * BAD No 64-bit integers
 * BAD No named struct initializer
 * BAD No char type

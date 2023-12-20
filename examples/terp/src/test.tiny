@@ -31,5 +31,3 @@ func assign_to_arg(n: int) {
     n = 10
     printf("%q\n", n)
 }
-
-assign_to_arg(5)
