@@ -3,6 +3,7 @@
 * TEST Short circuting &&
 * TEST Short circuiting ||
 * TEST Break and continue in for loops
+* TEST Got rid of null-terminated strings but didn't really add too many tests
 
 * BAD No error types/error info
     * Add "error" primitive type which is just an error code (int? string? it's own primitive type)
@@ -14,7 +15,6 @@
     * Would be mega useful to make things type-safe
     * For example, could allow you to succinctly define a `delegate` binding
         * Just need the function name, nothing else
-* BAD NULL TERMINATED STRINGS?? 
 * BAD No interface to allocate/deallocate using the thread's context allocator
 * BAD No standard regex
 * BAD No syntax highlighting
@@ -134,6 +134,7 @@ func mutate_arg(i: int) {
 mutate_arg(5)
 ```
 
+* BAD NULL TERMINATED STRINGS?? 
 * BUG The following compiles without error
 ```
 func split_lines(s: str): array {
