@@ -163,7 +163,7 @@ static Tiny_Object *NewObject(Tiny_StateThread *thread, Tiny_ValueType type) {
 // a single allocation for the entire thing.
 static Tiny_Object *NewStringObjectEmbedString(Tiny_StateThread *thread, const char *str,
                                                size_t len) {
-    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + len);
+    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + len + 1);
 
     obj->type = TINY_VAL_STRING;
     obj->next = thread->gcHead;
@@ -173,6 +173,9 @@ static Tiny_Object *NewStringObjectEmbedString(Tiny_StateThread *thread, const c
     obj->string.len = len;
     obj->string.ptr = (char *)obj + sizeof(Tiny_Object);
     memcpy(obj->string.ptr, str, len);
+
+    // Null terminate the string for interfacing with C
+    obj->string.ptr[obj->string.len] = '\0';
 
     thread->numObjects++;
 

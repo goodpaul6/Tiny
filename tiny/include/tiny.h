@@ -135,6 +135,9 @@ Tiny_Value Tiny_NewLightNative(void *ptr);
 
 // This assumes the given char* was allocated using Tiny_AllocUsingContext or equivalent.
 // It takes ownership of the char*, avoiding any intermediate copies.
+//
+// Note that this does not null terminate the provided string, so if you have C functions
+// which rely on null-terminated strings, ensure that you null terminate these yourself.
 Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *str, size_t len);
 
 // This is equivalent to Tiny_NewStringAssumeNullTerminated but it figures out the length assuming

@@ -103,7 +103,8 @@ static Tiny_Value Lib_Fread(Tiny_StateThread *thread, const Tiny_Value *args, in
     FILE *file = Tiny_ToAddr(args[0]);
     int num = (int)Tiny_ToNumber(args[1]);
 
-    char *str = Tiny_AllocUsingContext(thread, NULL, num);
+    // + 1 for null-terminator
+    char *str = Tiny_AllocUsingContext(thread, NULL, num + 1);
 
     int readCount = fread(str, 1, num, file);
 
@@ -111,6 +112,8 @@ static Tiny_Value Lib_Fread(Tiny_StateThread *thread, const Tiny_Value *args, in
         Tiny_AllocUsingContext(thread, str, 0);
         return Tiny_NewConstString("");
     }
+
+    str[num] = '\0';
 
     return Tiny_NewString(thread, str, readCount);
 }
@@ -151,8 +154,10 @@ static Tiny_Value Lib_ReadFile(Tiny_StateThread *thread, const Tiny_Value *args,
     long len = ftell(file);
     rewind(file);
 
-    char *s = Tiny_AllocUsingContext(thread, NULL, len);
+    char *s = Tiny_AllocUsingContext(thread, NULL, len + 1);
     fread(s, 1, len, file);
+
+    s[len] = '\0';
 
     fclose(file);
 
@@ -423,7 +428,7 @@ static Tiny_Value Strcat(Tiny_StateThread *thread, const Tiny_Value *args, int c
         totalLen += Tiny_StringLen(args[i]);
     }
 
-    char *newString = Tiny_AllocUsingContext(thread, NULL, totalLen);
+    char *newString = Tiny_AllocUsingContext(thread, NULL, totalLen + 1);
     char *ptr = newString;
 
     for (int i = 0; i < count; ++i) {
@@ -432,6 +437,8 @@ static Tiny_Value Strcat(Tiny_StateThread *thread, const Tiny_Value *args, int c
 
         ptr += len;
     }
+
+    newString[totalLen] = '\0';
 
     return Tiny_NewString(thread, newString, totalLen);
 }
@@ -457,10 +464,11 @@ static Tiny_Value Lib_Substr(Tiny_StateThread *thread, const Tiny_Value *args, i
 
     assert(end <= sLen);
 
-    char *sub = Tiny_AllocUsingContext(thread, NULL, end - start);
+    char *sub = Tiny_AllocUsingContext(thread, NULL, end - start + 1);
     for (int i = start; i < end; ++i) {
         sub[i - start] = s[i];
     }
+    sub[end - start] = '\0';
 
     // TODO(Apaar): Figure out if there's a way we can just not allocate for this
     // TODO(Apaar): If strings are immutable and refcounted, we could just point
@@ -526,6 +534,12 @@ static Tiny_Value Lib_Input(Tiny_StateThread *thread, const Tiny_Value *args, in
         buffer[bufferLength++] = c;
         c = getc(stdin);
     }
+
+    if (bufferLength + 1 >= bufferCapacity) {
+        // Make room for null terminator
+        buffer = Tiny_AllocUsingContext(thread, buffer, bufferCapacity + 1);
+    }
+    buffer[bufferLength] = '\0';
 
     return Tiny_NewString(thread, buffer, bufferLength);
 }
