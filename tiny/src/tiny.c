@@ -1493,6 +1493,14 @@ typedef struct sExpr {
 
         struct {
             Symbol *structTag;
+
+            // This is only used for if the constructor has named arguments. Otherwise this is
+            // NULL.
+            //
+            // If specified, these will get re-ordered (alongside the args) during the
+            // `ResolveTypes` phase to ensure they're in the order that the struct wants.
+            char **argNames;
+
             struct sExpr **args;
         } constructor;
 
@@ -1984,6 +1992,7 @@ static Expr *ParseFactor(Tiny_State *state) {
             GetNextToken(state);
 
             exp->constructor.structTag = tag;
+            exp->constructor.argNames = NULL;
             exp->constructor.args = NULL;
 
             ExpectToken(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name");
@@ -1991,6 +2000,24 @@ static Expr *ParseFactor(Tiny_State *state) {
             GetNextToken(state);
 
             while (CurTok != TINY_TOK_CLOSECURLY) {
+                if (CurTok == TINY_TOK_DOT) {
+                    // Named argument, .xyz = value
+                    GetNextToken(state);
+
+                    ExpectToken(state, TINY_TOK_IDENT,
+                                "Expected identifier after '.' in designated initializer.");
+
+                    char *ident = CloneString(&state->ctx, state->l.lexeme);
+
+                    sb_push(&state->ctx, exp->constructor.argNames, ident);
+
+                    GetNextToken(state);
+
+                    ExpectToken(state, TINY_TOK_EQUAL, "Expected = after designated initializer");
+
+                    GetNextToken(state);
+                }
+
                 Expr *e = ParseExpr(state);
 
                 sb_push(&state->ctx, exp->constructor.args, e);
@@ -2746,17 +2773,76 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                              exp->constructor.structTag->name, tagCount, meCount);
             }
 
-            for (int i = 0; i < sb_count(exp->constructor.args); ++i) {
-                ResolveTypes(state, exp->constructor.args[i]);
+            int namedCount = sb_count(exp->constructor.argNames);
 
-                Symbol *provided = exp->constructor.args[i]->tag;
-                Symbol *expected = exp->constructor.structTag->sstruct.fields[i]->fieldTag;
+            if (exp->constructor.argNames) {
+                if (namedCount != tagCount) {
+                    ReportErrorE(
+                        state, exp,
+                        "Invalid designated initializer for struct %s. Make sure you initialize",
+                        exp->constructor.structTag->name);
+                }
 
-                if (!CompareTags(provided, expected)) {
-                    ReportErrorE(state, exp->constructor.args[i],
-                                 "Argument %d to constructor is supposed to be a %s but "
-                                 "you supplied a %s",
-                                 i + 1, GetTagName(expected), GetTagName(provided));
+                for (int i = 0; i < tagCount; ++i) {
+                    Symbol *expectedField = exp->constructor.structTag->sstruct.fields[i];
+
+                    bool found = false;
+
+                    for (int j = 0; j < namedCount; ++j) {
+                        char *name = exp->constructor.argNames[j];
+
+                        if (strcmp(name, expectedField->name) != 0) {
+                            continue;
+                        }
+
+                        ResolveTypes(state, exp->constructor.args[j]);
+
+                        Symbol *provided = exp->constructor.args[j]->tag;
+
+                        if (!CompareTags(provided, expectedField->fieldTag)) {
+                            ReportErrorE(state, exp->constructor.args[j],
+                                         "Designated initializer .%s to constructor is supposed to "
+                                         "be a %s but "
+                                         "you supplied a %s",
+                                         name, GetTagName(expectedField->fieldTag),
+                                         GetTagName(provided));
+                        }
+
+                        // Swap the arg name at [j] with the one at [i] so that we
+                        // end up re-ordering these as we go.
+                        char *oldName = exp->constructor.argNames[i];
+                        Expr *oldExp = exp->constructor.args[i];
+
+                        exp->constructor.argNames[i] = name;
+                        exp->constructor.args[i] = exp->constructor.args[j];
+
+                        exp->constructor.argNames[j] = oldName;
+                        exp->constructor.args[j] = oldExp;
+
+                        found = true;
+                        break;
+                    }
+
+                    if (!found) {
+                        ReportErrorE(
+                            state, exp,
+                            "Could not find designated initializer for field %s in constructor",
+                            expectedField->name);
+                    }
+                }
+            } else {
+                for (int i = 0; i < sb_count(exp->constructor.args); ++i) {
+                    ResolveTypes(state, exp->constructor.args[i]);
+
+                    Symbol *provided = exp->constructor.args[i]->tag;
+                    Symbol *expected = exp->constructor.structTag->sstruct.fields[i]->fieldTag;
+
+                    if (!CompareTags(provided, expected)) {
+                        ReportErrorE(state, exp->constructor.args[i],
+                                     "Argument %d to constructor is supposed to be a %s but "
+                                     "you supplied a %s",
+                                     i + 1, GetTagName(expected), GetTagName(provided));
+                    }
                 }
             }
 
@@ -3514,6 +3600,12 @@ static void Expr_destroy(Expr *exp, Tiny_Context *ctx) {
         } break;
 
         case EXP_CONSTRUCTOR: {
+            for (int i = 0; i < sb_count(exp->constructor.argNames); ++i) {
+                TFree(ctx, exp->constructor.argNames[i]);
+            }
+
+            sb_free(ctx, exp->constructor.argNames);
+
             for (int i = 0; i < sb_count(exp->constructor.args); ++i) {
                 Expr_destroy(exp->constructor.args[i], ctx);
             }

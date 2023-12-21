@@ -1,33 +1,68 @@
-i := int_to_i64(0)
+// i := int_to_i64(0)
+// 
+// i = i64_add_many(int_to_i64(1000))
+// 
+// printf("%s\n", i64_to_string(i))
+// 
+// arr := array()
+// 
+// array_push(arr, 10)
+// 
+// printf("%q\n", arr)
+// 
+// s := ""
+// 
+// if strlen(s) == 0 || stridx(s, 0) == 'a' {
+//     printf("Short circuit or works\n")
+// }
+// 
+// struct Test {
+//     x: int
+//     y: int
+// }
+// 
+// printf("%q\n", new Test{10, 20})
+// 
+// //func should_not_compile(): int {
+// //    return ""
+// //}
+// 
+// func assign_to_arg(n: int) {
+//     n = 10
+//     printf("%q\n", n)
+// }
 
-i = i64_add_many(int_to_i64(1000))
+func array_has(arr: array, obj: any): bool {
+    len := array_len(arr)
 
-printf("%s\n", i64_to_string(i))
-
-arr := array()
-
-array_push(arr, 10)
-
-printf("%q\n", arr)
-
-s := ""
-
-if strlen(s) == 0 || stridx(s, 0) == 'a' {
-    printf("Short circuit or works\n")
+    for i := 0; i < len; i += 1 {
+        value := array_get(arr, i)
+        if value == obj {
+            return true
+        }
+    }
+    
+    return false
 }
 
 struct Test {
     x: int
+}
+
+a := new Test{10}
+b := new Test{20}
+c := new Test{30}
+
+arr := array(a, b, c)
+
+if !array_has(arr, a) {
+    printf("hello\n")
+}
+
+struct Point {
+    x: int
     y: int
 }
 
-printf("%q\n", new Test{10, 20})
-
-//func should_not_compile(): int {
-//    return ""
-//}
-
-func assign_to_arg(n: int) {
-    n = 10
-    printf("%q\n", n)
-}
+printf("%q\n", new Point{10, 20})
+printf("%q\n", new Point{.y = 10, .x = 20})
