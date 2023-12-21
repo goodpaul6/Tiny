@@ -9,12 +9,15 @@
 * BAD `Tiny_Value` is 16 bytes because we store type tag even though technically we can get away
   with only boxing "any" or reference types (see the `snow-common` branch)
     * Likely a big performance win
+    * Will need typed 
 * BAD Cannot cast reference types to any
 * BAD No ternary operator
 * BAD Accessing null values causes segfault
 * BAD No type aliases (strong)
 
 * BUG The following compiles without error (no checking of whether function returns value)
+    * This would require some amount of control flow analysis though (for the non-trivial case)
+    * Could just always require the top-level block to contain a return expression? Could catch 90% of these bugs
 ```
 func test(): int {}
 ```
@@ -41,14 +44,13 @@ func test(): int {}
     * Could patch this hole with runtime polymorphism but ehhhhh
     * Could also technically implement this with a C library haha
 * BAD No ranges/range-based loops
-* BAD All reference types are nullable?
+* BAD All types are nullable?
 * BAD No multiline comments
 * BAD No builtin array or dict
     * Mainly for type safety; parametric polymorphism (at the library level only?) could solve this
     * The library-only parapoly prevents the script code from becoming too complex
     * Builtin array or dict will probably cover most use cases though (see Golang)
 * BAD No 64-bit integers
-* BAD No named struct initializer
 * BAD No char type
 * BAD No polymorphism of any kind
 
