@@ -110,7 +110,7 @@ bool MyOpenFile(Buffer* buf, const char* filename) {
     return true;
 }
 
-bool MyWriteFile(Buffer* buf, const char* filename) {
+bool MyWriteFile(const Buffer* buf, const char* filename) {
     FILE* f = fopen(filename, "w");
 
     if (!f) {

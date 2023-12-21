@@ -63,49 +63,9 @@ static Tiny_Value Lib_Exit(Tiny_StateThread* thread, const Tiny_Value* args, int
     exit((int)Tiny_ToNumber(args[0]));
 }
 
-static Tiny_Value Lib_Strlen(Tiny_StateThread* thread, const Tiny_Value* args, int count) {
-    assert(count == 1);
-    return Tiny_NewInt(strlen(Tiny_ToString(args[0])));
-}
-
 static Tiny_Value Lib_Strspn(Tiny_StateThread* thread, const Tiny_Value* args, int count) {
     assert(count == 2);
     return Tiny_NewInt(strspn(Tiny_ToString(args[0]), Tiny_ToString(args[1])));
-}
-
-static Tiny_Value Lib_Stridx(Tiny_StateThread* thread, const Tiny_Value* args, int count) {
-    assert(count == 2);
-    return Tiny_NewInt(Tiny_ToString(args[0])[(int)Tiny_ToNumber(args[1])]);
-}
-
-static Tiny_Value Lib_Substr(Tiny_StateThread* thread, const Tiny_Value* args, int count) {
-    assert(count == 3);
-
-    const char* s = Tiny_ToString(args[0]);
-    int start = (int)Tiny_ToNumber(args[1]);
-    int end = (int)Tiny_ToNumber(args[2]);
-
-    if (end == -1) {
-        end = strlen(s);
-    }
-
-    assert(start >= 0 && start <= end);
-
-    if (start == end) {
-        return Tiny_NewConstString("");
-    }
-
-    assert(end <= strlen(s));
-
-    char* sub = malloc(end - start + 1);
-    for (int i = start; i < end; ++i) {
-        sub[i - start] = s[i];
-    }
-
-    sub[end - start] = '\0';
-
-    // TODO(Apaar): Figure out if there's a way we can just not allocate for this
-    return Tiny_NewString(thread, sub);
 }
 
 static Tiny_Value Lib_Strtod(Tiny_StateThread* thread, const Tiny_Value* args, int count) {
@@ -248,11 +208,7 @@ static Tiny_Value Lib_OpenFile(Tiny_StateThread* thread, const Tiny_Value* args,
         int fileOpened = Tiny_GetFunctionIndex(ed->state, "file_opened");
 
         if (fileOpened >= 0) {
-            const char* s = Tiny_ToString(args[0]);
-
-            const Tiny_Value margs[] = {Tiny_NewString(thread, estrdup(s))};
-
-            Tiny_CallFunction(thread, fileOpened, margs, 1);
+            Tiny_CallFunction(thread, fileOpened, args, 1);
         }
 
         MoveTo(ed, 0, 0);
@@ -273,11 +229,7 @@ static Tiny_Value Lib_WriteFile(Tiny_StateThread* thread, const Tiny_Value* args
         int fileWritten = Tiny_GetFunctionIndex(ed->state, "file_written");
 
         if (fileWritten >= 0) {
-            const char* s = Tiny_ToString(args[0]);
-
-            const Tiny_Value margs[1] = {Tiny_NewString(thread, estrdup(s))};
-
-            Tiny_CallFunction(thread, fileWritten, margs, 1);
+            Tiny_CallFunction(thread, fileWritten, args, 1);
         }
 
         return Tiny_NewBool(true);
@@ -656,10 +608,9 @@ static void BindFunctions(Tiny_State* state) {
 
     Tiny_BindFunction(state, "exit(int): void", Lib_Exit);
 
-    Tiny_BindFunction(state, "strlen(str): int", Lib_Strlen);
+    Tiny_BindStandardLib(state);
+
     Tiny_BindFunction(state, "strspn(str, str): int", Lib_Strspn);
-    Tiny_BindFunction(state, "stridx(str, int): int", Lib_Stridx);
-    Tiny_BindFunction(state, "substr(str, int, int): str", Lib_Substr);
     Tiny_BindFunction(state, "strtod(str): float", Lib_Strtod);
 
     Tiny_BindFunction(state, "floor(float): float", Lib_Floor);
@@ -764,7 +715,7 @@ void FileOpened(Editor* ed, const char* name) {
     MoveTo(ed, 0, 0);
 
     if (fileOpened >= 0) {
-        Tiny_Value args[1] = {Tiny_NewString(&ed->thread, estrdup(name))};
+        Tiny_Value args[1] = {Tiny_NewStringCopyNullTerminated(&ed->thread, name)};
 
         Tiny_CallFunction(&ed->thread, fileOpened, args, 1);
     }

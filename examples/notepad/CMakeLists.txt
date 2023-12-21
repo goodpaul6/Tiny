@@ -9,6 +9,8 @@ add_executable(tiny_notepad ${SOURCES})
 
 if(WIN32)
     target_link_libraries(tiny_notepad "D3D9.lib")
+else()
+    target_link_libraries(tiny_notepad GLU GL X11)
 endif()
 
 target_include_directories(tiny_notepad PRIVATE include)

@@ -344,9 +344,9 @@ void DrawEditor(Tigr* screen, Editor* ed) {
         static char buf[MAX_COMMAND_LENGTH];
 
         if (ed->mode == MODE_COMMAND) {
-            sprintf(buf, ":%s", ed->cmd);
+            snprintf(buf, sizeof(buf), ":%s", ed->cmd);
         } else if (ed->mode == MODE_FORWARD_SEARCH) {
-            sprintf(buf, "/%s", ed->cmd);
+            snprintf(buf, sizeof(buf), "/%s", ed->cmd);
         } else {
             strcpy(buf, Status);
         }
