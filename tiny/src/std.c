@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <errno.h>
+#include <limits.h>
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -274,6 +275,15 @@ static Tiny_Value Lib_ArrayShift(Tiny_StateThread *thread, const Tiny_Value *arg
     ArrayShift(array, &value);
 
     return value;
+}
+
+static TINY_FOREIGN_FUNCTION(Lib_ArrayRemove) {
+    Array *array = Tiny_ToAddr(args[0]);
+    int idx = Tiny_ToInt(args[1]);
+
+    ArrayRemove(array, idx);
+
+    return Tiny_Null;
 }
 
 static void DictProtectFromGC(void *p) {
@@ -742,6 +752,7 @@ void Tiny_BindStandardArray(Tiny_State *state) {
     Tiny_BindFunction(state, "array_push(array, any): void", Lib_ArrayPush);
     Tiny_BindFunction(state, "array_pop(array): any", Lib_ArrayPop);
     Tiny_BindFunction(state, "array_shift(array): any", Lib_ArrayShift);
+    Tiny_BindFunction(state, "array_remove(array, int): void", Lib_ArrayRemove);
 
     // HACK(Apaar): Who needs generics when 90% of arrays are just string and int arrays?
     Tiny_RegisterType(state, "array_str");
@@ -755,6 +766,7 @@ void Tiny_BindStandardArray(Tiny_State *state) {
     Tiny_BindFunction(state, "array_str_push(array_str, str): void", Lib_ArrayPush);
     Tiny_BindFunction(state, "array_str_pop(array_str): str", Lib_ArrayPop);
     Tiny_BindFunction(state, "array_str_shift(array_str): str", Lib_ArrayShift);
+    Tiny_BindFunction(state, "array_str_remove(array, int): void", Lib_ArrayRemove);
 }
 
 void Tiny_BindStandardDict(Tiny_State *state) {
@@ -807,6 +819,8 @@ void Tiny_BindI64(Tiny_State *state) {
 }
 
 void Tiny_BindStandardLib(Tiny_State *state) {
+    Tiny_BindConstInt(state, "INT_MAX", INT_MAX);
+
     Tiny_BindFunction(state, "strlen(str): int", Strlen);
     Tiny_BindFunction(state, "stridx(str, int): int", Stridx);
     Tiny_BindFunction(state, "strchr(str, int): int", Strchr);

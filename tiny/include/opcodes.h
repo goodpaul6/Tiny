@@ -61,6 +61,9 @@ enum {
     TINY_OP_CALLF,
 
     TINY_OP_GETLOCAL,
+    // If the local index >= 0 and <= 0xff
+    TINY_OP_GETLOCAL_W,
+
     TINY_OP_SETLOCAL,
 
     TINY_OP_GET_RETVAL,

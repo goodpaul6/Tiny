@@ -968,7 +968,7 @@ void Tiny_BindConstString(Tiny_State *state, const char *name, const char *strin
 
 static int ReadInteger(Tiny_StateThread *thread) {
     // Move PC up to the next 4 aligned thing
-    thread->pc += (thread->pc % 4 == 0) ? 0 : (4 - thread->pc % 4);
+    thread->pc = (thread->pc + 3) & ~3;
 
     int val = *(int *)(&thread->state->program[thread->pc]);
     thread->pc += sizeof(int) / sizeof(Word);
@@ -1349,6 +1349,12 @@ static bool ExecuteCycle(Tiny_StateThread *thread) {
         case TINY_OP_GETLOCAL: {
             ++thread->pc;
             int localIdx = ReadInteger(thread);
+            DoPush(thread, thread->stack[thread->fp + localIdx]);
+        } break;
+
+        case TINY_OP_GETLOCAL_W: {
+            ++thread->pc;
+            Word localIdx = thread->state->program[thread->pc++];
             DoPush(thread, thread->stack[thread->fp + localIdx]);
         } break;
 
@@ -2058,6 +2064,21 @@ static Expr *ParseFactor(Tiny_State *state) {
                         "Expected ')' to match previous '(' after cast.");
 
             GetNextToken(state);
+
+            while (CurTok == TINY_TOK_DOT) {
+                Expr *e = Expr_create(EXP_DOT, state);
+
+                GetNextToken(state);
+
+                ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
+
+                e->dot.lhs = exp;
+                e->dot.field = CloneString(&state->ctx, state->l.lexeme);
+
+                GetNextToken(state);
+
+                exp = e;
+            }
 
             return exp;
         } break;
@@ -2780,10 +2801,10 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
 
             if (exp->constructor.argNames) {
                 if (namedCount != tagCount) {
-                    ReportErrorE(
-                        state, exp,
-                        "Invalid designated initializer for struct %s. Make sure you initialize",
-                        exp->constructor.structTag->name);
+                    ReportErrorE(state, exp,
+                                 "Invalid designated initializer for struct %s. Make sure you "
+                                 "initialize every field.",
+                                 exp->constructor.structTag->name);
                 }
 
                 for (int i = 0; i < tagCount; ++i) {
@@ -2920,12 +2941,18 @@ static void CompileGetIdOrDot(Tiny_State *state, Expr *exp) {
                exp->id.sym->type == SYM_CONST);
 
         if (exp->id.sym->type != SYM_CONST) {
-            if (exp->id.sym->type == SYM_GLOBAL)
+            if (exp->id.sym->type == SYM_GLOBAL) {
                 GenerateCode(state, TINY_OP_GET);
-            else if (exp->id.sym->type == SYM_LOCAL)
-                GenerateCode(state, TINY_OP_GETLOCAL);
-
-            GenerateInt(state, exp->id.sym->var.index);
+                GenerateInt(state, exp->id.sym->var.index);
+            } else if (exp->id.sym->type == SYM_LOCAL) {
+                if (exp->id.sym->var.index < 0 || exp->id.sym->var.index > 0xff) {
+                    GenerateCode(state, TINY_OP_GETLOCAL);
+                    GenerateInt(state, exp->id.sym->var.index);
+                } else {
+                    GenerateCode(state, TINY_OP_GETLOCAL_W);
+                    GenerateCode(state, (Word)exp->id.sym->var.index);
+                }
+            }
         } else {
             if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_STR)) {
                 GeneratePushString(state, exp->id.sym->constant.sIndex);
