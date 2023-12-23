@@ -1,0 +1,25 @@
+{
+  "name": "tiny-vscode",
+  "displayName": "Tiny Programming Language",
+  "description": "VSCode support for the Tiny Programming Language",
+  "version": "0.0.1",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Programming Languages"
+  ],
+  "contributes": {
+    "languages": [{
+      "id": "tiny",
+      "aliases": ["Tiny", "tiny"],
+      "extensions": [".tiny"],
+      "configuration": "./language-configuration.json"
+    }],
+    "grammars": [{
+      "language": "tiny",
+      "scopeName": "source.tiny",
+      "path": "./syntaxes/tiny.tmLanguage.json"
+    }]
+  }
+}

@@ -1,0 +1,85 @@
+{
+	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
+	"name": "Tiny",
+	"patterns": [
+		{
+			"include": "#keywords"
+		},
+		{
+			"include": "#strings"
+		},
+        {
+            "include": "#types"
+        },
+        {
+            "include": "#functions"
+        }
+	],
+	"repository": {
+		"keywords": {
+			"patterns": [
+                {
+                    "name": "keyword.control.tiny",
+                    "match": "\\b(if|while|for|return|else|cast|break|continue)\\b"
+                },
+                {
+                    "name": "keyword.operator.new",
+                    "match": "\\b(new)\\b"
+                },
+                {
+                    "name": "keyword.operator"
+                }
+            ]
+		},
+		"strings": {
+			"name": "string.quoted.double.tiny",
+			"begin": "\"",
+			"end": "\"",
+			"patterns": [
+				{
+					"name": "constant.character.escape.tiny",
+					"match": "\\\\."
+				}
+			]
+		},
+        "types": {
+            "patterns": [
+                {
+                    "name": "entity.name.type.numeric.tiny",
+                    "match": "\\b(int|float)\\b"
+                },
+                {
+                    "name": "entity.name.type.primitive.tiny",
+                    "match": "\\b(str|bool|any)\\b"
+                },
+                {
+                    "match": "\\b(struct)\\s+([A-Za-z_][A-Za-z0-9_]*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.declaration.struct.tiny storage.type.tiny"
+                        },
+                        "2": {
+                            "name": "entity.name.type.struct.tiny"
+                        }
+                    }
+                }
+            ]
+        },
+        "functions": {
+            "patterns": [
+                {
+                    "match": "\\b(func)\\s+([A-Za-z_][A-Aa-z0-9_]*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "keyword.other.fn.tiny storage.type.function.tiny"
+                        },
+                        "2": {
+                            "name": "entity.name.function.tiny"
+                        }
+                    }
+                }
+            ]
+        }
+	},
+	"scopeName": "source.tiny"
+}
