@@ -1,11 +1,27 @@
 # TODO
 
+* IDEA Adopt Zig's `break value` syntax to support expression-oriented blocks
+
+```
+a := 10
+x := {
+    if a > 5 {
+        break 10
+    } else {
+        break 20
+    }
+}
+```
+
 * TEST Short circuting &&
 * TEST Short circuiting ||
 * TEST Break and continue in for loops
 * TEST Got rid of null-terminated strings but didn't really add too many tests
 
+* BAD You can return `any`, but you cannot assign `any` to anything; it is more like "unknown" I guess?
+Except in the event that you're returning it lol???
 
+* BAD Array out of bounds asserts in debug and segfaults in real
 * BAD `Tiny_Value` is 16 bytes because we store type tag even though technically we can get away
   with only boxing "any" or reference types (see the `snow-common` branch)
     * Likely a big performance win
@@ -137,6 +153,7 @@ Tiny_BindFunction(state, "get(array($t), int): t");
 
 # Done
 
+* BAD Cannot do `.` subscript on cast expression values
 * BAD No designated struct init
 * BUG Comparing structs does nothing
 * BUG Assigning to arguments doesn't seem to work, repro
