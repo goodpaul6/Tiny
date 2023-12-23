@@ -163,6 +163,7 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
         if (strcmp(l->lexeme, "cast") == 0) return TINY_TOK_CAST;
         if (strcmp(l->lexeme, "break") == 0) return TINY_TOK_BREAK;
         if (strcmp(l->lexeme, "continue") == 0) return TINY_TOK_CONTINUE;
+        if (strcmp(l->lexeme, "use") == 0) return TINY_TOK_USE;
 
         return TINY_TOK_IDENT;
     }

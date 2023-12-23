@@ -364,7 +364,7 @@ typedef struct Tiny_ModuleResult {
 // This is very useful for making generic modules (see the array module in std.c for example)
 // or generating serializers/deserializers for user-defined types by using Tiny_CompileString
 // within these functions.
-typedef Tiny_ModuleResult (*Tiny_ModuleFunction)(Tiny_State *state, const char **args, int nargs,
+typedef Tiny_ModuleResult (*Tiny_ModuleFunction)(Tiny_State *state, char *const *args, int nargs,
                                                  const char *asName);
 
 // This is the primary struct for the Tiny symbol table.

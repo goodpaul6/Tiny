@@ -1431,7 +1431,8 @@ typedef enum {
     EXP_CONSTRUCTOR,
     EXP_CAST,
     EXP_BREAK,
-    EXP_CONTINUE
+    EXP_CONTINUE,
+    EXP_USE,
 } ExprType;
 
 typedef struct sExpr {
@@ -1528,6 +1529,12 @@ typedef struct sExpr {
             // conditional.
             int patchLoc;
         } breakContinue;
+
+        struct {
+            char *moduleName;
+            char **args;  // array
+            char *asName;
+        } use;
     };
 } Expr;
 
@@ -2348,11 +2355,67 @@ static Expr *ParseStatement(Tiny_State *state) {
         } break;
 
         case TINY_TOK_CONTINUE: {
-            GetNextToken(state);
             Expr *exp = Expr_create(EXP_CONTINUE, state);
+
+            GetNextToken(state);
 
             // Set to -1 to make sure we don't get into trouble
             exp->breakContinue.patchLoc = -1;
+
+            return exp;
+        } break;
+
+        case TINY_TOK_USE: {
+            if (state->currFunc || state->currScope != 0) {
+                ReportError(state,
+                            "'use' statements are only valid at the top-level of a Tiny file.");
+            }
+
+            Expr *exp = Expr_create(EXP_USE, state);
+
+            GetNextToken(state);
+
+            ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'use'");
+
+            exp->use.moduleName = CloneString(&state->ctx, state->l.lexeme);
+            exp->use.args = NULL;
+            exp->use.asName = NULL;
+
+            GetNextToken(state);
+
+            ExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after 'use' module name");
+
+            GetNextToken(state);
+
+            while (CurTok != TINY_TOK_CLOSEPAREN) {
+                ExpectToken(state, TINY_TOK_STRING, "Expected string as arg to 'use' module name");
+
+                char *arg = CloneString(&state->ctx, state->l.lexeme);
+
+                sb_push(&state->ctx, exp->use.args, arg);
+
+                GetNextToken(state);
+
+                // TODO(Apaar): Technically this means the commas are optional.
+                // Should we enforce them?
+                if (CurTok == TINY_TOK_COMMA) {
+                    GetNextToken(state);
+                }
+            }
+
+            GetNextToken(state);
+
+            // NOTE(Apaar): We do not make `as` an official keyword, we only make a special case
+            // for it in this context. It's too general to be reserved IMO.
+            if (CurTok == TINY_TOK_IDENT && strcmp(state->l.lexeme, "as") == 0) {
+                GetNextToken(state);
+
+                ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'as'");
+
+                exp->use.asName = CloneString(&state->ctx, state->l.lexeme);
+
+                GetNextToken(state);
+            }
 
             return exp;
         } break;
@@ -3549,6 +3612,10 @@ static void CompileStatement(Tiny_State *state, Expr *exp) {
             exp->breakContinue.patchLoc = GenerateInt(state, 0);
         } break;
 
+        case EXP_USE:
+            // Ignore use statements
+            break;
+
         default:
             ReportErrorE(state, exp,
                          "So this parsed successfully but when compiling I saw an expression where "
@@ -3654,6 +3721,18 @@ static void Expr_destroy(Expr *exp, Tiny_Context *ctx) {
 
         case EXP_CAST: {
             Expr_destroy(exp->cast.value, ctx);
+        } break;
+
+        case EXP_USE: {
+            TFree(ctx, exp->use.moduleName);
+
+            for (int i = 0; i < sb_count(exp->use.args); ++i) {
+                TFree(ctx, exp->use.args[i]);
+            }
+
+            sb_free(ctx, exp->use.args);
+
+            TFree(ctx, exp->use.asName);
         } break;
 
         default:
@@ -3767,6 +3846,40 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
 
     Tiny_DestroyLexer(&state->l);
 
+    // Just before we do into the type resolution state, apply all the module functions
+    for (int i = 0; i < sb_count(prog); ++i) {
+        Expr *exp = prog[i];
+
+        if (exp->type != EXP_USE) {
+            continue;
+        }
+
+        // Find the module in the symbols
+        bool found = false;
+
+        for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+            Tiny_Symbol *s = state->globalSymbols[i];
+            if (s->type == TINY_SYM_MODULE && strcmp(s->name, exp->use.moduleName) == 0) {
+                Tiny_ModuleResult result =
+                    s->modFunc(state, exp->use.args, sb_count(exp->use.args), exp->use.asName);
+
+                if (result.type != TINY_MODULE_SUCCESS) {
+                    ReportErrorE(
+                        state, exp, "'use' module '%s' failed: %s", exp->use.moduleName,
+                        result.errorMessage ? result.errorMessage : "(no error message produced)");
+                }
+
+                found = true;
+                break;
+            }
+        }
+
+        if (!found) {
+            ReportErrorE(state, exp, "Attempted to reference undefined module '%s'",
+                         exp->use.moduleName);
+        }
+    }
+
     CompileState(state, prog);
 
     DeleteProgram(prog, &state->ctx);
@@ -3818,5 +3931,12 @@ void Tiny_BindModule(Tiny_State *state, const char *name, Tiny_ModuleFunction fn
 size_t Tiny_SymbolArrayCount(const Tiny_Symbol **arr) { return sb_count(arr); }
 
 const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name) {
-    return GetTagFromName(state, name, false);
+    const Tiny_Symbol *sym = GetTagFromName(state, name, false);
+
+    // We shouldn't return undefined structs (this is an error)
+    if (sym && sym->type == TINY_SYM_TAG_STRUCT && !sym->sstruct.defined) {
+        return NULL;
+    }
+
+    return sym;
 }

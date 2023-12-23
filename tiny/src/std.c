@@ -740,6 +740,51 @@ static Tiny_Value Lib_I64ToString(Tiny_StateThread *thread, const Tiny_Value *ar
     return Tiny_NewStringCopy(thread, buf, len);
 }
 
+static Tiny_ModuleResult ArrayModFunction(Tiny_State *state, char *const *args, int nargs,
+                                          const char *asName) {
+    if (nargs != 1) {
+        return (Tiny_ModuleResult){
+            .type = TINY_MODULE_ERROR,
+            .errorMessage = "Must specify exactly 1 argument to 'use array_mod'",
+        };
+    }
+
+    if (!asName) {
+        return (Tiny_ModuleResult){
+            .type = TINY_MODULE_ERROR,
+            .errorMessage = "Must specify an 'as' name when doing 'use array_mod'",
+        };
+    }
+
+    if (!Tiny_FindTypeSymbol(state, args[0])) {
+        return (Tiny_ModuleResult){
+            .type = TINY_MODULE_ERROR,
+            .errorMessage = "The array element type you specified does not exist",
+        };
+    }
+
+    Tiny_RegisterType(state, asName);
+
+    char sigbuf[512] = {0};
+
+    snprintf(sigbuf, sizeof(sigbuf), "%s(...): %s", asName, asName);
+    Tiny_BindFunction(state, sigbuf, CreateArray);
+
+    snprintf(sigbuf, sizeof(sigbuf), "%s_clear(%s): void", asName, asName);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayClear);
+
+    snprintf(sigbuf, sizeof(sigbuf), "%s_get(%s, int): %s", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayGet);
+
+    snprintf(sigbuf, sizeof(sigbuf), "%s_push(%s, %s): void", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayPush);
+
+    snprintf(sigbuf, sizeof(sigbuf), "%s_len(%s): int", asName, asName);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayPush);
+
+    return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
+}
+
 void Tiny_BindStandardArray(Tiny_State *state) {
     Tiny_RegisterType(state, "array");
 
@@ -767,6 +812,8 @@ void Tiny_BindStandardArray(Tiny_State *state) {
     Tiny_BindFunction(state, "array_str_pop(array_str): str", Lib_ArrayPop);
     Tiny_BindFunction(state, "array_str_shift(array_str): str", Lib_ArrayShift);
     Tiny_BindFunction(state, "array_str_remove(array, int): void", Lib_ArrayRemove);
+
+    Tiny_BindModule(state, "array_mod", ArrayModFunction);
 }
 
 void Tiny_BindStandardDict(Tiny_State *state) {

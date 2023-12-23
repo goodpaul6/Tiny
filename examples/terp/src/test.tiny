@@ -64,6 +64,14 @@ struct Point {
     y: int
 }
 
+use array_mod("Point") as array_pt
+
+pt_array := array_pt(new Point{10, 20})
+printf("%q\n", pt_array)
+
+
+
+
 // Proposed syntax for specializing generic modules
 //
 // use array(Point) as pt_array
