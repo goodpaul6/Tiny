@@ -307,7 +307,7 @@ Tiny_Value Tiny_NewStringCopyNullTerminated(Tiny_StateThread *thread, const char
     return Tiny_NewStringCopy(thread, src, strlen(src));
 }
 
-static void Symbol_destroy(Symbol *sym, Tiny_Context *ctx);
+static void Symbol_destroy(Tiny_Symbol *sym, Tiny_Context *ctx);
 
 static Tiny_Value Lib_ToInt(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     return Tiny_NewInt((int)Tiny_ToFloat(args[0]));
@@ -418,9 +418,9 @@ static bool ExecuteCycle(Tiny_StateThread *thread);
 
 int Tiny_GetGlobalIndex(const Tiny_State *state, const char *name) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Symbol *sym = state->globalSymbols[i];
+        Tiny_Symbol *sym = state->globalSymbols[i];
 
-        if (sym->type == SYM_GLOBAL && strcmp(sym->name, name) == 0) {
+        if (sym->type == TINY_SYM_GLOBAL && strcmp(sym->name, name) == 0) {
             return sym->var.index;
         }
     }
@@ -430,9 +430,9 @@ int Tiny_GetGlobalIndex(const Tiny_State *state, const char *name) {
 
 int Tiny_GetFunctionIndex(const Tiny_State *state, const char *name) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Symbol *sym = state->globalSymbols[i];
+        Tiny_Symbol *sym = state->globalSymbols[i];
 
-        if (sym->type == SYM_FUNCTION && strcmp(sym->name, name) == 0) {
+        if (sym->type == TINY_SYM_FUNCTION && strcmp(sym->name, name) == 0) {
             return sym->func.index;
         }
     }
@@ -571,25 +571,25 @@ static int RegisterString(Tiny_State *state, const char *string) {
     return state->numStrings - 1;
 }
 
-static Symbol *GetPrimTag(SymbolType type) {
-    static Symbol prims[] = {{
-                                 SYM_TAG_VOID,
-                                 (char *)"void",
-                             },
-                             {
-                                 SYM_TAG_BOOL,
-                                 (char *)"bool",
-                             },
-                             {SYM_TAG_INT, (char *)"int"},
-                             {SYM_TAG_FLOAT, (char *)"float"},
-                             {SYM_TAG_STR, (char *)"str"},
-                             {SYM_TAG_ANY, (char *)"any"}};
+static Tiny_Symbol *GetPrimTag(Tiny_SymbolType type) {
+    static Tiny_Symbol prims[] = {{
+                                      TINY_SYM_TAG_VOID,
+                                      (char *)"void",
+                                  },
+                                  {
+                                      TINY_SYM_TAG_BOOL,
+                                      (char *)"bool",
+                                  },
+                                  {TINY_SYM_TAG_INT, (char *)"int"},
+                                  {TINY_SYM_TAG_FLOAT, (char *)"float"},
+                                  {TINY_SYM_TAG_STR, (char *)"str"},
+                                  {TINY_SYM_TAG_ANY, (char *)"any"}};
 
-    return &prims[type - SYM_TAG_VOID];
+    return &prims[type - TINY_SYM_TAG_VOID];
 }
 
-static Symbol *Symbol_create(SymbolType type, const char *name, Tiny_State *state) {
-    Symbol *sym = TMalloc(&state->ctx, sizeof(Symbol));
+static Tiny_Symbol *Symbol_create(Tiny_SymbolType type, const char *name, Tiny_State *state) {
+    Tiny_Symbol *sym = TMalloc(&state->ctx, sizeof(Tiny_Symbol));
 
     sym->name = CloneString(&state->ctx, name);
     sym->type = type;
@@ -598,12 +598,12 @@ static Symbol *Symbol_create(SymbolType type, const char *name, Tiny_State *stat
     return sym;
 }
 
-static void Symbol_destroy(Symbol *sym, Tiny_Context *ctx) {
-    if (sym->type == SYM_FUNCTION) {
+static void Symbol_destroy(Tiny_Symbol *sym, Tiny_Context *ctx) {
+    if (sym->type == TINY_SYM_FUNCTION) {
         for (int i = 0; i < sb_count(sym->func.args); ++i) {
-            Symbol *arg = sym->func.args[i];
+            Tiny_Symbol *arg = sym->func.args[i];
 
-            assert(arg->type == SYM_LOCAL);
+            assert(arg->type == TINY_SYM_LOCAL);
 
             Symbol_destroy(arg, ctx);
         }
@@ -611,17 +611,17 @@ static void Symbol_destroy(Symbol *sym, Tiny_Context *ctx) {
         sb_free(ctx, sym->func.args);
 
         for (int i = 0; i < sb_count(sym->func.locals); ++i) {
-            Symbol *local = sym->func.locals[i];
+            Tiny_Symbol *local = sym->func.locals[i];
 
-            assert(local->type == SYM_LOCAL);
+            assert(local->type == TINY_SYM_LOCAL);
 
             Symbol_destroy(local, ctx);
         }
 
         sb_free(ctx, sym->func.locals);
-    } else if (sym->type == SYM_FOREIGN_FUNCTION) {
+    } else if (sym->type == TINY_SYM_FOREIGN_FUNCTION) {
         sb_free(ctx, sym->foreignFunc.argTags);
-    } else if (sym->type == SYM_TAG_STRUCT) {
+    } else if (sym->type == TINY_SYM_TAG_STRUCT) {
         for (int i = 0; i < sb_count(sym->sstruct.fields); ++i) {
             Symbol_destroy(sym->sstruct.fields[i], ctx);
         }
@@ -638,9 +638,9 @@ static void OpenScope(Tiny_State *state) { ++state->currScope; }
 static void CloseScope(Tiny_State *state) {
     if (state->currFunc) {
         for (int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
-            Symbol *sym = state->currFunc->func.locals[i];
+            Tiny_Symbol *sym = state->currFunc->func.locals[i];
 
-            assert(sym->type == SYM_LOCAL);
+            assert(sym->type == TINY_SYM_LOCAL);
 
             if (sym->var.scope == state->currScope) {
                 sym->var.scopeEnded = true;
@@ -651,13 +651,13 @@ static void CloseScope(Tiny_State *state) {
     --state->currScope;
 }
 
-static Symbol *ReferenceVariable(Tiny_State *state, const char *name) {
+static Tiny_Symbol *ReferenceVariable(Tiny_State *state, const char *name) {
     if (state->currFunc) {
         // Check local variables
         for (int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
-            Symbol *sym = state->currFunc->func.locals[i];
+            Tiny_Symbol *sym = state->currFunc->func.locals[i];
 
-            assert(sym->type == SYM_LOCAL);
+            assert(sym->type == TINY_SYM_LOCAL);
 
             // Make sure that it's available in the current scope too
             if (!sym->var.scopeEnded && strcmp(sym->name, name) == 0) {
@@ -667,9 +667,9 @@ static Symbol *ReferenceVariable(Tiny_State *state, const char *name) {
 
         // Check arguments
         for (int i = 0; i < sb_count(state->currFunc->func.args); ++i) {
-            Symbol *sym = state->currFunc->func.args[i];
+            Tiny_Symbol *sym = state->currFunc->func.args[i];
 
-            assert(sym->type == SYM_LOCAL);
+            assert(sym->type == TINY_SYM_LOCAL);
 
             if (strcmp(sym->name, name) == 0) {
                 return sym;
@@ -679,9 +679,9 @@ static Symbol *ReferenceVariable(Tiny_State *state, const char *name) {
 
     // Check global variables/constants
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Symbol *sym = state->globalSymbols[i];
+        Tiny_Symbol *sym = state->globalSymbols[i];
 
-        if (sym->type == SYM_GLOBAL || sym->type == SYM_CONST) {
+        if (sym->type == TINY_SYM_GLOBAL || sym->type == TINY_SYM_CONST) {
             if (strcmp(sym->name, name) == 0) return sym;
         }
     }
@@ -692,17 +692,17 @@ static Symbol *ReferenceVariable(Tiny_State *state, const char *name) {
 
 static void ReportError(Tiny_State *state, const char *s, ...);
 
-static Symbol *DeclareGlobalVar(Tiny_State *state, const char *name) {
-    Symbol *sym = ReferenceVariable(state, name);
+static Tiny_Symbol *DeclareGlobalVar(Tiny_State *state, const char *name) {
+    Tiny_Symbol *sym = ReferenceVariable(state, name);
 
-    if (sym && (sym->type == SYM_GLOBAL || sym->type == SYM_CONST)) {
+    if (sym && (sym->type == TINY_SYM_GLOBAL || sym->type == TINY_SYM_CONST)) {
         ReportError(state,
                     "Attempted to declare multiple global entities with the same "
                     "name '%s'.",
                     name);
     }
 
-    Symbol *newNode = Symbol_create(SYM_GLOBAL, name, state);
+    Tiny_Symbol *newNode = Symbol_create(TINY_SYM_GLOBAL, name, state);
 
     newNode->var.initialized = false;
     newNode->var.index = state->numGlobalVars;
@@ -721,14 +721,15 @@ static Symbol *DeclareGlobalVar(Tiny_State *state, const char *name) {
 // position relative to frame pointer We could reverse it, but this works out
 // nicely for Foreign calls since we can just supply a pointer to the initial
 // arg instead of reversing them.
-static Symbol *DeclareArgument(Tiny_State *state, const char *name, Symbol *tag, int nargs) {
+static Tiny_Symbol *DeclareArgument(Tiny_State *state, const char *name, Tiny_Symbol *tag,
+                                    int nargs) {
     assert(state->currFunc);
     assert(tag);
 
     for (int i = 0; i < sb_count(state->currFunc->func.args); ++i) {
-        Symbol *sym = state->currFunc->func.args[i];
+        Tiny_Symbol *sym = state->currFunc->func.args[i];
 
-        assert(sym->type == SYM_LOCAL);
+        assert(sym->type == TINY_SYM_LOCAL);
 
         if (strcmp(sym->name, name) == 0) {
             ReportError(state, "Function '%s' takes multiple arguments with name '%s'.\n",
@@ -736,7 +737,7 @@ static Symbol *DeclareArgument(Tiny_State *state, const char *name, Symbol *tag,
         }
     }
 
-    Symbol *newNode = Symbol_create(SYM_LOCAL, name, state);
+    Tiny_Symbol *newNode = Symbol_create(TINY_SYM_LOCAL, name, state);
 
     newNode->var.initialized = false;
     newNode->var.scopeEnded = false;
@@ -749,13 +750,13 @@ static Symbol *DeclareArgument(Tiny_State *state, const char *name, Symbol *tag,
     return newNode;
 }
 
-static Symbol *DeclareLocal(Tiny_State *state, const char *name) {
+static Tiny_Symbol *DeclareLocal(Tiny_State *state, const char *name) {
     assert(state->currFunc);
 
     for (int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
-        Symbol *sym = state->currFunc->func.locals[i];
+        Tiny_Symbol *sym = state->currFunc->func.locals[i];
 
-        assert(sym->type == SYM_LOCAL);
+        assert(sym->type == TINY_SYM_LOCAL);
 
         if (!sym->var.scopeEnded && strcmp(sym->name, name) == 0) {
             ReportError(state,
@@ -765,7 +766,7 @@ static Symbol *DeclareLocal(Tiny_State *state, const char *name) {
         }
     }
 
-    Symbol *newNode = Symbol_create(SYM_LOCAL, name, state);
+    Tiny_Symbol *newNode = Symbol_create(TINY_SYM_LOCAL, name, state);
 
     newNode->var.initialized = false;
     newNode->var.scopeEnded = false;
@@ -777,10 +778,11 @@ static Symbol *DeclareLocal(Tiny_State *state, const char *name) {
     return newNode;
 }
 
-static Symbol *DeclareConst(Tiny_State *state, const char *name, Symbol *tag) {
-    Symbol *sym = ReferenceVariable(state, name);
+static Tiny_Symbol *DeclareConst(Tiny_State *state, const char *name, Tiny_Symbol *tag) {
+    Tiny_Symbol *sym = ReferenceVariable(state, name);
 
-    if (sym && (sym->type == SYM_CONST || sym->type == SYM_LOCAL || sym->type == SYM_GLOBAL)) {
+    if (sym && (sym->type == TINY_SYM_CONST || sym->type == TINY_SYM_LOCAL ||
+                sym->type == TINY_SYM_GLOBAL)) {
         ReportError(state,
                     "Attempted to define constant with the same name '%s' as "
                     "another value.\n",
@@ -793,7 +795,7 @@ static Symbol *DeclareConst(Tiny_State *state, const char *name, Symbol *tag) {
                 "have global scope.\n",
                 name);
 
-    Symbol *newNode = Symbol_create(SYM_CONST, name, state);
+    Tiny_Symbol *newNode = Symbol_create(TINY_SYM_CONST, name, state);
 
     newNode->constant.tag = tag;
 
@@ -802,8 +804,8 @@ static Symbol *DeclareConst(Tiny_State *state, const char *name, Symbol *tag) {
     return newNode;
 }
 
-static Symbol *DeclareFunction(Tiny_State *state, const char *name) {
-    Symbol *newNode = Symbol_create(SYM_FUNCTION, name, state);
+static Tiny_Symbol *DeclareFunction(Tiny_State *state, const char *name) {
+    Tiny_Symbol *newNode = Symbol_create(TINY_SYM_FUNCTION, name, state);
 
     newNode->func.index = state->numFunctions;
     newNode->func.args = NULL;
@@ -816,11 +818,11 @@ static Symbol *DeclareFunction(Tiny_State *state, const char *name) {
     return newNode;
 }
 
-static Symbol *ReferenceFunction(Tiny_State *state, const char *name) {
+static Tiny_Symbol *ReferenceFunction(Tiny_State *state, const char *name) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Symbol *node = state->globalSymbols[i];
+        Tiny_Symbol *node = state->globalSymbols[i];
 
-        if ((node->type == SYM_FUNCTION || node->type == SYM_FOREIGN_FUNCTION) &&
+        if ((node->type == TINY_SYM_FUNCTION || node->type == TINY_SYM_FOREIGN_FUNCTION) &&
             strcmp(node->name, name) == 0)
             return node;
     }
@@ -828,18 +830,18 @@ static Symbol *ReferenceFunction(Tiny_State *state, const char *name) {
     return NULL;
 }
 
-static void BindFunction(Tiny_State *state, const char *name, Symbol **argTags, bool varargs,
-                         Symbol *returnTag, Tiny_ForeignFunction func) {
+static void BindFunction(Tiny_State *state, const char *name, Tiny_Symbol **argTags, bool varargs,
+                         Tiny_Symbol *returnTag, Tiny_ForeignFunction func) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Symbol *node = state->globalSymbols[i];
+        Tiny_Symbol *node = state->globalSymbols[i];
 
-        if (node->type == SYM_FOREIGN_FUNCTION && strcmp(node->name, name) == 0) {
+        if (node->type == TINY_SYM_FOREIGN_FUNCTION && strcmp(node->name, name) == 0) {
             fprintf(stderr, "There is already a foreign function bound to name '%s'.", name);
             exit(1);
         }
     }
 
-    Symbol *newNode = Symbol_create(SYM_FOREIGN_FUNCTION, name, state);
+    Tiny_Symbol *newNode = Symbol_create(TINY_SYM_FOREIGN_FUNCTION, name, state);
 
     newNode->foreignFunc.index = state->numForeignFunctions;
 
@@ -855,14 +857,14 @@ static void BindFunction(Tiny_State *state, const char *name, Symbol **argTags, 
     state->numForeignFunctions += 1;
 }
 
-static Symbol *GetTagFromName(Tiny_State *state, const char *name, bool declareStruct);
+static Tiny_Symbol *GetTagFromName(Tiny_State *state, const char *name, bool declareStruct);
 
 void Tiny_RegisterType(Tiny_State *state, const char *name) {
-    Symbol *s = GetTagFromName(state, name, false);
+    Tiny_Symbol *s = GetTagFromName(state, name, false);
 
     if (s) return;
 
-    s = Symbol_create(SYM_TAG_FOREIGN, name, state);
+    s = Symbol_create(TINY_SYM_TAG_FOREIGN, name, state);
 
     sb_push(&state->ctx, state->globalSymbols, s);
 }
@@ -891,7 +893,7 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
 
     if (!sig[0]) {
         // Just the name
-        BindFunction(state, name, NULL, true, GetPrimTag(SYM_TAG_ANY), func);
+        BindFunction(state, name, NULL, true, GetPrimTag(TINY_SYM_TAG_ANY), func);
 
         sb_free(&state->ctx, name);
         return;
@@ -899,7 +901,7 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
 
     sig += 1;
 
-    Symbol **argTags = NULL;
+    Tiny_Symbol **argTags = NULL;
     bool varargs = false;
     char *buf = NULL;
 
@@ -913,7 +915,7 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
             buf = NULL;
             break;
         } else {
-            Symbol *s = GetTagFromName(state, buf, false);
+            Tiny_Symbol *s = GetTagFromName(state, buf, false);
 
             assert(s);
 
@@ -930,7 +932,7 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
 
     sig += 1;
 
-    Symbol *returnTag = GetPrimTag(SYM_TAG_ANY);
+    Tiny_Symbol *returnTag = GetPrimTag(TINY_SYM_TAG_ANY);
 
     if (*sig == ':') {
         sig += 1;
@@ -950,19 +952,19 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
 }
 
 void Tiny_BindConstBool(Tiny_State *state, const char *name, bool b) {
-    DeclareConst(state, name, GetPrimTag(SYM_TAG_BOOL))->constant.bValue = b;
+    DeclareConst(state, name, GetPrimTag(TINY_SYM_TAG_BOOL))->constant.bValue = b;
 }
 
 void Tiny_BindConstInt(Tiny_State *state, const char *name, int i) {
-    DeclareConst(state, name, GetPrimTag(SYM_TAG_INT))->constant.iValue = i;
+    DeclareConst(state, name, GetPrimTag(TINY_SYM_TAG_INT))->constant.iValue = i;
 }
 
 void Tiny_BindConstFloat(Tiny_State *state, const char *name, float f) {
-    DeclareConst(state, name, GetPrimTag(SYM_TAG_FLOAT))->constant.fValue = f;
+    DeclareConst(state, name, GetPrimTag(TINY_SYM_TAG_FLOAT))->constant.fValue = f;
 }
 
 void Tiny_BindConstString(Tiny_State *state, const char *name, const char *string) {
-    DeclareConst(state, name, GetPrimTag(SYM_TAG_STR))->constant.sIndex =
+    DeclareConst(state, name, GetPrimTag(TINY_SYM_TAG_STR))->constant.sIndex =
         RegisterString(state, string);
 }
 
@@ -1438,7 +1440,7 @@ typedef struct sExpr {
     Tiny_TokenPos pos;
     int lineNumber;
 
-    Symbol *tag;
+    Tiny_Symbol *tag;
 
     union {
         bool boolean;
@@ -1449,7 +1451,7 @@ typedef struct sExpr {
 
         struct {
             char *name;
-            Symbol *sym;
+            Tiny_Symbol *sym;
         } id;
 
         struct {
@@ -1473,7 +1475,7 @@ typedef struct sExpr {
         struct sExpr **block;  // array
 
         struct {
-            Symbol *decl;
+            Tiny_Symbol *decl;
             struct sExpr *body;
         } proc;
 
@@ -1501,7 +1503,7 @@ typedef struct sExpr {
         } dot;
 
         struct {
-            Symbol *structTag;
+            Tiny_Symbol *structTag;
 
             // This is only used for if the constructor has named arguments. Otherwise this is
             // NULL.
@@ -1515,7 +1517,7 @@ typedef struct sExpr {
 
         struct {
             struct sExpr *value;
-            Symbol *tag;
+            Tiny_Symbol *tag;
         } cast;
 
         struct sExpr *retExpr;
@@ -1570,7 +1572,7 @@ static void ReportErrorE(Tiny_State *state, const Expr *exp, const char *s, ...)
     exit(1);
 }
 
-static void ReportErrorS(Tiny_State *state, const Symbol *sym, const char *s, ...) {
+static void ReportErrorS(Tiny_State *state, const Tiny_Symbol *sym, const char *s, ...) {
     va_list args;
     va_start(args, s);
 
@@ -1584,9 +1586,9 @@ static void ExpectToken(Tiny_State *state, int tok, const char *msg) {
     if (CurTok != tok) ReportError(state, msg);
 }
 
-static Symbol *GetStructTag(Tiny_State *state, const char *name) {
+static Tiny_Symbol *GetStructTag(Tiny_State *state, const char *name) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        if (state->globalSymbols[i]->type == SYM_TAG_STRUCT &&
+        if (state->globalSymbols[i]->type == TINY_SYM_TAG_STRUCT &&
             strcmp(state->globalSymbols[i]->name, name) == 0) {
             return state->globalSymbols[i];
         }
@@ -1595,13 +1597,13 @@ static Symbol *GetStructTag(Tiny_State *state, const char *name) {
     return NULL;
 }
 
-static Symbol *DeclareStruct(Tiny_State *state, const char *name, bool search) {
+static Tiny_Symbol *DeclareStruct(Tiny_State *state, const char *name, bool search) {
     if (search) {
-        Symbol *s = GetStructTag(state, name);
+        Tiny_Symbol *s = GetStructTag(state, name);
         if (s) return s;
     }
 
-    Symbol *s = Symbol_create(SYM_TAG_STRUCT, name, state);
+    Tiny_Symbol *s = Symbol_create(TINY_SYM_TAG_STRUCT, name, state);
 
     s->sstruct.defined = false;
     s->sstruct.fields = NULL;
@@ -1611,24 +1613,24 @@ static Symbol *DeclareStruct(Tiny_State *state, const char *name, bool search) {
     return s;
 }
 
-static Symbol *GetTagFromName(Tiny_State *state, const char *name, bool declareStruct) {
+static Tiny_Symbol *GetTagFromName(Tiny_State *state, const char *name, bool declareStruct) {
     if (strcmp(name, "void") == 0)
-        return GetPrimTag(SYM_TAG_VOID);
+        return GetPrimTag(TINY_SYM_TAG_VOID);
     else if (strcmp(name, "bool") == 0)
-        return GetPrimTag(SYM_TAG_BOOL);
+        return GetPrimTag(TINY_SYM_TAG_BOOL);
     else if (strcmp(name, "int") == 0)
-        return GetPrimTag(SYM_TAG_INT);
+        return GetPrimTag(TINY_SYM_TAG_INT);
     else if (strcmp(name, "float") == 0)
-        return GetPrimTag(SYM_TAG_FLOAT);
+        return GetPrimTag(TINY_SYM_TAG_FLOAT);
     else if (strcmp(name, "str") == 0)
-        return GetPrimTag(SYM_TAG_STR);
+        return GetPrimTag(TINY_SYM_TAG_STR);
     else if (strcmp(name, "any") == 0)
-        return GetPrimTag(SYM_TAG_ANY);
+        return GetPrimTag(TINY_SYM_TAG_ANY);
     else {
         for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-            Symbol *s = state->globalSymbols[i];
+            Tiny_Symbol *s = state->globalSymbols[i];
 
-            if ((s->type == SYM_TAG_FOREIGN || s->type == SYM_TAG_STRUCT) &&
+            if ((s->type == TINY_SYM_TAG_FOREIGN || s->type == TINY_SYM_TAG_STRUCT) &&
                 strcmp(s->name, name) == 0) {
                 return s;
             }
@@ -1642,12 +1644,12 @@ static Symbol *GetTagFromName(Tiny_State *state, const char *name, bool declareS
     return NULL;
 }
 
-static Symbol *GetFieldTag(Symbol *s, const char *name, int *index) {
-    assert(s->type == SYM_TAG_STRUCT);
+static Tiny_Symbol *GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
+    assert(s->type == TINY_SYM_TAG_STRUCT);
     assert(s->sstruct.defined);
 
     for (int i = 0; i < sb_count(s->sstruct.fields); ++i) {
-        Symbol *f = s->sstruct.fields[i];
+        Tiny_Symbol *f = s->sstruct.fields[i];
 
         if (strcmp(f->name, name) == 0) {
             if (index) *index = i;
@@ -1660,10 +1662,10 @@ static Symbol *GetFieldTag(Symbol *s, const char *name, int *index) {
     return NULL;
 }
 
-static Symbol *ParseType(Tiny_State *state) {
+static Tiny_Symbol *ParseType(Tiny_State *state) {
     ExpectToken(state, TINY_TOK_IDENT, "Expected identifier for typename.");
 
-    Symbol *s = GetTagFromName(state, state->l.lexeme, true);
+    Tiny_Symbol *s = GetTagFromName(state, state->l.lexeme, true);
 
     if (!s) {
         ReportError(state, "%s doesn't name a type.", state->l.lexeme);
@@ -1742,7 +1744,7 @@ static Expr *ParseFunc(Tiny_State *state) {
 
     typedef struct {
         char *name;
-        Symbol *tag;
+        Tiny_Symbol *tag;
     } Arg;
 
     Arg *args = NULL;  // array
@@ -1784,7 +1786,7 @@ static Expr *ParseFunc(Tiny_State *state) {
     GetNextToken(state);
 
     if (CurTok != TINY_TOK_COLON) {
-        exp->proc.decl->func.returnTag = GetPrimTag(SYM_TAG_VOID);
+        exp->proc.decl->func.returnTag = GetPrimTag(TINY_SYM_TAG_VOID);
     } else {
         GetNextToken(state);
         exp->proc.decl->func.returnTag = ParseType(state);
@@ -1801,7 +1803,7 @@ static Expr *ParseFunc(Tiny_State *state) {
     return exp;
 }
 
-static Symbol *ParseStruct(Tiny_State *state) {
+static Tiny_Symbol *ParseStruct(Tiny_State *state) {
     if (state->currFunc) {
         ReportError(state, "Attempted to declare struct inside func %s. Can't do that bruh.",
                     state->currFunc->name);
@@ -1813,7 +1815,7 @@ static Symbol *ParseStruct(Tiny_State *state) {
 
     ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'struct'.");
 
-    Symbol *s = DeclareStruct(state, state->l.lexeme, true);
+    Tiny_Symbol *s = DeclareStruct(state, state->l.lexeme, true);
 
     if (s->sstruct.defined) {
         ReportError(state, "Attempted to define struct %s multiple times.", state->l.lexeme);
@@ -1844,7 +1846,7 @@ static Symbol *ParseStruct(Tiny_State *state) {
             }
         }
 
-        Symbol *f = Symbol_create(SYM_FIELD, state->l.lexeme, state);
+        Tiny_Symbol *f = Symbol_create(TINY_SYM_FIELD, state->l.lexeme, state);
 
         GetNextToken(state);
 
@@ -1912,12 +1914,18 @@ static Expr *ParseFactor(Tiny_State *state) {
         } break;
 
         case TINY_TOK_IDENT: {
+            Tiny_TokenPos pos = state->l.pos;
+            int lineNumber = state->l.lineNumber;
+
             char *ident = CloneString(&state->ctx, state->l.lexeme);
             GetNextToken(state);
 
             if (CurTok == TINY_TOK_OPENPAREN) return ParseCall(state, ident);
 
             Expr *exp = Expr_create(EXP_ID, state);
+
+            exp->pos = pos;
+            exp->lineNumber = lineNumber;
 
             exp->id.sym = ReferenceVariable(state, ident);
             exp->id.name = ident;
@@ -1996,7 +2004,7 @@ static Expr *ParseFactor(Tiny_State *state) {
 
             GetNextToken(state);
 
-            Symbol *tag = DeclareStruct(state, state->l.lexeme, true);
+            Tiny_Symbol *tag = DeclareStruct(state, state->l.lexeme, true);
 
             GetNextToken(state);
 
@@ -2224,20 +2232,20 @@ static Expr *ParseStatement(Tiny_State *state) {
                 }
 
                 if (rhs->type == EXP_BOOL) {
-                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_BOOL))->constant.bValue =
-                        rhs->boolean;
+                    DeclareConst(state, lhs->id.name, GetPrimTag(TINY_SYM_TAG_BOOL))
+                        ->constant.bValue = rhs->boolean;
                 } else if (rhs->type == EXP_CHAR) {
-                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_INT))->constant.iValue =
-                        rhs->iValue;
+                    DeclareConst(state, lhs->id.name, GetPrimTag(TINY_SYM_TAG_INT))
+                        ->constant.iValue = rhs->iValue;
                 } else if (rhs->type == EXP_INT) {
-                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_INT))->constant.iValue =
-                        rhs->iValue;
+                    DeclareConst(state, lhs->id.name, GetPrimTag(TINY_SYM_TAG_INT))
+                        ->constant.iValue = rhs->iValue;
                 } else if (rhs->type == EXP_FLOAT) {
-                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_FLOAT))->constant.fValue =
-                        rhs->fValue;
+                    DeclareConst(state, lhs->id.name, GetPrimTag(TINY_SYM_TAG_FLOAT))
+                        ->constant.fValue = rhs->fValue;
                 } else if (rhs->type == EXP_STRING) {
-                    DeclareConst(state, lhs->id.name, GetPrimTag(SYM_TAG_STR))->constant.sIndex =
-                        rhs->sIndex;
+                    DeclareConst(state, lhs->id.name, GetPrimTag(TINY_SYM_TAG_STR))
+                        ->constant.sIndex = rhs->sIndex;
                 } else {
                     ReportError(state, "Expected number or string to be bound to constant '%s'.",
                                 lhs->id.name);
@@ -2318,7 +2326,7 @@ static Expr *ParseStatement(Tiny_State *state) {
                 return exp;
             }
 
-            if (state->currFunc->func.returnTag->type == SYM_TAG_VOID) {
+            if (state->currFunc->func.returnTag->type == TINY_SYM_TAG_VOID) {
                 ReportError(state,
                             "Attempted to return value from function which is "
                             "supposed to return nothing (void).");
@@ -2375,19 +2383,19 @@ static Expr **ParseProgram(Tiny_State *state) {
     return NULL;
 }
 
-static const char *GetTagName(const Symbol *tag) {
+static const char *GetTagName(const Tiny_Symbol *tag) {
     assert(tag);
     return tag->name;
 }
 
 // Checks if types can be narrowed/widened to be equal
-static bool CompareTags(const Symbol *a, const Symbol *b) {
-    if (a->type == SYM_TAG_VOID) {
-        return b->type == SYM_TAG_VOID;
+static bool CompareTags(const Tiny_Symbol *a, const Tiny_Symbol *b) {
+    if (a->type == TINY_SYM_TAG_VOID) {
+        return b->type == TINY_SYM_TAG_VOID;
     }
 
     // Can convert *to* any implicitly
-    if (b->type == SYM_TAG_ANY) {
+    if (b->type == TINY_SYM_TAG_ANY) {
         return true;
     }
 
@@ -2403,22 +2411,22 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
 
     switch (exp->type) {
         case EXP_NULL:
-            exp->tag = GetPrimTag(SYM_TAG_ANY);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_ANY);
             break;
         case EXP_BOOL:
-            exp->tag = GetPrimTag(SYM_TAG_BOOL);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_BOOL);
             break;
         case EXP_CHAR:
-            exp->tag = GetPrimTag(SYM_TAG_INT);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_INT);
             break;
         case EXP_INT:
-            exp->tag = GetPrimTag(SYM_TAG_INT);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_INT);
             break;
         case EXP_FLOAT:
-            exp->tag = GetPrimTag(SYM_TAG_FLOAT);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_FLOAT);
             break;
         case EXP_STRING:
-            exp->tag = GetPrimTag(SYM_TAG_STR);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_STR);
             break;
 
         case EXP_ID: {
@@ -2426,10 +2434,10 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                 ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name);
             }
 
-            assert(exp->id.sym->type == SYM_GLOBAL || exp->id.sym->type == SYM_LOCAL ||
-                   exp->id.sym->type == SYM_CONST);
+            assert(exp->id.sym->type == TINY_SYM_GLOBAL || exp->id.sym->type == TINY_SYM_LOCAL ||
+                   exp->id.sym->type == TINY_SYM_CONST);
 
-            if (exp->id.sym->type != SYM_CONST) {
+            if (exp->id.sym->type != TINY_SYM_CONST) {
                 assert(exp->id.sym->var.tag);
 
                 exp->tag = exp->id.sym->var.tag;
@@ -2439,14 +2447,14 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
         } break;
 
         case EXP_CALL: {
-            Symbol *func = ReferenceFunction(state, exp->call.calleeName);
+            Tiny_Symbol *func = ReferenceFunction(state, exp->call.calleeName);
 
             if (!func) {
                 ReportErrorE(state, exp, "Calling undeclared function '%s'.\n",
                              exp->call.calleeName);
             }
 
-            if (func->type == SYM_FOREIGN_FUNCTION) {
+            if (func->type == TINY_SYM_FOREIGN_FUNCTION) {
                 for (int i = 0; i < sb_count(exp->call.args); ++i) {
                     ResolveTypes(state, exp->call.args[i]);
 
@@ -2459,7 +2467,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
 
                         // We don't break because we want all types to be resolved
                     } else {
-                        const Symbol *argTag = func->foreignFunc.argTags[i];
+                        const Tiny_Symbol *argTag = func->foreignFunc.argTags[i];
 
                         if (!CompareTags(exp->call.args[i]->tag, argTag)) {
                             ReportErrorE(
@@ -2481,7 +2489,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                 for (int i = 0; i < sb_count(exp->call.args); ++i) {
                     ResolveTypes(state, exp->call.args[i]);
 
-                    const Symbol *argSym = func->func.args[i];
+                    const Tiny_Symbol *argSym = func->func.args[i];
 
                     if (!CompareTags(exp->call.args[i]->tag, argSym->var.tag)) {
                         ReportErrorE(state, exp->call.args[i],
@@ -2510,13 +2518,13 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_INT));
-                    bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_INT));
+                    bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
+                    bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
 
                     bool fLhs =
-                        !iLhs && CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_FLOAT));
+                        !iLhs && CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_FLOAT));
                     bool fRhs =
-                        !iRhs && CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_FLOAT));
+                        !iRhs && CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_FLOAT));
 
                     if ((!iLhs && !fLhs) || (!iRhs && !fRhs)) {
                         ReportErrorE(state, exp,
@@ -2526,7 +2534,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                                      GetTagName(exp->binary.rhs->tag));
                     }
 
-                    exp->tag = GetPrimTag((iLhs && iRhs) ? SYM_TAG_INT : SYM_TAG_FLOAT);
+                    exp->tag = GetPrimTag((iLhs && iRhs) ? TINY_SYM_TAG_INT : TINY_SYM_TAG_FLOAT);
                 } break;
 
                 case TINY_TOK_AND:
@@ -2535,8 +2543,8 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_INT));
-                    bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_INT));
+                    bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
+                    bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
 
                     if (!(iLhs && iRhs)) {
                         ReportErrorE(
@@ -2545,7 +2553,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                             GetTagName(exp->binary.lhs->tag), GetTagName(exp->binary.rhs->tag));
                     }
 
-                    exp->tag = GetPrimTag(SYM_TAG_INT);
+                    exp->tag = GetPrimTag(TINY_SYM_TAG_INT);
                 } break;
 
                 case TINY_TOK_LOG_AND:
@@ -2553,8 +2561,8 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    if (!CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_BOOL)) ||
-                        !CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_BOOL))) {
+                    if (!CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_BOOL)) ||
+                        !CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
                         ReportErrorE(state, exp,
                                      "Left and right hand side of binary and/or must be bools, "
                                      "but they're %s and %s",
@@ -2562,7 +2570,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                                      GetTagName(exp->binary.rhs->tag));
                     }
 
-                    exp->tag = GetPrimTag(SYM_TAG_BOOL);
+                    exp->tag = GetPrimTag(TINY_SYM_TAG_BOOL);
                 } break;
 
                 case TINY_TOK_GT:
@@ -2572,13 +2580,13 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_INT));
-                    bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_INT));
+                    bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
+                    bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
 
                     bool fLhs =
-                        !iLhs && CompareTags(exp->binary.lhs->tag, GetPrimTag(SYM_TAG_FLOAT));
+                        !iLhs && CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_FLOAT));
                     bool fRhs =
-                        !iRhs && CompareTags(exp->binary.rhs->tag, GetPrimTag(SYM_TAG_FLOAT));
+                        !iRhs && CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_FLOAT));
 
                     if ((!iLhs && !fLhs) || (!iRhs && !fRhs)) {
                         ReportErrorE(state, exp,
@@ -2588,7 +2596,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                                      GetTagName(exp->binary.rhs->tag));
                     }
 
-                    exp->tag = GetPrimTag(SYM_TAG_BOOL);
+                    exp->tag = GetPrimTag(TINY_SYM_TAG_BOOL);
                 } break;
 
                 case TINY_TOK_EQUALS:
@@ -2596,14 +2604,14 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    if (exp->binary.lhs->tag->type == SYM_TAG_VOID ||
-                        exp->binary.rhs->tag->type == SYM_TAG_VOID) {
+                    if (exp->binary.lhs->tag->type == TINY_SYM_TAG_VOID ||
+                        exp->binary.rhs->tag->type == TINY_SYM_TAG_VOID) {
                         ReportErrorE(
                             state, exp,
                             "Attempted to check for equality with void. This is not allowed.");
                     }
 
-                    exp->tag = GetPrimTag(SYM_TAG_BOOL);
+                    exp->tag = GetPrimTag(TINY_SYM_TAG_BOOL);
                 } break;
 
                 case TINY_TOK_DECLARE: {
@@ -2613,7 +2621,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
 
                     ResolveTypes(state, exp->binary.rhs);
 
-                    if (exp->binary.rhs->tag->type == SYM_TAG_VOID) {
+                    if (exp->binary.rhs->tag->type == TINY_SYM_TAG_VOID) {
                         ReportErrorE(state, exp,
                                      "Attempted to initialize variable with void expression. "
                                      "Don't do that.");
@@ -2621,7 +2629,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
 
                     exp->binary.lhs->id.sym->var.tag = exp->binary.rhs->tag;
 
-                    exp->tag = GetPrimTag(SYM_TAG_VOID);
+                    exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
                 } break;
 
                 case TINY_TOK_PLUSEQUAL:
@@ -2641,12 +2649,12 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                                      GetTagName(exp->binary.lhs->tag));
                     }
 
-                    exp->tag = GetPrimTag(SYM_TAG_VOID);
+                    exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
                 } break;
 
                 default: {
                     ResolveTypes(state, exp->binary.rhs);
-                    exp->tag = GetPrimTag(SYM_TAG_VOID);
+                    exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
                 } break;
             }
         } break;
@@ -2656,24 +2664,24 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
 
             switch (exp->unary.op) {
                 case TINY_TOK_MINUS: {
-                    bool i = CompareTags(exp->unary.exp->tag, GetPrimTag(SYM_TAG_INT));
-                    bool f = !i && CompareTags(exp->unary.exp->tag, GetPrimTag(SYM_TAG_FLOAT));
+                    bool i = CompareTags(exp->unary.exp->tag, GetPrimTag(TINY_SYM_TAG_INT));
+                    bool f = !i && CompareTags(exp->unary.exp->tag, GetPrimTag(TINY_SYM_TAG_FLOAT));
 
                     if (!(i || f)) {
                         ReportErrorE(state, exp, "Attempted to apply unary '-' to a %s.",
                                      GetTagName(exp->unary.exp->tag));
                     }
 
-                    exp->tag = i ? GetPrimTag(SYM_TAG_INT) : GetPrimTag(SYM_TAG_FLOAT);
+                    exp->tag = i ? GetPrimTag(TINY_SYM_TAG_INT) : GetPrimTag(TINY_SYM_TAG_FLOAT);
                 } break;
 
                 case TINY_TOK_BANG: {
-                    if (!CompareTags(exp->unary.exp->tag, GetPrimTag(SYM_TAG_BOOL))) {
+                    if (!CompareTags(exp->unary.exp->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
                         ReportErrorE(state, exp, "Attempted to apply unary 'not' to a %s.",
                                      GetTagName(exp->unary.exp->tag));
                     }
 
-                    exp->tag = GetPrimTag(SYM_TAG_BOOL);
+                    exp->tag = GetPrimTag(TINY_SYM_TAG_BOOL);
                 } break;
 
                 default:
@@ -2687,24 +2695,24 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                 ResolveTypes(state, exp->block[i]);
             }
 
-            exp->tag = GetPrimTag(SYM_TAG_VOID);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
         } break;
 
         case EXP_PROC: {
-            Symbol *prevCurrFunc = state->currFunc;
+            Tiny_Symbol *prevCurrFunc = state->currFunc;
             state->currFunc = exp->proc.decl;
 
             ResolveTypes(state, exp->proc.body);
 
             state->currFunc = prevCurrFunc;
 
-            exp->tag = GetPrimTag(SYM_TAG_VOID);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
         } break;
 
         case EXP_IF: {
             ResolveTypes(state, exp->ifx.cond);
 
-            if (!CompareTags(exp->ifx.cond->tag, GetPrimTag(SYM_TAG_BOOL))) {
+            if (!CompareTags(exp->ifx.cond->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
                 ReportErrorE(state, exp, "If condition is supposed to be a bool but its a %s",
                              GetTagName(exp->ifx.cond->tag));
             }
@@ -2715,7 +2723,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                 ResolveTypes(state, exp->ifx.alt);
             }
 
-            exp->tag = GetPrimTag(SYM_TAG_VOID);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
         } break;
 
         case EXP_RETURN: {
@@ -2731,34 +2739,35 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                         GetTagName(exp->retExpr->tag), state->currFunc->name,
                         GetTagName(state->currFunc->func.returnTag));
                 }
-            } else if (!CompareTags(state->currFunc->func.returnTag, GetPrimTag(SYM_TAG_VOID))) {
+            } else if (!CompareTags(state->currFunc->func.returnTag,
+                                    GetPrimTag(TINY_SYM_TAG_VOID))) {
                 ReportErrorE(state, exp,
                              "Attempted to return without value in function '%s' even though its "
                              "return type is %s",
                              state->currFunc->name, GetTagName(state->currFunc->func.returnTag));
             }
 
-            exp->tag = GetPrimTag(SYM_TAG_VOID);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
         } break;
 
         case EXP_WHILE: {
             ResolveTypes(state, exp->whilex.cond);
 
-            if (!CompareTags(exp->whilex.cond->tag, GetPrimTag(SYM_TAG_BOOL))) {
+            if (!CompareTags(exp->whilex.cond->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
                 ReportErrorE(state, exp, "While condition is supposed to be a bool but its a %s",
                              GetTagName(exp->whilex.cond->tag));
             }
 
             ResolveTypes(state, exp->whilex.body);
 
-            exp->tag = GetPrimTag(SYM_TAG_VOID);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
         } break;
 
         case EXP_FOR: {
             ResolveTypes(state, exp->forx.init);
             ResolveTypes(state, exp->forx.cond);
 
-            if (!CompareTags(exp->forx.cond->tag, GetPrimTag(SYM_TAG_BOOL))) {
+            if (!CompareTags(exp->forx.cond->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
                 ReportErrorE(state, exp, "For condition is supposed to be a bool but its a %s",
                              GetTagName(exp->forx.cond->tag));
             }
@@ -2766,13 +2775,13 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
             ResolveTypes(state, exp->forx.step);
             ResolveTypes(state, exp->forx.body);
 
-            exp->tag = GetPrimTag(SYM_TAG_VOID);
+            exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
         } break;
 
         case EXP_DOT: {
             ResolveTypes(state, exp->dot.lhs);
 
-            if (exp->dot.lhs->tag->type != SYM_TAG_STRUCT) {
+            if (exp->dot.lhs->tag->type != TINY_SYM_TAG_STRUCT) {
                 ReportErrorE(state, exp, "Cannot use '.' on a %s", GetTagName(exp->dot.lhs->tag));
             }
 
@@ -2808,7 +2817,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                 }
 
                 for (int i = 0; i < tagCount; ++i) {
-                    Symbol *expectedField = exp->constructor.structTag->sstruct.fields[i];
+                    Tiny_Symbol *expectedField = exp->constructor.structTag->sstruct.fields[i];
 
                     bool found = false;
 
@@ -2821,7 +2830,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
 
                         ResolveTypes(state, exp->constructor.args[j]);
 
-                        Symbol *provided = exp->constructor.args[j]->tag;
+                        Tiny_Symbol *provided = exp->constructor.args[j]->tag;
 
                         if (!CompareTags(provided, expectedField->fieldTag)) {
                             ReportErrorE(state, exp->constructor.args[j],
@@ -2858,8 +2867,8 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                 for (int i = 0; i < sb_count(exp->constructor.args); ++i) {
                     ResolveTypes(state, exp->constructor.args[i]);
 
-                    Symbol *provided = exp->constructor.args[i]->tag;
-                    Symbol *expected = exp->constructor.structTag->sstruct.fields[i]->fieldTag;
+                    Tiny_Symbol *provided = exp->constructor.args[i]->tag;
+                    Tiny_Symbol *expected = exp->constructor.structTag->sstruct.fields[i]->fieldTag;
 
                     if (!CompareTags(provided, expected)) {
                         ReportErrorE(state, exp->constructor.args[i],
@@ -2882,7 +2891,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
             // TODO(Apaar): Allow casting of int to float etc
 
             // Only allow casting "any" values for now
-            if (exp->cast.value->tag != GetPrimTag(SYM_TAG_ANY)) {
+            if (exp->cast.value->tag != GetPrimTag(TINY_SYM_TAG_ANY)) {
                 ReportErrorE(state, exp->cast.value, "Attempted to cast a %s; only any is allowed.",
                              GetTagName(exp->cast.value->tag));
             }
@@ -2937,14 +2946,14 @@ static void CompileGetIdOrDot(Tiny_State *state, Expr *exp) {
         if (!exp->id.sym)
             ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name);
 
-        assert(exp->id.sym->type == SYM_GLOBAL || exp->id.sym->type == SYM_LOCAL ||
-               exp->id.sym->type == SYM_CONST);
+        assert(exp->id.sym->type == TINY_SYM_GLOBAL || exp->id.sym->type == TINY_SYM_LOCAL ||
+               exp->id.sym->type == TINY_SYM_CONST);
 
-        if (exp->id.sym->type != SYM_CONST) {
-            if (exp->id.sym->type == SYM_GLOBAL) {
+        if (exp->id.sym->type != TINY_SYM_CONST) {
+            if (exp->id.sym->type == TINY_SYM_GLOBAL) {
                 GenerateCode(state, TINY_OP_GET);
                 GenerateInt(state, exp->id.sym->var.index);
-            } else if (exp->id.sym->type == SYM_LOCAL) {
+            } else if (exp->id.sym->type == TINY_SYM_LOCAL) {
                 if (exp->id.sym->var.index < 0 || exp->id.sym->var.index > 0xff) {
                     GenerateCode(state, TINY_OP_GETLOCAL);
                     GenerateInt(state, exp->id.sym->var.index);
@@ -2954,14 +2963,14 @@ static void CompileGetIdOrDot(Tiny_State *state, Expr *exp) {
                 }
             }
         } else {
-            if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_STR)) {
+            if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_STR)) {
                 GeneratePushString(state, exp->id.sym->constant.sIndex);
-            } else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_BOOL)) {
+            } else if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_BOOL)) {
                 GenerateCode(state,
                              exp->id.sym->constant.bValue ? TINY_OP_PUSH_TRUE : TINY_OP_PUSH_FALSE);
-            } else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_INT)) {
+            } else if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_INT)) {
                 GeneratePushInt(state, exp->id.sym->constant.iValue);
-            } else if (exp->id.sym->constant.tag == GetPrimTag(SYM_TAG_FLOAT)) {
+            } else if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_FLOAT)) {
                 GeneratePushFloat(state, exp->id.sym->constant.fValue);
             } else {
                 assert(0);
@@ -2972,7 +2981,7 @@ static void CompileGetIdOrDot(Tiny_State *state, Expr *exp) {
 
         assert(exp->dot.lhs);
         assert(exp->dot.field);
-        assert(exp->dot.lhs->tag->type == SYM_TAG_STRUCT);
+        assert(exp->dot.lhs->tag->type == TINY_SYM_TAG_STRUCT);
 
         int idx;
 
@@ -2996,13 +3005,13 @@ static void CompileCall(Tiny_State *state, Expr *exp) {
 
     for (int i = 0; i < sb_count(exp->call.args); ++i) CompileExpr(state, exp->call.args[i]);
 
-    Symbol *sym = ReferenceFunction(state, exp->call.calleeName);
+    Tiny_Symbol *sym = ReferenceFunction(state, exp->call.calleeName);
     if (!sym) {
         ReportErrorE(state, exp, "Attempted to call undefined function '%s'.\n",
                      exp->call.calleeName);
     }
 
-    if (sym->type == SYM_FOREIGN_FUNCTION) {
+    if (sym->type == TINY_SYM_FOREIGN_FUNCTION) {
         GenerateCode(state, TINY_OP_CALLF);
 
         int nargs = sb_count(exp->call.args);
@@ -3403,10 +3412,10 @@ static void CompileStatement(Tiny_State *state, Expr *exp) {
                                              exp->binary.lhs->id.name);
                             }
 
-                            if (exp->binary.lhs->id.sym->type == SYM_GLOBAL) {
+                            if (exp->binary.lhs->id.sym->type == TINY_SYM_GLOBAL) {
                                 GenerateCode(state, TINY_OP_SET);
                                 GenerateInt(state, exp->binary.lhs->id.sym->var.index);
-                            } else if (exp->binary.lhs->id.sym->type == SYM_LOCAL) {
+                            } else if (exp->binary.lhs->id.sym->type == TINY_SYM_LOCAL) {
                                 GenerateCode(state, TINY_OP_SETLOCAL);
                                 GenerateInt(state, exp->binary.lhs->id.sym->var.index);
                             } else  // Probably a constant, can't change it
@@ -3418,7 +3427,7 @@ static void CompileStatement(Tiny_State *state, Expr *exp) {
                             exp->binary.lhs->id.sym->var.initialized = true;
                         } else {
                             assert(exp->binary.lhs->type == EXP_DOT);
-                            assert(exp->binary.lhs->dot.lhs->tag->type == SYM_TAG_STRUCT);
+                            assert(exp->binary.lhs->dot.lhs->tag->type == TINY_SYM_TAG_STRUCT);
 
                             int idx;
 
@@ -3668,20 +3677,20 @@ static void CheckInitialized(Tiny_State *state) {
     const char *fmt = "Attempted to use uninitialized variable '%s'.\n";
 
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Symbol *node = state->globalSymbols[i];
+        Tiny_Symbol *node = state->globalSymbols[i];
 
-        assert(node->type != SYM_LOCAL);
+        assert(node->type != TINY_SYM_LOCAL);
 
-        if (node->type == SYM_GLOBAL) {
+        if (node->type == TINY_SYM_GLOBAL) {
             if (!node->var.initialized) {
                 ReportErrorS(state, node, fmt, node->name);
             }
-        } else if (node->type == SYM_FUNCTION) {
+        } else if (node->type == TINY_SYM_FUNCTION) {
             // Only check locals, arguments are initialized implicitly
             for (int i = 0; i < sb_count(node->func.locals); ++i) {
-                Symbol *local = node->func.locals[i];
+                Tiny_Symbol *local = node->func.locals[i];
 
-                assert(local->type == SYM_LOCAL);
+                assert(local->type == TINY_SYM_LOCAL);
 
                 if (!local->var.initialized) {
                     ReportErrorS(state, local, fmt, local->name);
@@ -3695,9 +3704,9 @@ static void CheckInitialized(Tiny_State *state) {
 // functions to their respective index in ForeignFunctions
 static void BuildForeignFunctions(Tiny_State *state) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Symbol *node = state->globalSymbols[i];
+        Tiny_Symbol *node = state->globalSymbols[i];
 
-        if (node->type == SYM_FOREIGN_FUNCTION)
+        if (node->type == TINY_SYM_FOREIGN_FUNCTION)
             state->foreignFunctions[node->foreignFunc.index] = node->foreignFunc.callee;
     }
 }
@@ -3750,8 +3759,8 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
 
     // Make sure all structs are defined
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Symbol *s = state->globalSymbols[i];
-        if (s->type == SYM_TAG_STRUCT && !s->sstruct.defined) {
+        Tiny_Symbol *s = state->globalSymbols[i];
+        if (s->type == TINY_SYM_TAG_STRUCT && !s->sstruct.defined) {
             ReportErrorS(state, s, "Referenced undefined struct %s.", s->name);
         }
     }

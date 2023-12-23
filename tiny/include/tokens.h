@@ -65,5 +65,3 @@ typedef enum {
 
     TINY_TOK_EOF,
 } Tiny_TokenKind;
-
-typedef int Tiny_TokenPos;

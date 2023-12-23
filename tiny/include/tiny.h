@@ -123,6 +123,95 @@ typedef Tiny_Value (*Tiny_ForeignFunction)(Tiny_StateThread *thread, const Tiny_
 #define TINY_FOREIGN_FUNCTION(name) \
     Tiny_Value name(Tiny_StateThread *thread, const Tiny_Value *args, int count)
 
+// This is the primary struct for the Tiny symbol table.
+// It is exposed so that bindings can offer reflection capabilities
+// and improve type safety.
+//
+// More literally, it is also the type of the args passed
+// to the module function when we see
+//
+// use module_name(arg1, arg2, ...) as x
+typedef enum {
+    TINY_SYM_GLOBAL,
+    TINY_SYM_LOCAL,
+    TINY_SYM_CONST,
+    TINY_SYM_FUNCTION,
+    TINY_SYM_FOREIGN_FUNCTION,
+    TINY_SYM_FIELD,
+
+    TINY_SYM_TAG_VOID,
+    TINY_SYM_TAG_BOOL,
+    TINY_SYM_TAG_INT,
+    TINY_SYM_TAG_FLOAT,
+    TINY_SYM_TAG_STR,
+    TINY_SYM_TAG_ANY,
+    TINY_SYM_TAG_FOREIGN,
+    TINY_SYM_TAG_STRUCT
+} Tiny_SymbolType;
+
+typedef int Tiny_TokenPos;
+
+typedef struct Tiny_Symbol {
+    Tiny_SymbolType type;
+    char *name;
+
+    Tiny_TokenPos pos;
+
+    union {
+        struct {
+            bool initialized;  // Has the variable been assigned to?
+            bool scopeEnded;   // If true, then this variable cannot be accessed anymore
+            int scope, index;
+
+            struct Tiny_Symbol *tag;
+        } var;  // Used for both local and global
+
+        struct {
+            struct Tiny_Symbol *tag;
+
+            union {
+                bool bValue;  // for bool
+                int iValue;   // for char/int
+                int fValue;   // for float
+                int sIndex;   // for string
+            };
+        } constant;
+
+        struct {
+            int index;
+
+            struct Tiny_Symbol **args;    // array
+            struct Tiny_Symbol **locals;  // array
+
+            struct Tiny_Symbol *returnTag;
+        } func;
+
+        struct {
+            int index;
+
+            // nargs = sb_count
+            struct Tiny_Symbol **argTags;  // array
+            bool varargs;
+
+            struct Tiny_Symbol *returnTag;
+
+            Tiny_ForeignFunction callee;
+        } foreignFunc;
+
+        struct {
+            // If a struct type is referred to before definition
+            // it is declared automatically but with this field
+            // set to false. The compiler will check that no
+            // such symbols exist before it finishes compilation.
+            bool defined;
+
+            struct Tiny_Symbol **fields;  // array
+        } sstruct;
+
+        struct Tiny_Symbol *fieldTag;
+    };
+} Tiny_Symbol;
+
 extern const Tiny_Value Tiny_Null;
 
 void Tiny_ProtectFromGC(Tiny_Value value);

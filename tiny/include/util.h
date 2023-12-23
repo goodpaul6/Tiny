@@ -3,7 +3,7 @@
 #include <stdarg.h>
 #include <stddef.h>
 
-#include "tokens.h"
+#include "tiny.h"
 
 typedef struct Tiny_Context Tiny_Context;
 
