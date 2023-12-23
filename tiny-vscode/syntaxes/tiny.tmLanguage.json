@@ -2,6 +2,9 @@
 	"$schema": "https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json",
 	"name": "Tiny",
 	"patterns": [
+        {
+            "include": "#comments"
+        },
 		{
 			"include": "#keywords"
 		},
@@ -9,13 +12,23 @@
 			"include": "#strings"
 		},
         {
+            "include": "#chars"
+        },
+        {
             "include": "#types"
         },
         {
             "include": "#functions"
+        },
+        {
+            "include": "#constants"
         }
 	],
 	"repository": {
+        "comments": {
+            "match": "//.*",
+            "name": "comment.line.double-slash.tiny"
+        },
 		"keywords": {
 			"patterns": [
                 {
@@ -42,6 +55,10 @@
 				}
 			]
 		},
+        "chars": {
+            "name": "string.quoted.single.tiny",
+            "match": "'.*'"
+        },
         "types": {
             "patterns": [
                 {
@@ -62,6 +79,22 @@
                             "name": "entity.name.type.struct.tiny"
                         }
                     }
+                },
+                {
+                    "match": ":\\s*([A-Za-z_][A-Za-z0-9_]*)\\b",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.type.struct.tiny"
+                        }
+                    }
+                },
+                {
+                    "match": "cast\\(.*,\\s*([A-Za-z_][A-Za-z0-9_]*)\\)",
+                    "captures": {
+                        "1": {
+                            "name": "entity.name.type.struct.tiny"
+                        }
+                    }
                 }
             ]
         },
@@ -79,6 +112,10 @@
                     }
                 }
             ]
+        },
+        "constants": {
+            "match": "\\b(null|true\false)\\b",
+            "name": "constant.language.tiny"
         }
 	},
 	"scopeName": "source.tiny"

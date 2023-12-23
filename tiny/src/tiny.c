@@ -3720,6 +3720,10 @@ static void CompileState(Tiny_State *state, Expr **prog) {
         }
     }
 
+    for (int i = 0; i < sb_count(prog); ++i) {
+        ResolveTypes(state, prog[i]);
+    }
+
     // Allocate room for vm execution info
 
     // We realloc because this state might be compiled multiple times (if, e.g.,
@@ -3739,10 +3743,6 @@ static void CompileState(Tiny_State *state, Expr **prog) {
     assert(state->numFunctions == 0 || state->functionPcs);
 
     BuildForeignFunctions(state);
-
-    for (int i = 0; i < sb_count(prog); ++i) {
-        ResolveTypes(state, prog[i]);
-    }
 
     CompileProgram(state, prog);
     GenerateCode(state, TINY_OP_HALT);
@@ -3765,9 +3765,9 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
         }
     }
 
-    CompileState(state, prog);
-
     Tiny_DestroyLexer(&state->l);
+
+    CompileState(state, prog);
 
     DeleteProgram(prog, &state->ctx);
 }
@@ -3796,4 +3796,27 @@ void Tiny_CompileFile(Tiny_State *state, const char *filename) {
     Tiny_CompileString(state, filename, s);
 
     TFree(&state->ctx, s);
+}
+
+void Tiny_BindModule(Tiny_State *state, const char *name, Tiny_ModuleFunction fn) {
+    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        Tiny_Symbol *s = state->globalSymbols[i];
+        if (s->type == TINY_SYM_MODULE && strcmp(s->name, name) == 0) {
+            // TODO(Apaar): Do not error exit here, just return a valid result type!
+            fprintf(stderr, "There is already a module bound to name '%s'.", name);
+            exit(1);
+        }
+    }
+
+    Tiny_Symbol *newNode = Symbol_create(TINY_SYM_MODULE, name, state);
+
+    newNode->modFunc = fn;
+
+    sb_push(&state->ctx, state->globalSymbols, newNode);
+}
+
+size_t Tiny_SymbolArrayCount(const Tiny_Symbol **arr) { return sb_count(arr); }
+
+const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name) {
+    return GetTagFromName(state, name, false);
 }

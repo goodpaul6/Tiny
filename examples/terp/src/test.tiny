@@ -1,36 +1,36 @@
-// i := int_to_i64(0)
-// 
-// i = i64_add_many(int_to_i64(1000))
-// 
-// printf("%s\n", i64_to_string(i))
-// 
-// arr := array()
-// 
-// array_push(arr, 10)
-// 
-// printf("%q\n", arr)
-// 
-// s := ""
-// 
-// if strlen(s) == 0 || stridx(s, 0) == 'a' {
-//     printf("Short circuit or works\n")
-// }
-// 
-// struct Test {
-//     x: int
-//     y: int
-// }
-// 
-// printf("%q\n", new Test{10, 20})
-// 
-// //func should_not_compile(): int {
-// //    return ""
-// //}
-// 
-// func assign_to_arg(n: int) {
-//     n = 10
-//     printf("%q\n", n)
-// }
+i := int_to_i64(0)
+
+i = i64_add_many(int_to_i64(1000))
+
+printf("%s\n", i64_to_string(i))
+
+arr := array()
+
+array_push(arr, 10)
+
+printf("%q\n", arr)
+
+s := ""
+
+if strlen(s) == 0 || stridx(s, 0) == 'a' {
+    printf("Short circuit or works\n")
+}
+
+struct Test {
+    x: int
+    y: int
+}
+
+printf("%q\n", new Test{10, 20})
+
+//func should_not_compile(): int {
+//    return ""
+//}
+
+func assign_to_arg(n: int) {
+    n = 10
+    printf("%q\n", n)
+}
 
 func array_has(arr: array, obj: any): bool {
     len := array_len(arr)
@@ -45,17 +45,17 @@ func array_has(arr: array, obj: any): bool {
     return false
 }
 
-struct Test {
+struct Test2 {
     x: int
 }
 
-a := new Test{10}
-b := new Test{20}
-c := new Test{30}
+a := new Test2{10}
+b := new Test2{20}
+c := new Test2{30}
 
-arr := array(a, b, c)
+arr2 := array(a, b, c)
 
-if !array_has(arr, a) {
+if !array_has(arr2, a) {
     printf("hello\n")
 }
 
@@ -63,6 +63,55 @@ struct Point {
     x: int
     y: int
 }
+
+// Proposed syntax for specializing generic modules
+//
+// use array(Point) as pt_array
+//
+// `use` keyword indicates that we're specializing a module
+// `array` is the module name (which is also the primary opaque type exposed by the module)
+// `as pt_array` renames the type from the generic `array` to `pt_array`, and all the functions
+// in the module (which will always be prefixed by the module name) are renamed to `pt_array_*`
+
+// Will this work for other generics? What about variadics?
+// Basically we expose a simple:
+//
+// Tiny_BindModule("array", ModuleBinderFn)
+//
+// void ModuleBinderFn(Tiny_State* state, Tiny_Symbol** args, int nargs, const char* newName);
+//
+// This is called just after parsing, but just before resolving types, for each
+// `use` statement we encounter in a file.
+//
+// The `ModuleBinderFn` can literally do anything to the state that may be used in the type/symbol
+// resolution step.
+//
+// For arrays, it may just bind all the array functions with `newName` as the prefix.
+//
+// But note how it is variadic, so we can do fancy things like defining our own type-safe delegate
+// type:
+// use delegate(int, int, int) as compare_fn
+//
+// We can even have it receive literals and do some really fancy compile-time codegen stuff in the future?
+//
+// But what would be necessary for any of this is some amount of introspection into the symbol table at the
+// point where we run these module functions.
+//
+// For the delegate example above, we still wouldn't be typesafe if we had a runtime thing like:
+//
+// compare_fn_create("my_compare_fn_name")
+//
+// because we can't check `my_compare_fn_name` to make sure it has the correct arguments.
+//
+// Instead, we would want to move as much of that work into compile time by just having
+//
+// use delegate(my_compare_fn_name) as compare_fn
+//
+// and then later we can just use `compare_fn` (for the type) and `compare_fn_create()` no args
+// to get a reference to _that_ specific fn. (Note that we'd need to pass along some additional context to BindFunction
+// to remember e.g. the function index, so maybe new API Tiny_BindFunctionWithContext that takes a void*).
+//
+// 
 
 printf("%q\n", new Point{10, 20})
 printf("%q\n", new Point{.y = 10, .x = 20})

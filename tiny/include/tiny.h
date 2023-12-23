@@ -123,95 +123,6 @@ typedef Tiny_Value (*Tiny_ForeignFunction)(Tiny_StateThread *thread, const Tiny_
 #define TINY_FOREIGN_FUNCTION(name) \
     Tiny_Value name(Tiny_StateThread *thread, const Tiny_Value *args, int count)
 
-// This is the primary struct for the Tiny symbol table.
-// It is exposed so that bindings can offer reflection capabilities
-// and improve type safety.
-//
-// More literally, it is also the type of the args passed
-// to the module function when we see
-//
-// use module_name(arg1, arg2, ...) as x
-typedef enum {
-    TINY_SYM_GLOBAL,
-    TINY_SYM_LOCAL,
-    TINY_SYM_CONST,
-    TINY_SYM_FUNCTION,
-    TINY_SYM_FOREIGN_FUNCTION,
-    TINY_SYM_FIELD,
-
-    TINY_SYM_TAG_VOID,
-    TINY_SYM_TAG_BOOL,
-    TINY_SYM_TAG_INT,
-    TINY_SYM_TAG_FLOAT,
-    TINY_SYM_TAG_STR,
-    TINY_SYM_TAG_ANY,
-    TINY_SYM_TAG_FOREIGN,
-    TINY_SYM_TAG_STRUCT
-} Tiny_SymbolType;
-
-typedef int Tiny_TokenPos;
-
-typedef struct Tiny_Symbol {
-    Tiny_SymbolType type;
-    char *name;
-
-    Tiny_TokenPos pos;
-
-    union {
-        struct {
-            bool initialized;  // Has the variable been assigned to?
-            bool scopeEnded;   // If true, then this variable cannot be accessed anymore
-            int scope, index;
-
-            struct Tiny_Symbol *tag;
-        } var;  // Used for both local and global
-
-        struct {
-            struct Tiny_Symbol *tag;
-
-            union {
-                bool bValue;  // for bool
-                int iValue;   // for char/int
-                int fValue;   // for float
-                int sIndex;   // for string
-            };
-        } constant;
-
-        struct {
-            int index;
-
-            struct Tiny_Symbol **args;    // array
-            struct Tiny_Symbol **locals;  // array
-
-            struct Tiny_Symbol *returnTag;
-        } func;
-
-        struct {
-            int index;
-
-            // nargs = sb_count
-            struct Tiny_Symbol **argTags;  // array
-            bool varargs;
-
-            struct Tiny_Symbol *returnTag;
-
-            Tiny_ForeignFunction callee;
-        } foreignFunc;
-
-        struct {
-            // If a struct type is referred to before definition
-            // it is declared automatically but with this field
-            // set to false. The compiler will check that no
-            // such symbols exist before it finishes compilation.
-            bool defined;
-
-            struct Tiny_Symbol **fields;  // array
-        } sstruct;
-
-        struct Tiny_Symbol *fieldTag;
-    };
-} Tiny_Symbol;
-
 extern const Tiny_Value Tiny_Null;
 
 void Tiny_ProtectFromGC(Tiny_Value value);
@@ -423,5 +334,134 @@ void Tiny_BindStandardLib(Tiny_State *state);
 void Tiny_BindI64(Tiny_State *state);
 
 void Tiny_DestroyThread(Tiny_StateThread *thread);
+
+// The following functions are part of the "advanced" API for Tiny.
+// They allow you to access certain aspects of the compiler (in this
+// case, the symbol table) in order to improve your bindings.
+//
+// You shouldn't need these in most cases, but if you do, please refer
+// to std.c for examples of how you can take advantage of them.
+
+typedef enum Tiny_ModuleResultType {
+    TINY_MODULE_SUCCESS = 0,
+    TINY_MODULE_ERROR = 1
+} Tiny_ModuleResultType;
+
+typedef struct Tiny_ModuleResult {
+    Tiny_ModuleResultType type;
+    const char *errorMessage;
+} Tiny_ModuleResult;
+
+// This function is called for each instance of the `use` statement in Tiny code.
+//
+// It runs right after we've parsed all the code but just
+// before we type check all the code and check for calls to
+// undefined functions/references to undefined structs.
+//
+// What this means is that your module can bind functions/types on the fly based on the
+// provided arguments and it can also reference all the existing types in the code to do so.
+//
+// This is very useful for making generic modules (see the array module in std.c for example)
+// or generating serializers/deserializers for user-defined types by using Tiny_CompileString
+// within these functions.
+typedef Tiny_ModuleResult (*Tiny_ModuleFunction)(Tiny_State *state, const char **args, int nargs,
+                                                 const char *asName);
+
+// This is the primary struct for the Tiny symbol table.
+// It is exposed so that bindings can offer reflection capabilities
+// and improve type safety.
+typedef enum {
+    TINY_SYM_GLOBAL,
+    TINY_SYM_LOCAL,
+    TINY_SYM_CONST,
+    TINY_SYM_FUNCTION,
+    TINY_SYM_FOREIGN_FUNCTION,
+    TINY_SYM_FIELD,
+    TINY_SYM_MODULE,
+
+    TINY_SYM_TAG_VOID,
+    TINY_SYM_TAG_BOOL,
+    TINY_SYM_TAG_INT,
+    TINY_SYM_TAG_FLOAT,
+    TINY_SYM_TAG_STR,
+    TINY_SYM_TAG_ANY,
+    TINY_SYM_TAG_FOREIGN,
+    TINY_SYM_TAG_STRUCT
+} Tiny_SymbolType;
+
+typedef int Tiny_TokenPos;
+
+// For all the fields marked with `// array` below, you can use
+// the Tiny_SymbolArrayCount() function to get the length of the arrays.
+typedef struct Tiny_Symbol {
+    Tiny_SymbolType type;
+    char *name;
+
+    Tiny_TokenPos pos;
+
+    union {
+        struct {
+            bool initialized;  // Has the variable been assigned to?
+            bool scopeEnded;   // If true, then this variable cannot be accessed anymore
+            int scope, index;
+
+            struct Tiny_Symbol *tag;
+        } var;  // Used for both local and global
+
+        struct {
+            struct Tiny_Symbol *tag;
+
+            union {
+                bool bValue;  // for bool
+                int iValue;   // for char/int
+                int fValue;   // for float
+                int sIndex;   // for string
+            };
+        } constant;
+
+        struct {
+            int index;
+
+            struct Tiny_Symbol **args;    // array
+            struct Tiny_Symbol **locals;  // array
+
+            struct Tiny_Symbol *returnTag;
+        } func;
+
+        struct {
+            int index;
+
+            // nargs = sb_count
+            struct Tiny_Symbol **argTags;  // array
+            bool varargs;
+
+            struct Tiny_Symbol *returnTag;
+
+            Tiny_ForeignFunction callee;
+        } foreignFunc;
+
+        struct {
+            // If a struct type is referred to before definition
+            // it is declared automatically but with this field
+            // set to false. The compiler will check that no
+            // such symbols exist before it finishes compilation.
+            bool defined;
+
+            struct Tiny_Symbol **fields;  // array
+        } sstruct;
+
+        struct Tiny_Symbol *fieldTag;
+
+        Tiny_ModuleFunction modFunc;
+    };
+} Tiny_Symbol;
+
+void Tiny_BindModule(Tiny_State *state, const char *name, Tiny_ModuleFunction fn);
+
+size_t Tiny_SymbolArrayCount(const Tiny_Symbol **arr);
+
+const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name);
+
+// TODO(Apaar): Tiny_FindFuncSymbol, Tiny_FindConstSymbol, etc
 
 #endif
