@@ -3,4 +3,4 @@ struct Point {
     y: int
 }
 
-use json_mod("Point")
+use json("Point")
