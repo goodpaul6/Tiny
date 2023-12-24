@@ -21,6 +21,7 @@ typedef enum {
     TINY_TOK_SEMI,
     TINY_TOK_COLON,
     TINY_TOK_DOT,
+    TINY_TOK_ELLIPSIS,
 
     TINY_TOK_LOG_AND,  // &&
     TINY_TOK_LOG_OR,   // ||

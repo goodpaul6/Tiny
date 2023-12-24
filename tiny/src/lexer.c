@@ -18,6 +18,13 @@ static int GetChar(Tiny_Lexer *l) {
 }
 
 inline static int Peek(Tiny_Lexer *l) { return l->src[l->pos]; }
+inline static int Peek2(Tiny_Lexer *l) {
+    if (l->src[l->pos] == 0) {
+        return 0;
+    }
+
+    return l->src[l->pos + 1];
+}
 
 static void ReportError(Tiny_Lexer *l, const char *s, ...) {
     va_list args;
@@ -63,6 +70,15 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
         }
 
         return Tiny_GetToken(l);
+    }
+
+    if (l->last == '.' && Peek(l) == '.' && Peek2(l) == '.') {
+        ResetLexeme(l);
+        char *buf = sb_add(&l->ctx, l->lexeme, 4);
+        strcpy(buf, "...");
+        l->pos += 2;
+        l->last = GetChar(l);
+        return TINY_TOK_ELLIPSIS;
     }
 
 #define MATCH2(s, tok)                            \

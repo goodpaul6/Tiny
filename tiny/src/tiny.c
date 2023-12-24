@@ -52,6 +52,9 @@ static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj) {
         char *internalStr = (char *)obj + sizeof(Tiny_Object);
 
         if (obj->string.ptr == internalStr) {
+            // FIXME(Apaar): Is it possible for there to be a string which just happens to be
+            // allocated after the object pointer?
+
             // If the string pointer is directly after the object then it is part of the object
             // allocation and does not need to be freed separately
         } else {
@@ -878,86 +881,76 @@ void Tiny_RegisterType(Tiny_State *state, const char *name) {
     sb_push(&state->ctx, state->globalSymbols, s);
 }
 
-static void ScanUntilDelim(const char **ps, char **buf, Tiny_Context *ctx) {
-    const char *s = *ps;
-
-    while (*s && *s != '(' && *s != ')' && *s != ',') {
-        if (isspace(*s)) {
-            s += 1;
-            continue;
-        }
-
-        sb_push(ctx, *buf, *s++);
-    }
-
-    sb_push(ctx, *buf, 0);
-
-    *ps = s;
-}
-
 void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction func) {
-    char *name = NULL;
+    Tiny_Lexer l;
 
-    ScanUntilDelim(&sig, &name, &state->ctx);
+    Tiny_InitLexer(&l, "(bind signature)", sig, state->ctx);
 
-    if (!sig[0]) {
+    Tiny_TokenKind tok = Tiny_GetToken(&l);
+
+    assert(tok == TINY_TOK_IDENT);
+
+    char *name = CloneString(&state->ctx, l.lexeme);
+
+    tok = Tiny_GetToken(&l);
+
+    if (tok != TINY_TOK_OPENPAREN) {
         // Just the name
         BindFunction(state, name, NULL, true, GetPrimTag(TINY_SYM_TAG_ANY), func);
+        Tiny_DestroyLexer(&l);
 
-        sb_free(&state->ctx, name);
+        TFree(&state->ctx, name);
+
         return;
     }
 
-    sig += 1;
-
     Tiny_Symbol **argTags = NULL;
     bool varargs = false;
-    char *buf = NULL;
 
-    while (*sig != ')' && !varargs) {
-        ScanUntilDelim(&sig, &buf, &state->ctx);
+    for (;;) {
+        tok = Tiny_GetToken(&l);
 
-        if (strcmp(buf, "...") == 0) {
-            varargs = true;
-
-            sb_free(&state->ctx, buf);
-            buf = NULL;
+        if (tok == TINY_TOK_CLOSEPAREN) {
             break;
+        }
+
+        if (tok == TINY_TOK_COMMA) {
+            tok = Tiny_GetToken(&l);
+        }
+
+        if (tok == TINY_TOK_ELLIPSIS) {
+            varargs = true;
         } else {
-            Tiny_Symbol *s = GetTagFromName(state, buf, false);
+            assert(tok == TINY_TOK_IDENT);
+
+            Tiny_Symbol *s = GetTagFromName(state, l.lexeme, false);
 
             assert(s);
 
             sb_push(&state->ctx, argTags, s);
-
-            sb_free(&state->ctx, buf);
-            buf = NULL;
         }
-
-        if (*sig == ',') ++sig;
     }
 
-    assert(*sig == ')');
+    assert(tok == TINY_TOK_CLOSEPAREN);
 
-    sig += 1;
+    tok = Tiny_GetToken(&l);
 
     Tiny_Symbol *returnTag = GetPrimTag(TINY_SYM_TAG_ANY);
 
-    if (*sig == ':') {
-        sig += 1;
+    if (tok == TINY_TOK_COLON) {
+        tok = Tiny_GetToken(&l);
 
-        ScanUntilDelim(&sig, &buf, &state->ctx);
+        assert(tok == TINY_TOK_IDENT);
 
-        returnTag = GetTagFromName(state, buf, false);
+        returnTag = GetTagFromName(state, l.lexeme, false);
         assert(returnTag);
-
-        sb_free(&state->ctx, buf);
     }
 
     BindFunction(state, name, argTags, varargs, returnTag, func);
 
-    // BindFunction copies name
-    sb_free(&state->ctx, name);
+    Tiny_DestroyLexer(&l);
+
+    TFree(&state->ctx, name);
 }
 
 void Tiny_BindConstBool(Tiny_State *state, const char *name, bool b) {
