@@ -2212,6 +2212,9 @@ static Expr *ParseStatement(Tiny_State *state) {
 
             int op = CurTok;
 
+            int lineNumber = state->l.lineNumber;
+            Tiny_TokenPos pos = state->l.pos;
+
             if (CurTok == TINY_TOK_DECLARE || CurTok == TINY_TOK_COLON) {
                 if (lhs->type != EXP_ID) {
                     ReportError(state, "Left hand side of declaration must be identifier.");
@@ -2269,6 +2272,9 @@ static Expr *ParseStatement(Tiny_State *state) {
             }
 
             Expr *bin = Expr_create(EXP_BINARY, state);
+
+            bin->lineNumber = lineNumber;
+            bin->pos = pos;
 
             bin->binary.lhs = lhs;
             bin->binary.rhs = rhs;
@@ -2478,6 +2484,29 @@ static bool CompareTags(const Tiny_Symbol *a, const Tiny_Symbol *b) {
     return false;
 }
 
+static bool IsTagAssignableTo(const Tiny_Symbol *src, const Tiny_Symbol *dest) {
+    if (src->type == TINY_SYM_TAG_VOID) {
+        // Can't assign void to anything
+        return false;
+    }
+
+    if (dest->type == TINY_SYM_TAG_ANY) {
+        // Can always assign _to_ any
+        return true;
+    }
+
+    if (src->type == TINY_SYM_TAG_ANY) {
+        // Can only assign any to any
+        return dest->type == TINY_SYM_TAG_ANY;
+    }
+
+    if (src->type == dest->type) {
+        return strcmp(src->name, dest->name) == 0;
+    }
+
+    return false;
+}
+
 static void ResolveTypes(Tiny_State *state, Expr *exp) {
     if (exp->tag) return;
 
@@ -2541,7 +2570,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                     } else {
                         const Tiny_Symbol *argTag = func->foreignFunc.argTags[i];
 
-                        if (!CompareTags(exp->call.args[i]->tag, argTag)) {
+                        if (!IsTagAssignableTo(exp->call.args[i]->tag, argTag)) {
                             ReportErrorE(
                                 state, exp->call.args[i],
                                 "Argument %i is supposed to be a %s but you supplied a %s\n", i + 1,
@@ -2563,7 +2592,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
 
                     const Tiny_Symbol *argSym = func->func.args[i];
 
-                    if (!CompareTags(exp->call.args[i]->tag, argSym->var.tag)) {
+                    if (!IsTagAssignableTo(exp->call.args[i]->tag, argSym->var.tag)) {
                         ReportErrorE(state, exp->call.args[i],
                                      "Argument %i is supposed to be a %s but you supplied a %s\n",
                                      i + 1, GetTagName(argSym->var.tag),
@@ -2715,8 +2744,8 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    if (!CompareTags(exp->binary.lhs->tag, exp->binary.rhs->tag)) {
-                        ReportErrorE(state, exp, "Attempted to assign a %s to a %s",
+                    if (!IsTagAssignableTo(exp->binary.rhs->tag, exp->binary.lhs->tag)) {
+                        ReportErrorE(state, exp, "Attempted to assign a %s to a %s. Can't do that.",
                                      GetTagName(exp->binary.rhs->tag),
                                      GetTagName(exp->binary.lhs->tag));
                     }
@@ -2804,15 +2833,14 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
             if (exp->retExpr) {
                 ResolveTypes(state, exp->retExpr);
 
-                if (!CompareTags(state->currFunc->func.returnTag, exp->retExpr->tag)) {
+                if (!IsTagAssignableTo(exp->retExpr->tag, state->currFunc->func.returnTag)) {
                     ReportErrorE(
                         state, exp,
                         "You tried to return a '%s' from function '%s' but its return type is '%s'",
                         GetTagName(exp->retExpr->tag), state->currFunc->name,
                         GetTagName(state->currFunc->func.returnTag));
                 }
-            } else if (!CompareTags(state->currFunc->func.returnTag,
-                                    GetPrimTag(TINY_SYM_TAG_VOID))) {
+            } else if (state->currFunc->func.returnTag->type != TINY_SYM_TAG_VOID) {
                 ReportErrorE(state, exp,
                              "Attempted to return without value in function '%s' even though its "
                              "return type is %s",
@@ -2962,8 +2990,9 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
 
             // TODO(Apaar): Allow casting of int to float etc
 
-            // Only allow casting "any" values for now
-            if (exp->cast.value->tag != GetPrimTag(TINY_SYM_TAG_ANY)) {
+            // Allow casting from any or to any, but nothing else
+            if (exp->cast.value->tag->type != TINY_SYM_TAG_ANY &&
+                exp->cast.tag->type != TINY_SYM_TAG_ANY) {
                 ReportErrorE(state, exp->cast.value, "Attempted to cast a %s; only any is allowed.",
                              GetTagName(exp->cast.value->tag));
             }
@@ -3887,7 +3916,7 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
     }
 
     // Make sure all structs are defined
-    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+    for (int i = firstSymIndex; i < lastSymIndex; ++i) {
         Tiny_Symbol *s = state->globalSymbols[i];
         if (s->type == TINY_SYM_TAG_STRUCT && !s->sstruct.defined) {
             ReportErrorS(state, s, "Referenced undefined struct %s.", s->name);
