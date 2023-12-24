@@ -36,12 +36,16 @@
                     "match": "\\b(if|while|for|return|else|cast|break|continue)\\b"
                 },
                 {
-                    "name": "keyword.operator.new",
+                    "name": "keyword.operator.new.tiny",
                     "match": "\\b(new)\\b"
                 },
                 {
-                    "name": "keyword.operator",
+                    "name": "keyword.other.tiny",
                     "match": "\\b(use)\\b"
+                },
+                {
+                    "name": "keyword.other.tiny",
+                    "match": "\\)\\s+(as)\\b"
                 }
             ]
 		},
@@ -85,7 +89,7 @@
                     "match": ":\\s*([A-Za-z_][A-Za-z0-9_]*)\\b",
                     "captures": {
                         "1": {
-                            "name": "entity.name.type.struct.tiny"
+                            "name": "entity.name.type.tiny"
                         }
                     }
                 },
@@ -93,7 +97,7 @@
                     "match": "cast\\(.*,\\s*([A-Za-z_][A-Za-z0-9_]*)\\)",
                     "captures": {
                         "1": {
-                            "name": "entity.name.type.struct.tiny"
+                            "name": "entity.name.type.cast.tiny"
                         }
                     }
                 }

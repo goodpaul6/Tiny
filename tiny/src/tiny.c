@@ -3843,14 +3843,6 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
 
     int lastSymIndex = sb_count(state->globalSymbols);
 
-    // Make sure all structs are defined
-    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Tiny_Symbol *s = state->globalSymbols[i];
-        if (s->type == TINY_SYM_TAG_STRUCT && !s->sstruct.defined) {
-            ReportErrorS(state, s, "Referenced undefined struct %s.", s->name);
-        }
-    }
-
     // Just before we do into the type resolution state, apply all the module functions
     for (int i = 0; i < sb_count(prog); ++i) {
         Expr *exp = prog[i];
@@ -3882,6 +3874,14 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
         if (!found) {
             ReportErrorE(state, exp, "Attempted to reference undefined module '%s'",
                          exp->use.moduleName);
+        }
+    }
+
+    // Make sure all structs are defined
+    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        Tiny_Symbol *s = state->globalSymbols[i];
+        if (s->type == TINY_SYM_TAG_STRUCT && !s->sstruct.defined) {
+            ReportErrorS(state, s, "Referenced undefined struct %s.", s->name);
         }
     }
 
