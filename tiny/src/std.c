@@ -810,12 +810,6 @@ static Tiny_MacroResult JsonModFunction(Tiny_State *state, char *const *args, in
     }
 
     return BindJsonSerializerForType(state, sym);
-
-#if 0
-    for (int i = 0; i < Tiny_SymbolArrayCount(sym->sstruct.fields); ++i) {
-        const Tiny_Symbol *field = sym->sstruct.fields[i];
-    }
-#endif
 }
 
 static Tiny_MacroResult ArrayModFunction(Tiny_State *state, char *const *args, int nargs,
