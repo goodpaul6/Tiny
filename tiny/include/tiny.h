@@ -367,6 +367,9 @@ typedef struct Tiny_MacroResult {
 typedef Tiny_MacroResult (*Tiny_MacroFunction)(Tiny_State *state, char *const *args, int nargs,
                                                const char *asName);
 
+#define TINY_MACRO_FUNCTION(name) \
+    Tiny_MacroResult name(Tiny_State *state, char *const *args, int nargs, const char *asName)
+
 // This is the primary struct for the Tiny symbol table.
 // It is exposed so that bindings can offer reflection capabilities
 // and improve type safety.

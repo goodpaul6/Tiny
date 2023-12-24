@@ -1,3 +1,5 @@
+use array("str") as array_str
+
 if get_request_method() != "GET" {
     send_not_allowed("GET")
     stop()
@@ -6,13 +8,13 @@ if get_request_method() != "GET" {
 func view() {
     files := list_dir("pages")
 
-    titles := array()
+    titles := array_str()
 
-    for i := 0; i < array_len(files); i += 1 {
-        s := cast(array_get(files, i), str)
+    for i := 0; i < array_str_len(files); i += 1 {
+        s := array_str_get(files, i)
         k := strchr(s, '.')
 
-        array_push(titles, substr(s, 0, k))
+        array_str_push(titles, substr(s, 0, k))
     }
 
     res := render_template("templates/index.html", dict("titles", titles))

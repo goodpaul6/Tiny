@@ -1,3 +1,5 @@
+use array("str") as array_str
+
 func array_str_sort(arr: array_str, compare: delegate_str_str_int) {
     len := array_str_len(arr)
 

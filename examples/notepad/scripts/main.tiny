@@ -3,45 +3,47 @@ last_char := ' '
 spaces_per_tab :: 4
 max_hop_buffer_len :: 32
 
-hop_buffer := array()
-unhop_buffer := array()
+use array("int") as array_int
+
+hop_buffer := array_int()
+unhop_buffer := array_int()
 
 func push_hop(): void {
-    if array_len(hop_buffer) > 0 {
-        if get_y() == array_get(hop_buffer, array_len(hop_buffer) - 1) {
+    if array_int_len(hop_buffer) > 0 {
+        if get_y() == array_int_get(hop_buffer, array_int_len(hop_buffer) - 1) {
             return;
         }
     }
 
-    if array_len(hop_buffer) >= max_hop_buffer_len {
-        array_shift(hop_buffer)
+    if array_int_len(hop_buffer) >= max_hop_buffer_len {
+        array_int_shift(hop_buffer)
     }
     
-    array_push(hop_buffer, get_y()) 
+    array_int_push(hop_buffer, get_y()) 
 }
 
 func pop_hop(): void {
-    if array_len(hop_buffer) <= 0 {
+    if array_int_len(hop_buffer) <= 0 {
         return;
     }
     
-    y := cast(array_pop(hop_buffer), int)
+    y := cast(array_int_pop(hop_buffer), int)
     
-    if array_len(unhop_buffer) >= max_hop_buffer_len {
-        array_shift(unhop_buffer)
+    if array_int_len(unhop_buffer) >= max_hop_buffer_len {
+        array_int_shift(unhop_buffer)
     }
     
-    array_push(unhop_buffer, get_y())
+    array_int_push(unhop_buffer, get_y())
     
     move_to(0, y)
 }
 
 func pop_unhop(): void {
-    if array_len(unhop_buffer) <= 0 {
+    if array_int_len(unhop_buffer) <= 0 {
         return;
     }
     
-    y := cast(array_pop(unhop_buffer), int)
+    y := cast(array_int_pop(unhop_buffer), int)
      
     push_hop()
     

@@ -1,6 +1,7 @@
 use import("examples/terp/src/point.tiny")
 
-use array_mod("Point") as array_pt
+use array("Point") as array_pt
+use array("int") as array_int
 
 i := int_to_i64(0)
 
@@ -8,9 +9,9 @@ i = i64_add_many(int_to_i64(1000))
 
 printf("%s\n", i64_to_string(i))
 
-arr := array()
+arr := array_int()
 
-array_push(arr, 10)
+array_int_push(arr, 10)
 
 printf("%q\n", arr)
 
@@ -36,11 +37,13 @@ func assign_to_arg(n: int) {
     printf("%q\n", n)
 }
 
-func array_has(arr: array, obj: any): bool {
-    len := array_len(arr)
+use array("any") as array_any
+
+func array_has(arr: array_any, obj: any): bool {
+    len := array_any_len(arr)
 
     for i := 0; i < len; i += 1 {
-        value := array_get(arr, i)
+        value := array_any_get(arr, i)
         if value == obj {
             return true
         }
@@ -57,10 +60,10 @@ a := new Test2{10}
 b := new Test2{20}
 c := new Test2{30}
 
-arr2 := array(a, b, c)
+arr2 := array_any(a, b, c)
 
 if !array_has(arr2, a) {
-    printf("hello\n")
+    printf("array_has is broken\n")
 }
 
 pt_array := array_pt()
@@ -71,52 +74,3 @@ my_point := array_pt_get(pt_array, 0)
 printf("pt_array=%q, my_point.y=%q\n", pt_array, my_point.y)
 
 printf("%q\n", Point_to_json(my_point))
-
-// Proposed syntax for specializing generic modules
-//
-// use array(Point) as pt_array
-//
-// `use` keyword indicates that we're specializing a module
-// `array` is the module name (which is also the primary opaque type exposed by the module)
-// `as pt_array` renames the type from the generic `array` to `pt_array`, and all the functions
-// in the module (which will always be prefixed by the module name) are renamed to `pt_array_*`
-
-// Will this work for other generics? What about variadics?
-// Basically we expose a simple:
-//
-// Tiny_BindModule("array", ModuleBinderFn)
-//
-// void ModuleBinderFn(Tiny_State* state, Tiny_Symbol** args, int nargs, const char* newName);
-//
-// This is called just after parsing, but just before resolving types, for each
-// `use` statement we encounter in a file.
-//
-// The `ModuleBinderFn` can literally do anything to the state that may be used in the type/symbol
-// resolution step.
-//
-// For arrays, it may just bind all the array functions with `newName` as the prefix.
-//
-// But note how it is variadic, so we can do fancy things like defining our own type-safe delegate
-// type:
-// use delegate(int, int, int) as compare_fn
-//
-// We can even have it receive literals and do some really fancy compile-time codegen stuff in the future?
-//
-// But what would be necessary for any of this is some amount of introspection into the symbol table at the
-// point where we run these module functions.
-//
-// For the delegate example above, we still wouldn't be typesafe if we had a runtime thing like:
-//
-// compare_fn_create("my_compare_fn_name")
-//
-// because we can't check `my_compare_fn_name` to make sure it has the correct arguments.
-//
-// Instead, we would want to move as much of that work into compile time by just having
-//
-// use delegate(my_compare_fn_name) as compare_fn
-//
-// and then later we can just use `compare_fn` (for the type) and `compare_fn_create()` no args
-// to get a reference to _that_ specific fn. (Note that we'd need to pass along some additional context to BindFunction
-// to remember e.g. the function index, so maybe new API Tiny_BindFunctionWithContext that takes a void*).
-//
-// 

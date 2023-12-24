@@ -791,12 +791,11 @@ static Tiny_MacroResult BindJsonSerializerForType(Tiny_State *state, const Tiny_
     return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
 }
 
-static Tiny_MacroResult JsonModFunction(Tiny_State *state, char *const *args, int nargs,
-                                        const char *asName) {
+static TINY_MACRO_FUNCTION(JsonMacroFunction) {
     if (nargs != 1) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "Must specify exactly 1 argument to 'use json_mod'",
+            .errorMessage = "Must specify exactly 1 argument to 'use json'",
         };
     }
 
@@ -812,19 +811,18 @@ static Tiny_MacroResult JsonModFunction(Tiny_State *state, char *const *args, in
     return BindJsonSerializerForType(state, sym);
 }
 
-static Tiny_MacroResult ArrayModFunction(Tiny_State *state, char *const *args, int nargs,
-                                         const char *asName) {
+static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
     if (nargs != 1) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "Must specify exactly 1 argument to 'use array_mod'",
+            .errorMessage = "Must specify exactly 1 argument to 'use array'",
         };
     }
 
     if (!asName) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "Must specify an 'as' name when doing 'use array_mod'",
+            .errorMessage = "Must specify an 'as' name when doing 'use array'",
         };
     }
 
@@ -845,51 +843,39 @@ static Tiny_MacroResult ArrayModFunction(Tiny_State *state, char *const *args, i
     snprintf(sigbuf, sizeof(sigbuf), "%s_clear(%s): void", asName, asName);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayClear);
 
+    snprintf(sigbuf, sizeof(sigbuf), "%s_resize(%s, int): void", asName, asName);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayResize);
+
     snprintf(sigbuf, sizeof(sigbuf), "%s_get(%s, int): %s", asName, asName, args[0]);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayGet);
+
+    snprintf(sigbuf, sizeof(sigbuf), "%s_set(%s, int, %s): void", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArraySet);
+
+    snprintf(sigbuf, sizeof(sigbuf), "%s_len(%s): int", asName, asName);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayLen);
 
     snprintf(sigbuf, sizeof(sigbuf), "%s_push(%s, %s): void", asName, asName, args[0]);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayPush);
 
-    snprintf(sigbuf, sizeof(sigbuf), "%s_len(%s): int", asName, asName);
-    Tiny_BindFunction(state, sigbuf, Lib_ArrayPush);
+    snprintf(sigbuf, sizeof(sigbuf), "%s_pop(%s): %s", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayPop);
+
+    snprintf(sigbuf, sizeof(sigbuf), "%s_shift(%s): %s", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayShift);
+
+    snprintf(sigbuf, sizeof(sigbuf), "%s_remove(%s, int): void", asName, asName);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayRemove);
 
     return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
 }
 
 void Tiny_BindStandardArray(Tiny_State *state) {
-    Tiny_RegisterType(state, "array");
-
-    Tiny_BindFunction(state, "array(...): array", CreateArray);
-    Tiny_BindFunction(state, "array_clear(array): void", Lib_ArrayClear);
-    Tiny_BindFunction(state, "array_resize(array, int): void", Lib_ArrayResize);
-    Tiny_BindFunction(state, "array_get(array, int): any", Lib_ArrayGet);
-    Tiny_BindFunction(state, "array_set(array, int, any): void", Lib_ArraySet);
-    Tiny_BindFunction(state, "array_len(array): int", Lib_ArrayLen);
-    Tiny_BindFunction(state, "array_push(array, any): void", Lib_ArrayPush);
-    Tiny_BindFunction(state, "array_pop(array): any", Lib_ArrayPop);
-    Tiny_BindFunction(state, "array_shift(array): any", Lib_ArrayShift);
-    Tiny_BindFunction(state, "array_remove(array, int): void", Lib_ArrayRemove);
-
-    // HACK(Apaar): Who needs generics when 90% of arrays are just string and int arrays?
-    Tiny_RegisterType(state, "array_str");
-
-    Tiny_BindFunction(state, "array_str(...): array_str", CreateArray);
-    Tiny_BindFunction(state, "array_str_clear(array_str): void", Lib_ArrayClear);
-    Tiny_BindFunction(state, "array_str_resize(array_str, int): void", Lib_ArrayResize);
-    Tiny_BindFunction(state, "array_str_get(array_str, int): str", Lib_ArrayGet);
-    Tiny_BindFunction(state, "array_str_set(array_str, int, str): void", Lib_ArraySet);
-    Tiny_BindFunction(state, "array_str_len(array_str): int", Lib_ArrayLen);
-    Tiny_BindFunction(state, "array_str_push(array_str, str): void", Lib_ArrayPush);
-    Tiny_BindFunction(state, "array_str_pop(array_str): str", Lib_ArrayPop);
-    Tiny_BindFunction(state, "array_str_shift(array_str): str", Lib_ArrayShift);
-    Tiny_BindFunction(state, "array_str_remove(array, int): void", Lib_ArrayRemove);
-
-    Tiny_BindMacro(state, "array_mod", ArrayModFunction);
+    Tiny_BindMacro(state, "array", ArrayMacroFunction);
 }
 
 void Tiny_BindStandardDict(Tiny_State *state) {
-    Tiny_RegisterType(state, "array");
+    Tiny_RegisterType(state, "array_str");
     Tiny_RegisterType(state, "dict");
 
     Tiny_BindFunction(state, "dict(...): dict", CreateDict);
@@ -897,7 +883,7 @@ void Tiny_BindStandardDict(Tiny_State *state) {
     Tiny_BindFunction(state, "dict_exists(dict, str): bool", Lib_DictExists);
     Tiny_BindFunction(state, "dict_get(dict, str): any", Lib_DictGet);
     Tiny_BindFunction(state, "dict_remove(dict, str): void", Lib_DictRemove);
-    Tiny_BindFunction(state, "dict_keys(dict): array", Lib_DictKeys);
+    Tiny_BindFunction(state, "dict_keys(dict): array_str", Lib_DictKeys);
     Tiny_BindFunction(state, "dict_clear(dict): void", Lib_DictClear);
 
     Tiny_RegisterType(state, "dict_str_int");
@@ -963,8 +949,7 @@ static TINY_FOREIGN_FUNCTION(Lib_PrimitiveToJson) {
     }
 }
 
-static Tiny_MacroResult DelegateMacroFunction(Tiny_State *state, char *const *args, int nargs,
-                                              const char *asName) {
+static TINY_MACRO_FUNCTION(DelegateMacroFunction) {
     if (nargs != 1) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
@@ -1024,8 +1009,8 @@ static Tiny_MacroResult DelegateMacroFunction(Tiny_State *state, char *const *ar
 
         if (returnTag->type != TINY_SYM_TAG_VOID) {
             snprintf(callBuf, sizeof(callBuf),
-                     "func %s_call(f: %s, %s): %s { return call_function(f, %s) }", typeBuf,
-                     typeBuf, argsBuf, returnTagName, paramsBuf);
+                     "func %s_call(f: %s, %s): %s { return cast(call_function(f, %s), %s) }",
+                     typeBuf, typeBuf, argsBuf, returnTagName, paramsBuf, returnTagName);
         } else {
             snprintf(callBuf, sizeof(callBuf), "func %s_call(f: %s, %s) { call_function(f, %s) }",
                      typeBuf, typeBuf, argsBuf, paramsBuf);
@@ -1037,7 +1022,8 @@ static Tiny_MacroResult DelegateMacroFunction(Tiny_State *state, char *const *ar
     if (!Tiny_FindFuncSymbol(state, asName)) {
         char createBuf[512] = {0};
         snprintf(createBuf, sizeof(createBuf),
-                 "func %s(): %s { return get_function_index(\"%s\") }", asName, typeBuf, args[0]);
+                 "func %s(): %s { return cast(get_function_index(\"%s\"), %s) }", asName, typeBuf,
+                 args[0], typeBuf);
 
         Tiny_CompileString(state, "(delegate create function", createBuf);
     }
@@ -1101,5 +1087,5 @@ void Tiny_BindStandardLib(Tiny_State *state) {
     Tiny_BindFunction(state, "int_to_json", Lib_PrimitiveToJson);
     Tiny_BindFunction(state, "float_to_json", Lib_PrimitiveToJson);
 
-    Tiny_BindMacro(state, "json_mod", JsonModFunction);
+    Tiny_BindMacro(state, "json", JsonMacroFunction);
 }
