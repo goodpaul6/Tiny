@@ -1543,6 +1543,11 @@ static int GetNextToken(Tiny_State *state) {
     return CurTok;
 }
 
+static void GetExpectToken(Tiny_State *state, int tok, const char *msg) {
+    GetNextToken(state);
+    if (CurTok != tok) ReportError(state, msg);
+}
+
 static Expr *ParseExpr(Tiny_State *state);
 
 static void ReportError(Tiny_State *state, const char *s, ...) {
@@ -1723,16 +1728,13 @@ static Expr *ParseFunc(Tiny_State *state) {
 
     Expr *exp = Expr_create(EXP_PROC, state);
 
-    GetNextToken(state);
-
-    ExpectToken(state, TINY_TOK_IDENT, "Function name must be identifier!");
+    GetExpectToken(state, TINY_TOK_IDENT, "Function name must be identifier!");
 
     exp->proc.decl = DeclareFunction(state, state->l.lexeme);
     state->currFunc = exp->proc.decl;
 
-    GetNextToken(state);
+    GetExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after function name");
 
-    ExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after function name");
     GetNextToken(state);
 
     typedef struct {
@@ -1804,9 +1806,7 @@ static Tiny_Symbol *ParseStruct(Tiny_State *state) {
 
     Tiny_TokenPos pos = state->l.pos;
 
-    GetNextToken(state);
-
-    ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'struct'.");
+    GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'struct'.");
 
     Tiny_Symbol *s = DeclareStruct(state, state->l.lexeme, true);
 
@@ -1817,9 +1817,7 @@ static Tiny_Symbol *ParseStruct(Tiny_State *state) {
     s->pos = pos;
     s->sstruct.defined = true;
 
-    GetNextToken(state);
-
-    ExpectToken(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name.");
+    GetExpectToken(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name.");
 
     GetNextToken(state);
 
@@ -1841,9 +1839,7 @@ static Tiny_Symbol *ParseStruct(Tiny_State *state) {
 
         Tiny_Symbol *f = Symbol_create(TINY_SYM_FIELD, state->l.lexeme, state);
 
-        GetNextToken(state);
-
-        ExpectToken(state, TINY_TOK_COLON, "Expected ':' after field name.");
+        GetExpectToken(state, TINY_TOK_COLON, "Expected ':' after field name.");
 
         GetNextToken(state);
 
@@ -1926,9 +1922,7 @@ static Expr *ParseFactor(Tiny_State *state) {
             while (CurTok == TINY_TOK_DOT) {
                 Expr *e = Expr_create(EXP_DOT, state);
 
-                GetNextToken(state);
-
-                ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
+                GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
                 e->dot.lhs = exp;
                 e->dot.field = CloneString(&state->ctx, state->l.lexeme);
@@ -1999,31 +1993,26 @@ static Expr *ParseFactor(Tiny_State *state) {
 
             Tiny_Symbol *tag = DeclareStruct(state, state->l.lexeme, true);
 
-            GetNextToken(state);
-
             exp->constructor.structTag = tag;
             exp->constructor.argNames = NULL;
             exp->constructor.args = NULL;
 
-            ExpectToken(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name");
+            GetExpectToken(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name");
 
             GetNextToken(state);
 
             while (CurTok != TINY_TOK_CLOSECURLY) {
                 if (CurTok == TINY_TOK_DOT) {
                     // Named argument, .xyz = value
-                    GetNextToken(state);
-
-                    ExpectToken(state, TINY_TOK_IDENT,
-                                "Expected identifier after '.' in designated initializer.");
+                    GetExpectToken(state, TINY_TOK_IDENT,
+                                   "Expected identifier after '.' in designated initializer.");
 
                     char *ident = CloneString(&state->ctx, state->l.lexeme);
 
                     sb_push(&state->ctx, exp->constructor.argNames, ident);
 
-                    GetNextToken(state);
-
-                    ExpectToken(state, TINY_TOK_EQUAL, "Expected = after designated initializer");
+                    GetExpectToken(state, TINY_TOK_EQUAL,
+                                   "Expected = after designated initializer");
 
                     GetNextToken(state);
                 }
@@ -2047,9 +2036,7 @@ static Expr *ParseFactor(Tiny_State *state) {
         case TINY_TOK_CAST: {
             Expr *exp = Expr_create(EXP_CAST, state);
 
-            GetNextToken(state);
-
-            ExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after cast");
+            GetExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after cast");
 
             GetNextToken(state);
 
@@ -2069,9 +2056,7 @@ static Expr *ParseFactor(Tiny_State *state) {
             while (CurTok == TINY_TOK_DOT) {
                 Expr *e = Expr_create(EXP_DOT, state);
 
-                GetNextToken(state);
-
-                ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
+                GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
                 e->dot.lhs = exp;
                 e->dot.field = CloneString(&state->ctx, state->l.lexeme);
@@ -2175,9 +2160,7 @@ static Expr *ParseStatement(Tiny_State *state) {
             while (CurTok == TINY_TOK_DOT) {
                 Expr *e = Expr_create(EXP_DOT, state);
 
-                GetNextToken(state);
-
-                ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
+                GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
                 e->dot.lhs = lhs;
                 e->dot.field = CloneString(&state->ctx, state->l.lexeme);
@@ -2365,17 +2348,13 @@ static Expr *ParseStatement(Tiny_State *state) {
 
             Expr *exp = Expr_create(EXP_USE, state);
 
-            GetNextToken(state);
-
-            ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'use'");
+            GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'use'");
 
             exp->use.moduleName = CloneString(&state->ctx, state->l.lexeme);
             exp->use.args = NULL;
             exp->use.asName = NULL;
 
-            GetNextToken(state);
-
-            ExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after 'use' module name");
+            GetExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after 'use' module name");
 
             GetNextToken(state);
 
@@ -2400,9 +2379,7 @@ static Expr *ParseStatement(Tiny_State *state) {
             // NOTE(Apaar): We do not make `as` an official keyword, we only make a special case
             // for it in this context. It's too general to be reserved IMO.
             if (CurTok == TINY_TOK_IDENT && strcmp(state->l.lexeme, "as") == 0) {
-                GetNextToken(state);
-
-                ExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'as'");
+                GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'as'");
 
                 exp->use.asName = CloneString(&state->ctx, state->l.lexeme);
 
