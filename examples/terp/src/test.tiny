@@ -1,7 +1,6 @@
 use import("examples/terp/src/point.tiny")
 
 use array_mod("Point") as array_pt
-use json_mod("Point")
 
 i := int_to_i64(0)
 

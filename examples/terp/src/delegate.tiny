@@ -1,0 +1,74 @@
+func array_str_sort(arr: array_str, compare: delegate_str_str_int) {
+    len := array_str_len(arr)
+
+    swapped := true 
+
+    while swapped {
+        swapped = false
+
+        for i := 0; i < len - 1; i += 1 {
+            a := array_str_get(arr, i)
+            b := array_str_get(arr, i + 1)
+
+            if delegate_str_str_int_call(compare, a, b) > 0 {
+                array_str_set(arr, i, b)
+                array_str_set(arr, i + 1, a)
+                swapped = true
+            }
+        }
+    }
+}
+
+arr := array_str()
+
+array_str_push(arr, "world")
+array_str_push(arr, "wowow")
+array_str_push(arr, "hello")
+
+func str_compare_asc(a: str, b: str): int {
+    a_len := strlen(a)
+    b_len := strlen(b)
+
+    min_len := 0
+
+    if a_len < b_len {
+        min_len = a_len
+    } else {
+        min_len = b_len
+    }
+
+    for i := 0; i < min_len; i += 1 {
+        a_ch := stridx(a, i)
+        b_ch := stridx(b, i)
+        diff := a_ch - b_ch
+        
+        if diff != 0 {
+            return diff
+        }
+    }
+
+    return 0
+}
+
+func str_compare_desc(a: str, b: str): int {
+    v := str_compare_asc(a, b)
+
+    if v > 0 {
+        return -1
+    }
+
+    if v < 0 {
+        return 1
+    }
+
+    return 0
+}
+
+use delegate("str_compare_asc") as str_compare_asc_delegate
+use delegate("str_compare_desc") as str_compare_desc_delegate
+
+array_str_sort(arr, str_compare_asc_delegate())
+printf("%q\n", arr)
+
+array_str_sort(arr, str_compare_desc_delegate())
+printf("%q\n", arr)

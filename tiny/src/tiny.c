@@ -862,7 +862,16 @@ static Tiny_Symbol *GetTagFromName(Tiny_State *state, const char *name, bool dec
 void Tiny_RegisterType(Tiny_State *state, const char *name) {
     Tiny_Symbol *s = GetTagFromName(state, name, false);
 
-    if (s) return;
+    if (s) {
+        if (s->type == TINY_SYM_TAG_STRUCT && !s->sstruct.defined) {
+            // If there's a struct that's undefined with the same name, the user is probably
+            // referring to this type that we're about to define here, so just update it in place
+            // to be an opaque foreign type.
+            s->type = TINY_SYM_TAG_FOREIGN;
+        }
+
+        return;
+    }
 
     s = Symbol_create(TINY_SYM_TAG_FOREIGN, name, state);
 
@@ -3860,7 +3869,7 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
                 Tiny_MacroResult result =
                     s->modFunc(state, exp->use.args, sb_count(exp->use.args), exp->use.asName);
 
-                if (result.type != TINY_MODULE_SUCCESS) {
+                if (result.type != TINY_MACRO_SUCCESS) {
                     ReportErrorE(
                         state, exp, "'use' module '%s' failed: %s", exp->use.moduleName,
                         result.errorMessage ? result.errorMessage : "(no error message produced)");
@@ -3872,7 +3881,7 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
         }
 
         if (!found) {
-            ReportErrorE(state, exp, "Attempted to reference undefined module '%s'",
+            ReportErrorE(state, exp, "Attempted to reference undefined macro '%s'",
                          exp->use.moduleName);
         }
     }

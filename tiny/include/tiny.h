@@ -343,7 +343,7 @@ void Tiny_DestroyThread(Tiny_StateThread *thread);
 // to std.c for examples of how you can take advantage of them.
 
 typedef enum Tiny_MacroResultType {
-    TINY_MODULE_SUCCESS = 0,
+    TINY_MACRO_SUCCESS = 0,
     TINY_MACRO_ERROR = 1
 } Tiny_MacroResultType;
 

@@ -11,9 +11,19 @@ static Tiny_MacroResult ImportModuleFunction(Tiny_State* state, char* const* arg
         };
     }
 
+    // HACK(Apaar): We abuse a foreign type to keep track of whether a module was already imported
+    char buf[1024] = {0};
+    snprintf(buf, sizeof(buf), "%s_imported", args[0]);
+
+    if (Tiny_FindTypeSymbol(state, buf)) {
+        return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
+    }
+
+    Tiny_RegisterType(state, buf);
+
     Tiny_CompileFile(state, args[0]);
 
-    return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
+    return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
 }
 
 int main(int argc, char** argv) {

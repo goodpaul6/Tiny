@@ -748,12 +748,12 @@ static Tiny_MacroResult BindJsonSerializerForType(Tiny_State *state, const Tiny_
         // e.g. If there was an array_str, then this assumes there's an "array_str_to_json".
         //
         // Basically %s_to_json
-        return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
+        return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
     }
 
     if (sym->type != TINY_SYM_TAG_STRUCT) {
         // It's a primitive type, we've already defined functions for all the types below.
-        return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
+        return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
     }
 
     // Hopefully enough lol?
@@ -764,7 +764,7 @@ static Tiny_MacroResult BindJsonSerializerForType(Tiny_State *state, const Tiny_
 
     if (Tiny_FindFuncSymbol(state, buf)) {
         // Already bound, don't bother
-        return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
+        return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
     }
 
     used +=
@@ -788,7 +788,7 @@ static Tiny_MacroResult BindJsonSerializerForType(Tiny_State *state, const Tiny_
 
     Tiny_CompileString(state, "(json mod)", buf);
 
-    return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
+    return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
 }
 
 static Tiny_MacroResult JsonModFunction(Tiny_State *state, char *const *args, int nargs,
@@ -860,7 +860,7 @@ static Tiny_MacroResult ArrayModFunction(Tiny_State *state, char *const *args, i
     snprintf(sigbuf, sizeof(sigbuf), "%s_len(%s): int", asName, asName);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayPush);
 
-    return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
+    return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
 }
 
 void Tiny_BindStandardArray(Tiny_State *state) {
@@ -969,6 +969,102 @@ static TINY_FOREIGN_FUNCTION(Lib_PrimitiveToJson) {
     }
 }
 
+static Tiny_MacroResult DelegateMacroFunction(Tiny_State *state, char *const *args, int nargs,
+                                              const char *asName) {
+    if (nargs != 1) {
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
+            .errorMessage = "Must specify exactly 1 argument to 'use delegate'",
+        };
+    }
+
+    if (!asName) {
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
+            .errorMessage = "Must specify an 'as' name when doing 'use delegate'",
+        };
+    }
+
+    char typeBuf[512] = {0};
+    char argsBuf[512] = {0};
+    char paramsBuf[512] = {0};
+
+    int typeUsed = 0;
+    int argsUsed = 0;
+    int paramsUsed = 0;
+
+    typeUsed += snprintf(typeBuf, sizeof(typeBuf), "delegate_");
+
+    const Tiny_Symbol *func = Tiny_FindFuncSymbol(state, args[0]);
+
+    for (int i = 0;
+         i < Tiny_SymbolArrayCount(func->type == TINY_SYM_FUNCTION ? func->func.args
+                                                                   : func->foreignFunc.argTags);
+         ++i) {
+        if (i > 0) {
+            typeUsed += snprintf(typeBuf + typeUsed, sizeof(typeBuf) - typeUsed, "_");
+            argsUsed += snprintf(argsBuf + argsUsed, sizeof(argsBuf) - argsUsed, ", ");
+            paramsUsed += snprintf(paramsBuf + paramsUsed, sizeof(paramsBuf) - paramsUsed, ", ");
+        }
+
+        const Tiny_Symbol *argTag = func->type == TINY_SYM_FUNCTION ? func->func.args[i]->var.tag
+                                                                    : func->foreignFunc.argTags[i];
+
+        typeUsed += snprintf(typeBuf + typeUsed, sizeof(typeBuf) - typeUsed, "%s", argTag->name);
+        argsUsed +=
+            snprintf(argsBuf + argsUsed, sizeof(argsBuf) - argsUsed, "a%d: %s", i, argTag->name);
+        paramsUsed += snprintf(paramsBuf + paramsUsed, sizeof(paramsBuf) - paramsUsed, "a%d", i);
+    }
+
+    const Tiny_Symbol *returnTag =
+        func->type == TINY_SYM_FUNCTION ? func->func.returnTag : func->foreignFunc.returnTag;
+
+    const char *returnTagName = returnTag->name;
+
+    typeUsed += snprintf(typeBuf + typeUsed, sizeof(typeBuf) - typeUsed, "_%s", returnTagName);
+
+    if (!Tiny_FindTypeSymbol(state, typeBuf)) {
+        Tiny_RegisterType(state, typeBuf);
+
+        char callBuf[512] = {0};
+
+        if (returnTag->type != TINY_SYM_TAG_VOID) {
+            snprintf(callBuf, sizeof(callBuf),
+                     "func %s_call(f: %s, %s): %s { return call_function(f, %s) }", typeBuf,
+                     typeBuf, argsBuf, returnTagName, paramsBuf);
+        } else {
+            snprintf(callBuf, sizeof(callBuf), "func %s_call(f: %s, %s) { call_function(f, %s) }",
+                     typeBuf, typeBuf, argsBuf, paramsBuf);
+        }
+
+        Tiny_CompileString(state, "(delegate call function)", callBuf);
+    }
+
+    if (!Tiny_FindFuncSymbol(state, asName)) {
+        char createBuf[512] = {0};
+        snprintf(createBuf, sizeof(createBuf),
+                 "func %s(): %s { return get_function_index(\"%s\") }", asName, typeBuf, args[0]);
+
+        Tiny_CompileString(state, "(delegate create function", createBuf);
+    }
+
+    return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
+}
+
+static TINY_FOREIGN_FUNCTION(GetFunctionIndex) {
+    assert(count == 1);
+
+    int i = Tiny_GetFunctionIndex(thread->state, Tiny_ToString(args[0]));
+    return Tiny_NewInt(i);
+}
+
+static TINY_FOREIGN_FUNCTION(CallFunction) {
+    assert(count >= 1);
+    int i = Tiny_ToInt(args[0]);
+
+    return Tiny_CallFunction(thread, i, args + 1, count - 1);
+}
+
 void Tiny_BindStandardLib(Tiny_State *state) {
     Tiny_BindConstInt(state, "INT_MAX", INT_MAX);
 
@@ -990,6 +1086,13 @@ void Tiny_BindStandardLib(Tiny_State *state) {
     Tiny_BindFunction(state, "floor(float): float", Lib_Floor);
     Tiny_BindFunction(state, "ceil(float): float", Lib_Ceil);
 
+    // HACK(Apaar): These are labeled as returning/taking any to facilitate the conversion to
+    // a delegate
+    Tiny_BindFunction(state, "get_function_index(str): any", GetFunctionIndex);
+    Tiny_BindFunction(state, "call_function(any, ...): any", CallFunction);
+
+    Tiny_BindMacro(state, "delegate", DelegateMacroFunction);
+
 #ifdef _WIN32
     Tiny_BindFunction(state, "perf_count(): int", Lib_PerfCount);
     Tiny_BindFunction(state, "perf_freq(): int", Lib_PerfFreq);
@@ -998,6 +1101,7 @@ void Tiny_BindStandardLib(Tiny_State *state) {
 
     Tiny_BindFunction(state, "exit(int): void", Exit);
 
+    // TODO(Apaar): Move these out of the standard lib
     Tiny_BindFunction(state, "bool_to_json", Lib_PrimitiveToJson);
     Tiny_BindFunction(state, "str_to_json", Lib_PrimitiveToJson);
     Tiny_BindFunction(state, "int_to_json", Lib_PrimitiveToJson);
