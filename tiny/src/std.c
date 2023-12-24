@@ -740,6 +740,84 @@ static Tiny_Value Lib_I64ToString(Tiny_StateThread *thread, const Tiny_Value *ar
     return Tiny_NewStringCopy(thread, buf, len);
 }
 
+static Tiny_ModuleResult BindJsonSerializerForType(Tiny_State *state, const Tiny_Symbol *sym) {
+    if (sym->type == TINY_SYM_TAG_FOREIGN) {
+        // For foreign types, it's up to the calling code to set up an appropriate serializer.
+        // We can't do it automatically.
+        //
+        // e.g. If there was an array_str, then this assumes there's an "array_str_to_json".
+        //
+        // Basically %s_to_json
+        return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
+    }
+
+    if (sym->type != TINY_SYM_TAG_STRUCT) {
+        // It's a primitive type, we've already defined functions for all the types below.
+        return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
+    }
+
+    // Hopefully enough lol?
+    char buf[2048] = {0};
+    int used = 0;
+
+    snprintf(buf, sizeof(buf), "%s_to_json", sym->name);
+
+    if (Tiny_FindFuncSymbol(state, buf)) {
+        // Already bound, don't bother
+        return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
+    }
+
+    used +=
+        snprintf(buf, sizeof(buf), "func %s_to_json(v: %s): str {\n\treturn strcat(\"{\",\n\t\t",
+                 sym->name, sym->name);
+
+    for (int i = 0; i < Tiny_SymbolArrayCount(sym->sstruct.fields); ++i) {
+        if (i > 0) {
+            used += snprintf(buf + used, sizeof(buf) - used, ", \",\",\n\t\t");
+        }
+
+        const Tiny_Symbol *fieldSym = sym->sstruct.fields[i];
+
+        BindJsonSerializerForType(state, fieldSym->fieldTag);
+
+        used += snprintf(buf + used, sizeof(buf) - used, "\"\\\"%s\\\":\", %s_to_json(v.%s)",
+                         fieldSym->name, fieldSym->fieldTag->name, fieldSym->name);
+    }
+
+    used += snprintf(buf + used, sizeof(buf) - used, ",\n\t\"}\")\n}");
+
+    Tiny_CompileString(state, "(json mod)", buf);
+
+    return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
+}
+
+static Tiny_ModuleResult JsonModFunction(Tiny_State *state, char *const *args, int nargs,
+                                         const char *asName) {
+    if (nargs != 1) {
+        return (Tiny_ModuleResult){
+            .type = TINY_MODULE_ERROR,
+            .errorMessage = "Must specify exactly 1 argument to 'use json_mod'",
+        };
+    }
+
+    const Tiny_Symbol *sym = Tiny_FindTypeSymbol(state, args[0]);
+
+    if (sym->type != TINY_SYM_TAG_STRUCT) {
+        return (Tiny_ModuleResult){
+            .type = TINY_MODULE_ERROR,
+            .errorMessage = "Must specify struct type as argument to 'use json_mod'",
+        };
+    }
+
+    return BindJsonSerializerForType(state, sym);
+
+#if 0
+    for (int i = 0; i < Tiny_SymbolArrayCount(sym->sstruct.fields); ++i) {
+        const Tiny_Symbol *field = sym->sstruct.fields[i];
+    }
+#endif
+}
+
 static Tiny_ModuleResult ArrayModFunction(Tiny_State *state, char *const *args, int nargs,
                                           const char *asName) {
     if (nargs != 1) {
@@ -865,6 +943,32 @@ void Tiny_BindI64(Tiny_State *state) {
     Tiny_BindFunction(state, "i64_to_string(i64): str", Lib_I64ToString);
 }
 
+static TINY_FOREIGN_FUNCTION(Lib_PrimitiveToJson) {
+    assert(count == 1);
+
+    switch (args[0].type) {
+        case TINY_VAL_NULL:
+            return Tiny_NewConstString("null");
+        case TINY_VAL_BOOL:
+            return Tiny_NewConstString(args[0].boolean ? "true" : "false");
+        case TINY_VAL_FLOAT:
+        case TINY_VAL_INT:
+            return Lib_Ntos(thread, args, count);
+        case TINY_VAL_CONST_STRING:
+        case TINY_VAL_STRING: {
+            // TODO(Apaar): Escape args[0] string
+            Tiny_Value forwardArgs[] = {Tiny_NewConstString("\""), args[0],
+                                        Tiny_NewConstString("\"")};
+
+            return Strcat(thread, forwardArgs, sizeof(forwardArgs));
+        } break;
+
+        default:
+            // TODO(Apaar): Panic in this scenario
+            return Tiny_NewConstString("null");
+    }
+}
+
 void Tiny_BindStandardLib(Tiny_State *state) {
     Tiny_BindConstInt(state, "INT_MAX", INT_MAX);
 
@@ -893,4 +997,11 @@ void Tiny_BindStandardLib(Tiny_State *state) {
 #endif
 
     Tiny_BindFunction(state, "exit(int): void", Exit);
+
+    Tiny_BindFunction(state, "bool_to_json", Lib_PrimitiveToJson);
+    Tiny_BindFunction(state, "str_to_json", Lib_PrimitiveToJson);
+    Tiny_BindFunction(state, "int_to_json", Lib_PrimitiveToJson);
+    Tiny_BindFunction(state, "float_to_json", Lib_PrimitiveToJson);
+
+    Tiny_BindModule(state, "json_mod", JsonModFunction);
 }

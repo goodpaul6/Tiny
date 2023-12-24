@@ -3941,7 +3941,7 @@ void Tiny_BindModule(Tiny_State *state, const char *name, Tiny_ModuleFunction fn
     sb_push(&state->ctx, state->globalSymbols, newNode);
 }
 
-size_t Tiny_SymbolArrayCount(const Tiny_Symbol **arr) { return sb_count(arr); }
+size_t Tiny_SymbolArrayCount(Tiny_Symbol *const *arr) { return sb_count(arr); }
 
 const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name) {
     const Tiny_Symbol *sym = GetTagFromName(state, name, false);
@@ -3952,4 +3952,8 @@ const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name) {
     }
 
     return sym;
+}
+
+const Tiny_Symbol *Tiny_FindFuncSymbol(Tiny_State *state, const char *name) {
+    return ReferenceFunction(state, name);
 }

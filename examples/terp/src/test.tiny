@@ -1,6 +1,7 @@
 use import("examples/terp/src/point.tiny")
+
 use array_mod("Point") as array_pt
-use array_mod("i64") as array_i64
+use json_mod("Point")
 
 i := int_to_i64(0)
 
@@ -70,6 +71,7 @@ my_point := array_pt_get(pt_array, 0)
 
 printf("pt_array=%q, my_point.y=%q\n", pt_array, my_point.y)
 
+printf("%q\n", Point_to_json(my_point))
 
 // Proposed syntax for specializing generic modules
 //

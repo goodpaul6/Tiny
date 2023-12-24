@@ -18,6 +18,7 @@ x := {
 * TEST Break and continue in for loops
 * TEST Got rid of null-terminated strings but didn't really add too many tests
 
+* BAD Right now always crashes if the same symbol is bound twice
 * BAD Cannot store any context `void*` with modules/bound functions
 * BAD You can return `any`, but you cannot assign `any` to anything; it is more like "unknown" I guess?
 Except in the event that you're returning it lol???

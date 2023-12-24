@@ -458,9 +458,10 @@ typedef struct Tiny_Symbol {
 
 void Tiny_BindModule(Tiny_State *state, const char *name, Tiny_ModuleFunction fn);
 
-size_t Tiny_SymbolArrayCount(const Tiny_Symbol **arr);
+size_t Tiny_SymbolArrayCount(Tiny_Symbol *const *arr);
 
 const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name);
+const Tiny_Symbol *Tiny_FindFuncSymbol(Tiny_State *state, const char *name);
 
 // TODO(Apaar): Tiny_FindFuncSymbol, Tiny_FindConstSymbol, etc
 
