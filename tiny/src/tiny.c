@@ -3857,7 +3857,7 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
         for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
             Tiny_Symbol *s = state->globalSymbols[i];
             if (s->type == TINY_SYM_MODULE && strcmp(s->name, exp->use.moduleName) == 0) {
-                Tiny_ModuleResult result =
+                Tiny_MacroResult result =
                     s->modFunc(state, exp->use.args, sb_count(exp->use.args), exp->use.asName);
 
                 if (result.type != TINY_MODULE_SUCCESS) {
@@ -3924,7 +3924,7 @@ void Tiny_CompileFile(Tiny_State *state, const char *filename) {
     TFree(&state->ctx, s);
 }
 
-void Tiny_BindModule(Tiny_State *state, const char *name, Tiny_ModuleFunction fn) {
+void Tiny_BindMacro(Tiny_State *state, const char *name, Tiny_MacroFunction fn) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
         Tiny_Symbol *s = state->globalSymbols[i];
         if (s->type == TINY_SYM_MODULE && strcmp(s->name, name) == 0) {

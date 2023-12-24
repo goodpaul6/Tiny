@@ -2,18 +2,18 @@
 
 #include "tiny.h"
 
-static Tiny_ModuleResult ImportModuleFunction(Tiny_State* state, char* const* args, int nargs,
-                                              const char* asName) {
+static Tiny_MacroResult ImportModuleFunction(Tiny_State* state, char* const* args, int nargs,
+                                             const char* asName) {
     if (nargs != 1) {
-        return (Tiny_ModuleResult){
-            .type = TINY_MODULE_ERROR,
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
             .errorMessage = "Expected exactly 1 argument to 'import'",
         };
     }
 
     Tiny_CompileFile(state, args[0]);
 
-    return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
+    return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
 }
 
 int main(int argc, char** argv) {
@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
     Tiny_BindStandardLib(state);
     Tiny_BindI64(state);
 
-    Tiny_BindModule(state, "import", ImportModuleFunction);
+    Tiny_BindMacro(state, "import", ImportModuleFunction);
 
     Tiny_CompileFile(state, argv[1]);
 

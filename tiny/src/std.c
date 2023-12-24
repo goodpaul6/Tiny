@@ -740,7 +740,7 @@ static Tiny_Value Lib_I64ToString(Tiny_StateThread *thread, const Tiny_Value *ar
     return Tiny_NewStringCopy(thread, buf, len);
 }
 
-static Tiny_ModuleResult BindJsonSerializerForType(Tiny_State *state, const Tiny_Symbol *sym) {
+static Tiny_MacroResult BindJsonSerializerForType(Tiny_State *state, const Tiny_Symbol *sym) {
     if (sym->type == TINY_SYM_TAG_FOREIGN) {
         // For foreign types, it's up to the calling code to set up an appropriate serializer.
         // We can't do it automatically.
@@ -748,12 +748,12 @@ static Tiny_ModuleResult BindJsonSerializerForType(Tiny_State *state, const Tiny
         // e.g. If there was an array_str, then this assumes there's an "array_str_to_json".
         //
         // Basically %s_to_json
-        return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
+        return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
     }
 
     if (sym->type != TINY_SYM_TAG_STRUCT) {
         // It's a primitive type, we've already defined functions for all the types below.
-        return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
+        return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
     }
 
     // Hopefully enough lol?
@@ -764,7 +764,7 @@ static Tiny_ModuleResult BindJsonSerializerForType(Tiny_State *state, const Tiny
 
     if (Tiny_FindFuncSymbol(state, buf)) {
         // Already bound, don't bother
-        return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
+        return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
     }
 
     used +=
@@ -788,14 +788,14 @@ static Tiny_ModuleResult BindJsonSerializerForType(Tiny_State *state, const Tiny
 
     Tiny_CompileString(state, "(json mod)", buf);
 
-    return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
+    return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
 }
 
-static Tiny_ModuleResult JsonModFunction(Tiny_State *state, char *const *args, int nargs,
-                                         const char *asName) {
+static Tiny_MacroResult JsonModFunction(Tiny_State *state, char *const *args, int nargs,
+                                        const char *asName) {
     if (nargs != 1) {
-        return (Tiny_ModuleResult){
-            .type = TINY_MODULE_ERROR,
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
             .errorMessage = "Must specify exactly 1 argument to 'use json_mod'",
         };
     }
@@ -803,8 +803,8 @@ static Tiny_ModuleResult JsonModFunction(Tiny_State *state, char *const *args, i
     const Tiny_Symbol *sym = Tiny_FindTypeSymbol(state, args[0]);
 
     if (sym->type != TINY_SYM_TAG_STRUCT) {
-        return (Tiny_ModuleResult){
-            .type = TINY_MODULE_ERROR,
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
             .errorMessage = "Must specify struct type as argument to 'use json_mod'",
         };
     }
@@ -818,25 +818,25 @@ static Tiny_ModuleResult JsonModFunction(Tiny_State *state, char *const *args, i
 #endif
 }
 
-static Tiny_ModuleResult ArrayModFunction(Tiny_State *state, char *const *args, int nargs,
-                                          const char *asName) {
+static Tiny_MacroResult ArrayModFunction(Tiny_State *state, char *const *args, int nargs,
+                                         const char *asName) {
     if (nargs != 1) {
-        return (Tiny_ModuleResult){
-            .type = TINY_MODULE_ERROR,
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
             .errorMessage = "Must specify exactly 1 argument to 'use array_mod'",
         };
     }
 
     if (!asName) {
-        return (Tiny_ModuleResult){
-            .type = TINY_MODULE_ERROR,
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
             .errorMessage = "Must specify an 'as' name when doing 'use array_mod'",
         };
     }
 
     if (!Tiny_FindTypeSymbol(state, args[0])) {
-        return (Tiny_ModuleResult){
-            .type = TINY_MODULE_ERROR,
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
             .errorMessage = "The array element type you specified does not exist",
         };
     }
@@ -860,7 +860,7 @@ static Tiny_ModuleResult ArrayModFunction(Tiny_State *state, char *const *args, 
     snprintf(sigbuf, sizeof(sigbuf), "%s_len(%s): int", asName, asName);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayPush);
 
-    return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
+    return (Tiny_MacroResult){.type = TINY_MODULE_SUCCESS};
 }
 
 void Tiny_BindStandardArray(Tiny_State *state) {
@@ -891,7 +891,7 @@ void Tiny_BindStandardArray(Tiny_State *state) {
     Tiny_BindFunction(state, "array_str_shift(array_str): str", Lib_ArrayShift);
     Tiny_BindFunction(state, "array_str_remove(array, int): void", Lib_ArrayRemove);
 
-    Tiny_BindModule(state, "array_mod", ArrayModFunction);
+    Tiny_BindMacro(state, "array_mod", ArrayModFunction);
 }
 
 void Tiny_BindStandardDict(Tiny_State *state) {
@@ -1003,5 +1003,5 @@ void Tiny_BindStandardLib(Tiny_State *state) {
     Tiny_BindFunction(state, "int_to_json", Lib_PrimitiveToJson);
     Tiny_BindFunction(state, "float_to_json", Lib_PrimitiveToJson);
 
-    Tiny_BindModule(state, "json_mod", JsonModFunction);
+    Tiny_BindMacro(state, "json_mod", JsonModFunction);
 }

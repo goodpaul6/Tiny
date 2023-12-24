@@ -342,15 +342,15 @@ void Tiny_DestroyThread(Tiny_StateThread *thread);
 // You shouldn't need these in most cases, but if you do, please refer
 // to std.c for examples of how you can take advantage of them.
 
-typedef enum Tiny_ModuleResultType {
+typedef enum Tiny_MacroResultType {
     TINY_MODULE_SUCCESS = 0,
-    TINY_MODULE_ERROR = 1
-} Tiny_ModuleResultType;
+    TINY_MACRO_ERROR = 1
+} Tiny_MacroResultType;
 
-typedef struct Tiny_ModuleResult {
-    Tiny_ModuleResultType type;
+typedef struct Tiny_MacroResult {
+    Tiny_MacroResultType type;
     const char *errorMessage;
-} Tiny_ModuleResult;
+} Tiny_MacroResult;
 
 // This function is called for each instance of the `use` statement in Tiny code.
 //
@@ -358,14 +358,14 @@ typedef struct Tiny_ModuleResult {
 // before we type check all the code and check for calls to
 // undefined functions/references to undefined structs.
 //
-// What this means is that your module can bind functions/types on the fly based on the
+// What this means is that your macro can bind functions/types on the fly based on the
 // provided arguments and it can also reference all the existing types in the code to do so.
 //
 // This is very useful for making generic modules (see the array module in std.c for example)
 // or generating serializers/deserializers for user-defined types by using Tiny_CompileString
 // within these functions.
-typedef Tiny_ModuleResult (*Tiny_ModuleFunction)(Tiny_State *state, char *const *args, int nargs,
-                                                 const char *asName);
+typedef Tiny_MacroResult (*Tiny_MacroFunction)(Tiny_State *state, char *const *args, int nargs,
+                                               const char *asName);
 
 // This is the primary struct for the Tiny symbol table.
 // It is exposed so that bindings can offer reflection capabilities
@@ -452,11 +452,11 @@ typedef struct Tiny_Symbol {
 
         struct Tiny_Symbol *fieldTag;
 
-        Tiny_ModuleFunction modFunc;
+        Tiny_MacroFunction modFunc;
     };
 } Tiny_Symbol;
 
-void Tiny_BindModule(Tiny_State *state, const char *name, Tiny_ModuleFunction fn);
+void Tiny_BindMacro(Tiny_State *state, const char *name, Tiny_MacroFunction fn);
 
 size_t Tiny_SymbolArrayCount(Tiny_Symbol *const *arr);
 
