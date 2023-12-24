@@ -1272,22 +1272,6 @@ static bool ExecuteCycle(Tiny_StateThread *thread) {
             DoPush(thread, Tiny_NewBool(!ExpectBool(a)));
         } break;
 
-        case TINY_OP_LOG_AND: {
-            ++thread->pc;
-            Tiny_Value b = DoPop(thread);
-            Tiny_Value a = DoPop(thread);
-
-            DoPush(thread, Tiny_NewBool(ExpectBool(a) && ExpectBool(b)));
-        } break;
-
-        case TINY_OP_LOG_OR: {
-            ++thread->pc;
-            Tiny_Value b = DoPop(thread);
-            Tiny_Value a = DoPop(thread);
-
-            DoPush(thread, Tiny_NewBool(ExpectBool(a) || ExpectBool(b)));
-        } break;
-
         case TINY_OP_SET: {
             ++thread->pc;
             int varIdx = ReadInteger(thread);

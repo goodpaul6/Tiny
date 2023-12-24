@@ -45,8 +45,6 @@ enum {
     TINY_OP_EQU,
 
     TINY_OP_LOG_NOT,
-    TINY_OP_LOG_AND,
-    TINY_OP_LOG_OR,
 
     TINY_OP_SET,
     TINY_OP_GET,
