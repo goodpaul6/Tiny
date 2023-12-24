@@ -3752,10 +3752,12 @@ void DeleteProgram(Expr **program, Tiny_Context *ctx) {
     sb_free(ctx, program);
 }
 
-static void CheckInitialized(Tiny_State *state) {
+// This will only check the symbols declared between firstSymIndex and lastSymIndex.
+// This ensures that we only check whether the symbols in the current module are initialized.
+static void CheckInitialized(Tiny_State *state, int firstSymIndex, int lastSymIndex) {
     const char *fmt = "Attempted to use uninitialized variable '%s'.\n";
 
-    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+    for (int i = firstSymIndex; i < lastSymIndex; ++i) {
         Tiny_Symbol *node = state->globalSymbols[i];
 
         assert(node->type != TINY_SYM_LOCAL);
@@ -3825,16 +3827,21 @@ static void CompileState(Tiny_State *state, Expr **prog) {
 
     CompileProgram(state, prog);
     GenerateCode(state, TINY_OP_HALT);
-
-    CheckInitialized(state);  // Done after compilation because it might have registered
-                              // undefined functions during the compilation stage
 }
 
 void Tiny_CompileString(Tiny_State *state, const char *name, const char *string) {
+    // In order to make this function re-entrant, we save the lexer on the stack
+    Tiny_Lexer prevLexer = state->l;
+
     Tiny_InitLexer(&state->l, name, string, state->ctx);
 
     CurTok = 0;
+
+    int firstSymIndex = sb_count(state->globalSymbols);
+
     Expr **prog = ParseProgram(state);
+
+    int lastSymIndex = sb_count(state->globalSymbols);
 
     // Make sure all structs are defined
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
@@ -3843,8 +3850,6 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
             ReportErrorS(state, s, "Referenced undefined struct %s.", s->name);
         }
     }
-
-    Tiny_DestroyLexer(&state->l);
 
     // Just before we do into the type resolution state, apply all the module functions
     for (int i = 0; i < sb_count(prog); ++i) {
@@ -3882,7 +3887,15 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
 
     CompileState(state, prog);
 
+    CheckInitialized(state, firstSymIndex,
+                     lastSymIndex);  // Done after compilation because it might have registered
+                                     // undefined functions during the compilation stage
+
+    Tiny_DestroyLexer(&state->l);
+
     DeleteProgram(prog, &state->ctx);
+
+    state->l = prevLexer;
 }
 
 void Tiny_CompileFile(Tiny_State *state, const char *filename) {

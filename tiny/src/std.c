@@ -782,6 +782,10 @@ static Tiny_ModuleResult ArrayModFunction(Tiny_State *state, char *const *args, 
     snprintf(sigbuf, sizeof(sigbuf), "%s_len(%s): int", asName, asName);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayPush);
 
+    // TODO(Apaar): Defer `CheckInitialized` if we're inside a nested `CompileString`.
+    snprintf(sigbuf, sizeof(sigbuf), "func haha(x: %s) { printf(\"haha\\n\") }", args[0]);
+    Tiny_CompileString(state, "array_mod_generated", sigbuf);
+
     return (Tiny_ModuleResult){.type = TINY_MODULE_SUCCESS};
 }
 

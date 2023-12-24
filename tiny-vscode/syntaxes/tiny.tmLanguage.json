@@ -40,7 +40,8 @@
                     "match": "\\b(new)\\b"
                 },
                 {
-                    "name": "keyword.operator"
+                    "name": "keyword.operator",
+                    "match": "\\b(use)\\b"
                 }
             ]
 		},
