@@ -44,6 +44,7 @@ func array_has(arr: array_any, obj: any): bool {
 
     for i := 0; i < len; i += 1 {
         value := array_any_get(arr, i)
+        printf("%q\n", value)
         if value == obj {
             return true
         }

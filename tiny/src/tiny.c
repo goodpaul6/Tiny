@@ -36,7 +36,7 @@ static void *DefaultAlloc(void *ptr, size_t size, void *userdata) {
     return realloc(ptr, size);
 }
 
-static Tiny_Context DefaultContext = {DefaultAlloc, NULL};
+Tiny_Context Tiny_DefaultContext = {DefaultAlloc, NULL};
 
 char *CloneString(Tiny_Context *ctx, const char *str) {
     size_t len = strlen(str);
@@ -61,7 +61,9 @@ static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj) {
             TFree(ctx, obj->string.ptr);
         }
     } else if (obj->type == TINY_VAL_NATIVE) {
-        if (obj->nat.prop && obj->nat.prop->finalize) obj->nat.prop->finalize(obj->nat.addr);
+        if (obj->nat.prop && obj->nat.prop->finalize) {
+            obj->nat.prop->finalize(ctx, obj->nat.addr);
+        }
     }
 
     TFree(ctx, obj);
@@ -145,6 +147,71 @@ Tiny_Value Tiny_GetField(const Tiny_Value value, int index) {
     assert(index >= 0 && index < value.obj->ostruct.n);
 
     return value.obj->ostruct.fields[index];
+}
+
+bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b) {
+    bool bothStrings = ((a.type == TINY_VAL_CONST_STRING && b.type == TINY_VAL_STRING) ||
+                        (a.type == TINY_VAL_STRING && b.type == TINY_VAL_CONST_STRING));
+
+    if (a.type != b.type && !bothStrings) {
+        return false;
+    }
+
+    if (a.type == TINY_VAL_NULL) {
+        return true;
+    }
+
+    if (a.type == TINY_VAL_BOOL) {
+        return a.boolean == b.boolean;
+    }
+
+    if (a.type == TINY_VAL_INT) {
+        return a.i == b.i;
+    }
+
+    if (a.type == TINY_VAL_FLOAT) {
+        return a.f == b.f;
+    }
+
+    if (a.type == TINY_VAL_STRING) {
+        size_t aLen = Tiny_StringLen(a);
+        size_t bLen = Tiny_StringLen(b);
+
+        if (aLen != bLen) {
+            return false;
+        }
+
+        return strncmp(a.obj->string.ptr, Tiny_ToString(b), aLen) == 0;
+    }
+
+    if (a.type == TINY_VAL_CONST_STRING) {
+        if (b.type == TINY_VAL_CONST_STRING && a.cstr == b.cstr) {
+            return true;
+        }
+
+        size_t aLen = Tiny_StringLen(a);
+        size_t bLen = Tiny_StringLen(b);
+
+        if (aLen != bLen) {
+            return false;
+        }
+
+        return strncmp(a.cstr, Tiny_ToString(b), aLen) == 0;
+    }
+
+    if (a.type == TINY_VAL_NATIVE) {
+        return a.obj->nat.addr == b.obj->nat.addr;
+    }
+
+    if (a.type == TINY_VAL_LIGHT_NATIVE) {
+        return a.addr == b.addr;
+    }
+
+    if (a.type == TINY_VAL_STRUCT) {
+        return a.obj == b.obj;
+    }
+
+    return false;
 }
 
 static Tiny_Object *NewObject(Tiny_StateThread *thread, Tiny_ValueType type) {
@@ -346,7 +413,7 @@ Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx) {
     return state;
 }
 
-Tiny_State *Tiny_CreateState(void) { return Tiny_CreateStateWithContext(DefaultContext); }
+Tiny_State *Tiny_CreateState(void) { return Tiny_CreateStateWithContext(Tiny_DefaultContext); }
 
 void Tiny_DeleteState(Tiny_State *state) {
     sb_free(&state->ctx, state->program);
@@ -397,7 +464,7 @@ void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *stat
 }
 
 void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state) {
-    Tiny_InitThreadWithContext(thread, state, DefaultContext);
+    Tiny_InitThreadWithContext(thread, state, Tiny_DefaultContext);
 }
 
 static void AllocGlobals(Tiny_StateThread *thread) {
@@ -1218,51 +1285,7 @@ static bool ExecuteCycle(Tiny_StateThread *thread) {
             Tiny_Value b = DoPop(thread);
             Tiny_Value a = DoPop(thread);
 
-            bool bothStrings = ((a.type == TINY_VAL_CONST_STRING && b.type == TINY_VAL_STRING) ||
-                                (a.type == TINY_VAL_STRING && b.type == TINY_VAL_CONST_STRING));
-
-            if (a.type != b.type && !bothStrings)
-                DoPush(thread, Tiny_NewBool(false));
-            else {
-                if (a.type == TINY_VAL_NULL)
-                    DoPush(thread, Tiny_NewBool(true));
-                else if (a.type == TINY_VAL_BOOL)
-                    DoPush(thread, Tiny_NewBool(a.boolean == b.boolean));
-                else if (a.type == TINY_VAL_INT)
-                    DoPush(thread, Tiny_NewBool(a.i == b.i));
-                else if (a.type == TINY_VAL_FLOAT)
-                    DoPush(thread, Tiny_NewBool(a.f == b.f));
-                else if (a.type == TINY_VAL_STRING) {
-                    size_t aLen = Tiny_StringLen(a);
-                    size_t bLen = Tiny_StringLen(b);
-
-                    if (aLen != bLen) {
-                        DoPush(thread, Tiny_NewBool(false));
-                    } else {
-                        DoPush(thread, Tiny_NewBool(strncmp(a.obj->string.ptr, Tiny_ToString(b),
-                                                            aLen) == 0));
-                    }
-                } else if (a.type == TINY_VAL_CONST_STRING) {
-                    if (b.type == TINY_VAL_CONST_STRING && a.cstr == b.cstr) {
-                        DoPush(thread, Tiny_NewBool(true));
-                    } else {
-                        size_t aLen = Tiny_StringLen(a);
-                        size_t bLen = Tiny_StringLen(b);
-
-                        if (aLen != bLen) {
-                            DoPush(thread, Tiny_NewBool(false));
-                        } else {
-                            DoPush(thread,
-                                   Tiny_NewBool(strncmp(a.cstr, Tiny_ToString(b), aLen) == 0));
-                        }
-                    }
-                } else if (a.type == TINY_VAL_NATIVE)
-                    DoPush(thread, Tiny_NewBool(a.obj->nat.addr == b.obj->nat.addr));
-                else if (a.type == TINY_VAL_LIGHT_NATIVE)
-                    DoPush(thread, Tiny_NewBool(a.addr == b.addr));
-                else if (a.type == TINY_VAL_STRUCT)
-                    DoPush(thread, Tiny_NewBool(a.obj == b.obj));
-            }
+            DoPush(thread, Tiny_NewBool(Tiny_AreValuesEqual(a, b)));
         } break;
 
         case TINY_OP_LOG_NOT: {

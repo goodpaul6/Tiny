@@ -48,7 +48,7 @@ typedef struct Tiny_NativeProp {
     const char *name;
 
     void (*protectFromGC)(void *);
-    void (*finalize)(void *);
+    void (*finalize)(Tiny_Context *, void *);
 } Tiny_NativeProp;
 
 typedef enum {
@@ -125,6 +125,8 @@ typedef Tiny_Value (*Tiny_ForeignFunction)(Tiny_StateThread *thread, const Tiny_
 
 extern const Tiny_Value Tiny_Null;
 
+extern Tiny_Context Tiny_DefaultContext;
+
 void Tiny_ProtectFromGC(Tiny_Value value);
 
 Tiny_Value Tiny_NewBool(bool value);
@@ -199,6 +201,10 @@ const Tiny_NativeProp *Tiny_GetProp(const Tiny_Value value);
 // Returns Tiny_Null if value isn't a struct.
 // Asserts if index is out of bounds
 Tiny_Value Tiny_GetField(const Tiny_Value value, int index);
+
+// Checks if two values are equal. Note that for structs/native/light natives this is just
+// comparing their pointers.
+bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b);
 
 Tiny_State *Tiny_CreateState(void);
 
@@ -304,13 +310,13 @@ static inline bool Tiny_IsThreadDone(const Tiny_StateThread *thread) { return th
 // Returns whether the cycle was executed or not.
 bool Tiny_ExecuteCycle(Tiny_StateThread *thread);
 
-// Uses the allocator provided to the StateThread to allocate/free memory.
+// Uses the allocator provided to allocate/free memory.
 // This should be used instead of global malloc to ensure you play nice with
 // all the situations in which Tiny is used.
 //
 // See Tiny_AllocFunction above for how this can be used.
-static inline void *Tiny_AllocUsingContext(Tiny_StateThread *thread, void *ptr, size_t size) {
-    return thread->ctx.alloc(ptr, size, thread->ctx.userdata);
+static inline void *Tiny_AllocUsingContext(Tiny_Context ctx, void *ptr, size_t size) {
+    return ctx.alloc(ptr, size, ctx.userdata);
 }
 
 // Gives access to fast dynamically allocated array type.

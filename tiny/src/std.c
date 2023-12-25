@@ -105,12 +105,12 @@ static Tiny_Value Lib_Fread(Tiny_StateThread *thread, const Tiny_Value *args, in
     int num = (int)Tiny_ToNumber(args[1]);
 
     // + 1 for null-terminator
-    char *str = Tiny_AllocUsingContext(thread, NULL, num + 1);
+    char *str = Tiny_AllocUsingContext(thread->ctx, NULL, num + 1);
 
     int readCount = fread(str, 1, num, file);
 
     if (readCount < 0) {
-        Tiny_AllocUsingContext(thread, str, 0);
+        Tiny_AllocUsingContext(thread->ctx, str, 0);
         return Tiny_NewConstString("");
     }
 
@@ -155,7 +155,7 @@ static Tiny_Value Lib_ReadFile(Tiny_StateThread *thread, const Tiny_Value *args,
     long len = ftell(file);
     rewind(file);
 
-    char *s = Tiny_AllocUsingContext(thread, NULL, len + 1);
+    char *s = Tiny_AllocUsingContext(thread->ctx, NULL, len + 1);
     fread(s, 1, len, file);
 
     s[len] = '\0';
@@ -180,17 +180,19 @@ static Tiny_Value Lib_WriteFile(Tiny_StateThread *thread, const Tiny_Value *args
     return Tiny_NewBool(true);
 }
 
-static void ArrayFree(void *ptr) {
+static void ArrayFree(Tiny_Context *ctx, void *ptr) {
     Array *array = ptr;
 
     DestroyArray(array);
-    free(array);
+    Tiny_AllocUsingContext(*ctx, array, 0);
 }
 
 static void ArrayMark(void *ptr) {
     Array *array = ptr;
 
-    for (int i = 0; i < array->length; ++i) Tiny_ProtectFromGC(ArrayGetValue(array, i, Tiny_Value));
+    for (int i = 0; i < ArrayLen(array); ++i) {
+        Tiny_ProtectFromGC(*ArrayGet(array, i));
+    }
 }
 
 const Tiny_NativeProp ArrayProp = {
@@ -199,54 +201,50 @@ const Tiny_NativeProp ArrayProp = {
     ArrayFree,
 };
 
-static Tiny_Value CreateArray(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
-    Array *array = malloc(sizeof(Array));
+static TINY_FOREIGN_FUNCTION(CreateArray) {
+    Array *array = Tiny_AllocUsingContext(thread->ctx, NULL, sizeof(Array));
 
-    InitArray(array, sizeof(Tiny_Value));
+    InitArrayEx(array, thread->ctx, count, args);
 
-    if (count >= 1) {
-        ArrayResize(array, count, NULL);
-
-        for (int i = 0; i < array->length; ++i) ArraySet(array, i, &args[i]);
-    }
+    memcpy(array->data, args, sizeof(Tiny_Value) * count);
 
     return Tiny_NewNative(thread, array, &ArrayProp);
 }
 
-static Tiny_Value Lib_ArrayLen(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+static TINY_FOREIGN_FUNCTION(Lib_ArrayLen) {
     Array *array = Tiny_ToAddr(args[0]);
 
-    return Tiny_NewInt((double)array->length);
+    return Tiny_NewInt(ArrayLen(array));
 }
 
-static Tiny_Value Lib_ArrayClear(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+static TINY_FOREIGN_FUNCTION(Lib_ArrayClear) {
     Array *array = Tiny_ToAddr(args[0]);
     ArrayClear(array);
 
     return Tiny_Null;
 }
 
-static Tiny_Value Lib_ArrayResize(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+static TINY_FOREIGN_FUNCTION(Lib_ArrayResize) {
     Array *array = Tiny_ToAddr(args[0]);
-    ArrayResize(array, (int)Tiny_ToNumber(args[0]), NULL);
+    ArrayResize(array, (int)Tiny_ToNumber(args[0]), Tiny_Null);
 
     return Tiny_Null;
 }
 
-static Tiny_Value Lib_ArrayPush(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+static TINY_FOREIGN_FUNCTION(Lib_ArrayPush) {
     Array *array = Tiny_ToAddr(args[0]);
     Tiny_Value value = args[1];
 
-    ArrayPush(array, &value);
+    ArrayPush(array, value);
 
     return Tiny_Null;
 }
 
-static Tiny_Value Lib_ArrayGet(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+static TINY_FOREIGN_FUNCTION(Lib_ArrayGet) {
     Array *array = Tiny_ToAddr(args[0]);
     int index = Tiny_ToInt(args[1]);
 
-    return ArrayGetValue(array, index, Tiny_Value);
+    return *ArrayGet(array, index);
 }
 
 static Tiny_Value Lib_ArraySet(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
@@ -254,7 +252,7 @@ static Tiny_Value Lib_ArraySet(Tiny_StateThread *thread, const Tiny_Value *args,
     int index = Tiny_ToInt(args[1]);
     Tiny_Value value = args[2];
 
-    ArraySet(array, index, &value);
+    ArraySet(array, index, value);
 
     return Tiny_Null;
 }
@@ -290,24 +288,26 @@ static void DictProtectFromGC(void *p) {
     Dict *d = p;
 
     for (int i = 0; i < d->bucketCount; ++i) {
-        const char *key = ArrayGetValue(&d->keys, i, const char *);
-        if (key) {
-            Tiny_ProtectFromGC(ArrayGetValue(&d->values, i, Tiny_Value));
+        Tiny_Value key = *ArrayGet(&d->keys, i);
+        if (!Tiny_IsNull(key)) {
+            Tiny_ProtectFromGC(key);
+            Tiny_ProtectFromGC(*ArrayGet(&d->values, i));
         }
     }
 }
 
-static void DictFree(void *d) {
-    DestroyDict(d);
-    free(d);
-}
+static void DictFree(Tiny_Context *ctx, void *d) { DestroyDict(d); }
 
-const Tiny_NativeProp DictProp = {"dict", DictProtectFromGC, DictFree};
+const Tiny_NativeProp DictProp = {
+    "dict",
+    DictProtectFromGC,
+    DictFree,
+};
 
 static Tiny_Value CreateDict(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
-    Dict *dict = malloc(sizeof(Dict));
+    Dict *dict = Tiny_AllocUsingContext(thread->ctx, NULL, sizeof(Dict));
 
-    InitDict(dict, sizeof(Tiny_Value));
+    InitDict(dict, thread->ctx);
 
     if (count > 0 && count % 2 != 0) {
         fprintf(stderr,
@@ -317,42 +317,14 @@ static Tiny_Value CreateDict(Tiny_StateThread *thread, const Tiny_Value *args, i
         exit(1);
     }
 
-    for (int i = 0; i < count; i += 2) DictSet(dict, Tiny_ToString(args[i]), &args[i + 1]);
+    for (int i = 0; i < count; i += 2) DictSet(dict, args[i], args[i + 1]);
 
     return Tiny_NewNative(thread, dict, &DictProp);
 }
 
-static char *MakeNullTerminated(Tiny_StateThread *thread, char *staticBuf, size_t staticBufLen,
-                                Tiny_Value str) {
-    const char *s = Tiny_ToString(str);
-    size_t len = Tiny_StringLen(str);
-
-    assert(s);
-
-    if (len < staticBufLen) {
-        memcpy(staticBuf, s, len);
-        staticBuf[len] = '\0';
-        return staticBuf;
-    }
-
-    char *buf = Tiny_AllocUsingContext(thread, NULL, len + 1);
-    memcpy(buf, s, len);
-    buf[len] = '\0';
-
-    return buf;
-}
-
 static Tiny_Value Lib_DictPut(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     Dict *dict = args[0].obj->nat.addr;
-
-    char buf[1024];
-    char *key = MakeNullTerminated(thread, buf, sizeof(buf), args[1]);
-
-    DictSet(dict, key, &args[2]);
-
-    if (key != buf) {
-        Tiny_AllocUsingContext(thread, key, 0);
-    }
+    DictSet(dict, args[1], args[2]);
 
     return Tiny_Null;
 }
@@ -360,29 +332,14 @@ static Tiny_Value Lib_DictPut(Tiny_StateThread *thread, const Tiny_Value *args, 
 static Tiny_Value Lib_DictExists(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     Dict *dict = args[0].obj->nat.addr;
 
-    char buf[1024];
-    char *key = MakeNullTerminated(thread, buf, sizeof(buf), args[1]);
-
-    const Tiny_Value *value = DictGet(dict, key);
-
-    if (key != buf) {
-        Tiny_AllocUsingContext(thread, key, 0);
-    }
+    const Tiny_Value *value = DictGet(dict, args[1]);
 
     return Tiny_NewBool(value);
 }
 
 static Tiny_Value Lib_DictGet(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     Dict *dict = args[0].obj->nat.addr;
-
-    char buf[1024];
-    char *key = MakeNullTerminated(thread, buf, sizeof(buf), args[1]);
-
-    const Tiny_Value *value = DictGet(dict, key);
-
-    if (key != buf) {
-        Tiny_AllocUsingContext(thread, key, 0);
-    }
+    const Tiny_Value *value = DictGet(dict, args[1]);
 
     if (value) return *value;
 
@@ -391,15 +348,7 @@ static Tiny_Value Lib_DictGet(Tiny_StateThread *thread, const Tiny_Value *args, 
 
 static Tiny_Value Lib_DictRemove(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     Dict *dict = args[0].obj->nat.addr;
-
-    char buf[1024];
-    char *key = MakeNullTerminated(thread, buf, sizeof(buf), args[1]);
-
-    DictRemove(dict, key);
-
-    if (key != buf) {
-        Tiny_AllocUsingContext(thread, key, 0);
-    }
+    DictRemove(dict, args[1]);
 
     return Tiny_Null;
 }
@@ -412,19 +361,15 @@ static Tiny_Value Lib_DictClear(Tiny_StateThread *thread, const Tiny_Value *args
 static Tiny_Value Lib_DictKeys(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     Dict *dict = args[0].obj->nat.addr;
 
-    Array *array = malloc(sizeof(Array));
+    Array *array = Tiny_AllocUsingContext(thread->ctx, NULL, sizeof(Array));
 
-    array->capacity = dict->filledCount;
-    array->itemSize = sizeof(Tiny_Value);
-    array->length = 0;
-    array->data = malloc(sizeof(Tiny_Value) * dict->filledCount);
+    InitArray(array, thread->ctx);
 
     for (int i = 0; i < dict->bucketCount; ++i) {
-        const char *key = ArrayGetValue(&dict->keys, i, const char *);
-        if (key) {
-            *((Tiny_Value *)array->data + array->length) =
-                Tiny_NewStringCopyNullTerminated(thread, key);
-            array->length += 1;
+        Tiny_Value key = *ArrayGet(&dict->keys, i);
+
+        if (!Tiny_IsNull(key)) {
+            ArrayPush(array, key);
         }
     }
 
@@ -438,7 +383,7 @@ static Tiny_Value Strcat(Tiny_StateThread *thread, const Tiny_Value *args, int c
         totalLen += Tiny_StringLen(args[i]);
     }
 
-    char *newString = Tiny_AllocUsingContext(thread, NULL, totalLen + 1);
+    char *newString = Tiny_AllocUsingContext(thread->ctx, NULL, totalLen + 1);
     char *ptr = newString;
 
     for (int i = 0; i < count; ++i) {
@@ -474,7 +419,7 @@ static Tiny_Value Lib_Substr(Tiny_StateThread *thread, const Tiny_Value *args, i
 
     assert(end <= sLen);
 
-    char *sub = Tiny_AllocUsingContext(thread, NULL, end - start + 1);
+    char *sub = Tiny_AllocUsingContext(thread->ctx, NULL, end - start + 1);
     for (int i = start; i < end; ++i) {
         sub[i - start] = s[i];
     }
@@ -528,7 +473,7 @@ static Tiny_Value Rand(Tiny_StateThread *thread, const Tiny_Value *args, int cou
 static Tiny_Value Lib_Input(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     if (count >= 1) printf("%s", Tiny_ToString(args[0]));
 
-    char *buffer = Tiny_AllocUsingContext(thread, NULL, 8);
+    char *buffer = Tiny_AllocUsingContext(thread->ctx, NULL, 8);
     size_t bufferLength = 0;
     size_t bufferCapacity = 8;
 
@@ -538,7 +483,7 @@ static Tiny_Value Lib_Input(Tiny_StateThread *thread, const Tiny_Value *args, in
     while (c != '\n') {
         if (bufferLength + 1 >= bufferCapacity) {
             bufferCapacity *= 2;
-            buffer = Tiny_AllocUsingContext(thread, buffer, bufferCapacity);
+            buffer = Tiny_AllocUsingContext(thread->ctx, buffer, bufferCapacity);
         }
 
         buffer[bufferLength++] = c;
@@ -547,7 +492,7 @@ static Tiny_Value Lib_Input(Tiny_StateThread *thread, const Tiny_Value *args, in
 
     if (bufferLength + 1 >= bufferCapacity) {
         // Make room for null terminator
-        buffer = Tiny_AllocUsingContext(thread, buffer, bufferCapacity + 1);
+        buffer = Tiny_AllocUsingContext(thread->ctx, buffer, bufferCapacity + 1);
     }
     buffer[bufferLength] = '\0';
 
@@ -586,17 +531,17 @@ static void Print(Tiny_Value val, bool repr) {
             if (repr && val.obj->nat.prop == &ArrayProp) {
                 printf("[");
 
-                const Array *array = val.obj->nat.addr;
+                Array *array = val.obj->nat.addr;
 
                 bool first = true;
 
-                for (int i = 0; i < array->length; ++i) {
+                for (int i = 0; i < ArrayLen(array); ++i) {
                     if (!first) {
                         printf(", ");
                     }
                     first = false;
 
-                    Tiny_Value value = ArrayGetValue(array, i, Tiny_Value);
+                    Tiny_Value value = *ArrayGet(array, i);
 
                     Print(value, true);
                 }

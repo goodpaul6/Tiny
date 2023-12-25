@@ -7,41 +7,64 @@
 #define INIT_BUCKET_COUNT 32
 
 // djb2 - http://www.cse.yorku.ca/~oz/hash.html
-static unsigned long HashString(const char *key) {
+static unsigned long HashBytes(const char *first, const char *last) {
     unsigned long hash = 5381;
     int c;
 
-    while (c = *key++) hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    while (first != last && (c = *first++)) hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
 
     return hash;
 }
 
-static void Init(Dict *dict, size_t valueSize, int bucketCount) {
+static unsigned long HashValue(Tiny_Value value) {
+    switch (value.type) {
+        case TINY_VAL_BOOL:
+            return (int)value.boolean + 1;
+        case TINY_VAL_INT:
+            return (unsigned long)value.i;
+        case TINY_VAL_CONST_STRING:
+        case TINY_VAL_STRING: {
+            const char *start = Tiny_ToString(value);
+            size_t len = Tiny_StringLen(value);
+
+            return HashBytes(start, start + len);
+        } break;
+        case TINY_VAL_STRUCT:
+            return (uintptr_t)value.obj;
+        default: {
+            void *ptr = Tiny_ToAddr(value);
+
+            assert(ptr);
+
+            return (uintptr_t)ptr;
+        } break;
+    }
+}
+
+static void Init(Dict *dict, Tiny_Context ctx, int bucketCount) {
     dict->bucketCount = bucketCount;
     dict->filledCount = 0;
 
-    InitArray(&dict->keys, sizeof(char *));
-    InitArray(&dict->values, valueSize);
+    InitArray(&dict->keys, ctx);
+    InitArray(&dict->values, ctx);
 
-    // Initialize the array to be full of null char pointers to
-    // indicate that there's nothing there
-    char *nullValue = NULL;
+    Tiny_Value nullValue = {0};
 
-    ArrayResize(&dict->keys, bucketCount, &nullValue);
-    ArrayResize(&dict->values, bucketCount, NULL);
+    ArrayResize(&dict->keys, bucketCount, nullValue);
+    ArrayResize(&dict->values, bucketCount, nullValue);
 }
 
 static void Grow(Dict *dict) {
     Dict newDict;
 
-    Init(&newDict, dict->values.itemSize, dict->bucketCount * 2);
+    Init(&newDict, dict->keys.ctx, dict->bucketCount * 2);
 
     for (int i = 0; i < dict->bucketCount; ++i) {
-        const char *prevKey = ArrayGetValue(&dict->keys, i, char *);
+        Tiny_Value prevKey = *ArrayGet(&dict->keys, i);
 
         // If there was a value in that bucket
-        if (prevKey) {
-            const void *prevValue = ArrayGet(&dict->values, i);
+        if (!Tiny_IsNull(prevKey)) {
+            Tiny_Value prevValue = *ArrayGet(&dict->values, i);
             DictSet(&newDict, prevKey, prevValue);
         }
     }
@@ -51,32 +74,30 @@ static void Grow(Dict *dict) {
     *dict = newDict;
 }
 
-void InitDict(Dict *dict, size_t valueSize) { Init(dict, valueSize, INIT_BUCKET_COUNT); }
+void InitDict(Dict *dict, Tiny_Context ctx) { Init(dict, ctx, INIT_BUCKET_COUNT); }
 
 void DestroyDict(Dict *dict) {
-    for (int i = 0; i < dict->keys.length; ++i) free(ArrayGetValue(&dict->keys, i, char *));
-
     DestroyArray(&dict->keys);
     DestroyArray(&dict->values);
 }
 
-void DictSet(Dict *dict, const char *key, const void *value) {
+void DictSet(Dict *dict, Tiny_Value key, Tiny_Value value) {
     // TODO: Perhaps think about having a DictSetEx where you can
     // adjust growth factor and parameters (like allow it to fail
     // if there's no space). Better yet, break these apart into
     // DictSet and DictSetGrow so that it's clear.
     if (dict->filledCount >= (dict->bucketCount * 2) / 3) Grow(dict);
 
-    unsigned long hash = HashString(key);
+    unsigned long hash = HashValue(key);
 
     unsigned long index = hash % dict->bucketCount;
 
-    const char *prevKey = ArrayGetValue(&dict->keys, index, char *);
+    Tiny_Value prevKey = *ArrayGet(&dict->keys, index);
 
     unsigned long origin = index;
 
     // While an empty spot or the key we want to set isn't found
-    while (prevKey && strcmp(prevKey, key) != 0) {
+    while (!Tiny_IsNull(prevKey) && !Tiny_AreValuesEqual(prevKey, key)) {
         // Probe for a spot to put this key/value
         ++index;
         index %= dict->bucketCount;
@@ -91,17 +112,13 @@ void DictSet(Dict *dict, const char *key, const void *value) {
             origin = index;
         }
 
-        prevKey = ArrayGetValue(&dict->keys, index, char *);
+        prevKey = *ArrayGet(&dict->keys, index);
     }
 
     // There was no key here before (i.e bucket was empty)
-    if (!prevKey) {
-        char *str = malloc(strlen(key) + 1);
-        assert(str);
+    if (Tiny_IsNull(prevKey)) {
+        ArraySet(&dict->keys, index, key);
 
-        strcpy(str, key);
-
-        ArraySet(&dict->keys, index, &str);
         dict->filledCount += 1;
     } else {
         // Otherwise, we do nothing with the key since the user
@@ -111,16 +128,16 @@ void DictSet(Dict *dict, const char *key, const void *value) {
     ArraySet(&dict->values, index, value);
 }
 
-const void *DictGet(Dict *dict, const char *key) {
-    unsigned long index = HashString(key) % dict->bucketCount;
+const Tiny_Value *DictGet(Dict *dict, Tiny_Value key) {
+    unsigned long index = HashValue(key) % dict->bucketCount;
     unsigned long origin = index;
 
-    while (true) {
-        const char *keyHere = ArrayGetValue(&dict->keys, index, char *);
+    for (;;) {
+        Tiny_Value keyHere = *ArrayGet(&dict->keys, index);
 
-        if (!keyHere) return NULL;
+        if (Tiny_IsNull(keyHere)) return NULL;
 
-        if (strcmp(keyHere, key) == 0) return ArrayGet(&dict->values, index);
+        if (Tiny_AreValuesEqual(keyHere, key)) return ArrayGet(&dict->values, index);
 
         index += 1;
         index %= dict->bucketCount;
@@ -135,39 +152,38 @@ const void *DictGet(Dict *dict, const char *key) {
     return NULL;
 }
 
-void DictRemove(Dict *dict, const char *key) {
-    unsigned long hash = HashString(key);
+void DictRemove(Dict *dict, Tiny_Value key) {
+    unsigned long hash = HashValue(key);
 
     unsigned long index = hash % dict->bucketCount;
     unsigned long origin = index;
 
-    while (true) {
-        char *keyHere = ArrayGetValue(&dict->keys, index, char *);
+    for (;;) {
+        Tiny_Value keyHere = *ArrayGet(&dict->keys, index);
 
-        if (!keyHere) return;  // Done
+        if (Tiny_IsNull(keyHere)) return;  // Done
 
-        if (strcmp(keyHere, key) == 0) {
-            free(keyHere);
-
-            char *nullValue = NULL;
-            ArraySet(&dict->keys, index, &nullValue);
+        if (Tiny_AreValuesEqual(keyHere, key)) {
+            ArraySet(&dict->keys, index, Tiny_Null);
 
             dict->filledCount -= 1;
-        } else if ((HashString(keyHere) % dict->bucketCount) == (index - 1)) {
-            // This key was colliding with the original or some other
+        } else if ((HashValue(keyHere) % dict->bucketCount) < index) {
+            // NOTE(Apaar): I'm amazed that I knew how to avoid tombstones in
+            // a linear-probed hash table way back in the day! The code below
+            // is mostly from 2017 and it is now 2023 (almost 2024)
+
+            // keyHere was displaced into the spot for `key`
+
+            // The given key was colliding with the original or some other
             // key was colliding with the original and took keyHere's
-            // spot
-            // so remove it and re-add it to the table
-            const void *value = ArrayGet(&dict->values, index);
+            // spot so remove the key from this slot and readd the key/value
+            // to the table.
+            const Tiny_Value *value = ArrayGet(&dict->values, index);
 
-            char *nullValue = NULL;
-            ArraySet(&dict->keys, index, &nullValue);
+            ArraySet(&dict->keys, index, Tiny_Null);
 
             dict->filledCount -= 1;
-
-            DictSet(dict, keyHere, value);
-
-            free(keyHere);
+            DictSet(dict, keyHere, *value);
         }
 
         index += 1;
@@ -176,10 +192,10 @@ void DictRemove(Dict *dict, const char *key) {
 }
 
 void DictClear(Dict *dict) {
-    for (int i = 0; i < dict->bucketCount; ++i) free(ArrayGetValue(&dict->keys, i, char *));
-
-    // TODO: Refactor this into an ArrayClearToZero inline function
-    memset(dict->keys.data, 0, dict->keys.length * dict->keys.itemSize);
+    for (int i = 0; i < dict->bucketCount; ++i) {
+        ArraySet(&dict->keys, i, Tiny_Null);
+        ArraySet(&dict->values, i, Tiny_Null);
+    }
 
     dict->filledCount = 0;
 }

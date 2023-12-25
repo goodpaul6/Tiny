@@ -8,14 +8,13 @@ typedef struct {
     Array keys, values;
 } Dict;
 
-void InitDict(Dict *dict, size_t valueSize);
+void InitDict(Dict *dict, Tiny_Context ctx);
 
-void DictSet(Dict *dict, const char *key, const void *value);
+void DictSet(Dict *dict, Tiny_Value key, Tiny_Value value);
 
-const void *DictGet(Dict *dict, const char *key);
-#define DictGetValue(dict, key, type) (*(type *)DictGet((dict), (key)))
+const Tiny_Value *DictGet(Dict *dict, Tiny_Value key);
 
-void DictRemove(Dict *dict, const char *key);
+void DictRemove(Dict *dict, Tiny_Value key);
 void DictClear(Dict *dict);
 
 void DestroyDict(Dict *dict);

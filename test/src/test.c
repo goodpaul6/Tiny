@@ -45,13 +45,19 @@ static void test_PosToFriendlyPos(void) {
 static void test_InitArrayEx(void) {
     Array array;
 
-    const int data[] = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10};
+    Tiny_Value data[] = {{
+                             .type = TINY_VAL_INT,
+                             .i = 1,
+                         },
+                         {
+                             .type = TINY_VAL_INT,
+                             .i = 2,
+                         }};
 
-    InitArrayEx(&array, sizeof(int), sizeof(data) / sizeof(int), data);
+    InitArrayEx(&array, Tiny_DefaultContext, sizeof(data) / sizeof(data[0]), data);
 
     lok(memcmp(array.data, data, sizeof(data)) == 0);
-    lok(array.length == (sizeof(data) / sizeof(int)));
-    lok(array.capacity == array.length);
+    lok(ArrayLen(&array) == 2);
 
     DestroyArray(&array);
 }
@@ -59,13 +65,18 @@ static void test_InitArrayEx(void) {
 static void test_ArrayPush(void) {
     Array array;
 
-    InitArray(&array, sizeof(int));
+    InitArray(&array, Tiny_DefaultContext);
 
-    for (int i = 0; i < 64; ++i) ArrayPush(&array, &i);
+    for (int i = 0; i < 64; ++i) {
+        ArrayPush(&array, (Tiny_Value){
+                              .type = TINY_VAL_INT,
+                              .i = i,
+                          });
+    }
 
-    lequal(array.length, 64);
-    lok(ArrayGetValue(&array, 2, int) == 2);
-    lok(ArrayGetValue(&array, 21, int) == 21);
+    lequal(ArrayLen(&array), 64);
+    lequal(ArrayGet(&array, 2)->i, 2);
+    lequal(ArrayGet(&array, 21)->i, 21);
 
     DestroyArray(&array);
 }
@@ -73,17 +84,22 @@ static void test_ArrayPush(void) {
 static void test_ArrayPop(void) {
     Array array;
 
-    InitArray(&array, sizeof(int));
+    InitArray(&array, Tiny_DefaultContext);
 
-    for (int i = 0; i < 1000; ++i) ArrayPush(&array, &i);
+    for (int i = 0; i < 1000; ++i) {
+        ArrayPush(&array, (Tiny_Value){
+                              .type = TINY_VAL_INT,
+                              .i = i,
+                          });
+    }
 
-    lequal(array.length, 1000);
+    lequal(ArrayLen(&array), 1000);
 
-    int result;
+    Tiny_Value result;
     ArrayPop(&array, &result);
 
-    lok(result == 999);
-    lok(array.length == 999);
+    lequal(result.i, 999);
+    lequal(ArrayLen(&array), 999);
 
     for (int i = 0; i < 998; ++i) {
         ArrayPop(&array, &result);
@@ -91,8 +107,8 @@ static void test_ArrayPop(void) {
 
     ArrayPop(&array, &result);
 
-    lok(result == 0);
-    lok(array.length == 0);
+    lequal(result.i, 0);
+    lequal(ArrayLen(&array), 0);
 
     DestroyArray(&array);
 }
@@ -100,17 +116,24 @@ static void test_ArrayPop(void) {
 static void test_ArraySet(void) {
     Array array;
 
-    InitArray(&array, sizeof(int));
+    InitArray(&array, Tiny_DefaultContext);
 
-    for (int i = 0; i < 1000; ++i) ArrayPush(&array, &i);
+    for (int i = 0; i < 1000; ++i) {
+        ArrayPush(&array, (Tiny_Value){
+                              .type = TINY_VAL_INT,
+                              .i = i,
+                          });
+    }
 
-    lequal(array.length, 1000);
+    lequal(ArrayLen(&array), 1000);
 
-    int value = 10;
+    ArraySet(&array, 500,
+             (Tiny_Value){
+                 .type = TINY_VAL_INT,
+                 .i = 10,
+             });
 
-    ArraySet(&array, 500, &value);
-
-    lok(ArrayGetValue(&array, 500, int) == value);
+    lequal(ArrayGet(&array, 500)->i, 10);
 
     DestroyArray(&array);
 }
@@ -118,18 +141,25 @@ static void test_ArraySet(void) {
 static void test_ArrayInsert(void) {
     Array array;
 
-    InitArray(&array, sizeof(int));
+    InitArray(&array, Tiny_DefaultContext);
 
-    for (int i = 0; i < 1000; ++i) ArrayPush(&array, &i);
+    for (int i = 0; i < 1000; ++i) {
+        ArrayPush(&array, (Tiny_Value){
+                              .type = TINY_VAL_INT,
+                              .i = i,
+                          });
+    }
 
-    lequal(array.length, 1000);
+    lequal(ArrayLen(&array), 1000);
 
-    int value = 10;
+    ArrayInsert(&array, 500,
+                (Tiny_Value){
+                    .type = TINY_VAL_INT,
+                    .i = 10,
+                });
 
-    ArrayInsert(&array, 500, &value);
-
-    lok(array.length == 1001);
-    lok(ArrayGetValue(&array, 500, int) == value);
+    lequal(ArrayLen(&array), 1001);
+    lequal(ArrayGet(&array, 500)->i, 10);
 
     DestroyArray(&array);
 }
@@ -137,17 +167,22 @@ static void test_ArrayInsert(void) {
 static void test_ArrayRemove(void) {
     Array array;
 
-    InitArray(&array, sizeof(int));
+    InitArray(&array, Tiny_DefaultContext);
 
-    for (int i = 0; i < 1000; ++i) ArrayPush(&array, &i);
+    for (int i = 0; i < 1000; ++i) {
+        ArrayPush(&array, (Tiny_Value){
+                              .type = TINY_VAL_INT,
+                              .i = i,
+                          });
+    }
 
-    lequal(array.length, 1000);
-    lok(ArrayGetValue(&array, 500, int) == 500);
+    lequal(ArrayLen(&array), 1000);
+    lequal(ArrayGet(&array, 500)->i, 500);
 
     ArrayRemove(&array, 500);
 
-    lequal(array.length, 999);
-    lok(ArrayGetValue(&array, 500, int) == 501);
+    lequal(ArrayLen(&array), 999);
+    lequal(ArrayGet(&array, 500)->i, 501);
 
     DestroyArray(&array);
 }
@@ -164,25 +199,30 @@ static void test_Array(void) {
 static void test_DictSet(void) {
     Dict dict;
 
-    InitDict(&dict, sizeof(int));
+    InitDict(&dict, Tiny_DefaultContext);
 
     for (int i = 0; i < 1000; ++i) {
-        static char key[10];
-        sprintf(key, "%d", i);
-
-        DictSet(&dict, key, &i);
+        DictSet(&dict,
+                (Tiny_Value){
+                    .type = TINY_VAL_INT,
+                    .i = i,
+                },
+                (Tiny_Value){
+                    .type = TINY_VAL_INT,
+                    .i = i,
+                });
     }
 
     lok(dict.filledCount == 1000);
 
     for (int i = 0; i < 1000; ++i) {
-        static char key[10];
-        sprintf(key, "%d", i);
-
-        const void *pValue = DictGet(&dict, key);
+        const Tiny_Value *pValue = DictGet(&dict, (Tiny_Value){
+                                                      .type = TINY_VAL_INT,
+                                                      .i = i,
+                                                  });
 
         lok(pValue);
-        lok(*(int *)pValue == i);
+        lequal(pValue->i, i);
     }
 
     DestroyDict(&dict);
@@ -191,35 +231,42 @@ static void test_DictSet(void) {
 static void test_DictRemove(void) {
     Dict dict;
 
-    InitDict(&dict, sizeof(int));
+    InitDict(&dict, Tiny_DefaultContext);
 
     for (int i = 0; i < 1000; ++i) {
-        static char key[10];
-        sprintf(key, "%d", i);
-
-        DictSet(&dict, key, &i);
+        DictSet(&dict,
+                (Tiny_Value){
+                    .type = TINY_VAL_INT,
+                    .i = i,
+                },
+                (Tiny_Value){
+                    .type = TINY_VAL_INT,
+                    .i = i,
+                });
     }
 
     lequal(dict.filledCount, 1000);
 
     for (int i = 0; i < 100; ++i) {
-        static char key[10];
-        sprintf(key, "%d", i);
-
-        DictRemove(&dict, key);
+        DictRemove(&dict, (Tiny_Value){
+                              .type = TINY_VAL_INT,
+                              .i = i,
+                          });
     }
 
     lequal(dict.filledCount, 900);
 
     for (int i = 0; i < 1000; ++i) {
-        static char key[10];
-        sprintf(key, "%d", i);
+        Tiny_Value key = {
+            .type = TINY_VAL_INT,
+            .i = i,
+        };
 
         if (i >= 100) {
-            int value = DictGetValue(&dict, key, int);
-            lok(value == i);
+            int value = DictGet(&dict, key)->i;
+            lequal(value, i);
         } else
-            lok_print(!DictGet(&dict, key), "key=%s", key);
+            lok_print(!DictGet(&dict, key), "key=%d", key.i);
     }
 
     DestroyDict(&dict);
@@ -228,13 +275,18 @@ static void test_DictRemove(void) {
 static void test_DictClear(void) {
     Dict dict;
 
-    InitDict(&dict, sizeof(int));
+    InitDict(&dict, Tiny_DefaultContext);
 
     for (int i = 0; i < 1000; ++i) {
-        static char key[10];
-        sprintf(key, "%d", i);
-
-        DictSet(&dict, key, &i);
+        DictSet(&dict,
+                (Tiny_Value){
+                    .type = TINY_VAL_INT,
+                    .i = i,
+                },
+                (Tiny_Value){
+                    .type = TINY_VAL_INT,
+                    .i = i,
+                });
     }
 
     lequal(dict.filledCount, 1000);
@@ -244,10 +296,10 @@ static void test_DictClear(void) {
     lequal(dict.filledCount, 0);
 
     for (int i = 0; i < 1000; ++i) {
-        static char key[10];
-        sprintf(key, "%d", i);
-
-        lok(!DictGet(&dict, key));
+        lok(!DictGet(&dict, (Tiny_Value){
+                                .type = TINY_VAL_INT,
+                                .i = i,
+                            }));
     }
 
     DestroyDict(&dict);
@@ -490,13 +542,19 @@ static void test_TinyDict(void) {
 
     lok(Tiny_GetProp(dict) == &DictProp);
 
-    Tiny_Value num = DictGetValue(d, "a", Tiny_Value);
+    Tiny_Value num = *DictGet(d, (Tiny_Value){
+                                     .type = TINY_VAL_CONST_STRING,
+                                     .cstr = "a",
+                                 });
 
-    lequal((int)Tiny_ToNumber(num), 10);
+    lequal(Tiny_ToInt(num), 10);
 
-    num = DictGetValue(d, "b", Tiny_Value);
+    num = *DictGet(d, (Tiny_Value){
+                          .type = TINY_VAL_CONST_STRING,
+                          .cstr = "b",
+                      });
 
-    lequal((int)Tiny_ToNumber(num), 20);
+    lequal(Tiny_ToInt(num), 20);
 
     Tiny_DestroyThread(&thread);
 
@@ -517,22 +575,23 @@ static void test_RevPolishCalc(void) {
     Tiny_BindStandardArray(state);
     Tiny_BindStandardLib(state);
 
-    Tiny_BindFunction(state, "my_input", Lib_MyInput);
+    Tiny_BindFunction(state, "my_input(): str", Lib_MyInput);
 
     const char *code =
-        "stack := array()\n"
+        "use array(\"float\") as farray\n"
+        "stack := farray()\n"
         "op := \"\"\n"
         "while op != \"quit\" {\n"
         "op = my_input()\n"
-        "if stridx(op, 0) == '+' array_push(stack, cast(array_pop(stack), float) "
-        "+ cast(array_pop(stack), float))\n"
-        "else if stridx(op, 0) == '-' array_push(stack, cast(array_pop(stack), "
-        "float) - cast(array_pop(stack), float))\n"
-        "else if stridx(op, 0) == '*' array_push(stack, cast(array_pop(stack), "
-        "float) * cast(array_pop(stack), float))\n"
-        "else if stridx(op, 0) == '/' array_push(stack, cast(array_pop(stack), "
-        "float) / cast(array_pop(stack), float))\n"
-        "else if op != \"quit\" array_push(stack, ston(op)) }\n";
+        "if stridx(op, 0) == '+' farray_push(stack, farray_pop(stack) "
+        "+ farray_pop(stack))\n"
+        "else if stridx(op, 0) == '-' farray_push(stack, farray_pop(stack) "
+        "- farray_pop(stack))\n"
+        "else if stridx(op, 0) == '*' farray_push(stack, farray_pop(stack) "
+        "* farray_pop(stack))\n"
+        "else if stridx(op, 0) == '/' farray_push(stack, farray_pop(stack) "
+        "/ farray_pop(stack))\n"
+        "else if op != \"quit\" farray_push(stack, ston(op)) }\n";
 
     Tiny_CompileString(state, "test_rpn", code);
 
@@ -551,12 +610,12 @@ static void test_RevPolishCalc(void) {
 
     Array *a = Tiny_ToAddr(Tiny_GetGlobal(&thread, stack));
 
-    lok(a->length == 1);
+    lequal(ArrayLen(a), 1);
 
-    Tiny_Value num = ArrayGetValue(a, 0, Tiny_Value);
+    Tiny_Value num = *ArrayGet(a, 0);
 
     // Float because ston produces float
-    lok(num.type == TINY_VAL_FLOAT);
+    lequal(num.type, TINY_VAL_FLOAT);
     lfequal(num.f, 0);
 
     Tiny_DestroyThread(&thread);
@@ -605,6 +664,8 @@ static void test_StructTypeSafe() {
         "do(new X{10})\n";
 
     Tiny_CompileString(state, "test_struct_type_safe", code);
+    lok(true);
+
     Tiny_DeleteState(state);
 }
 
