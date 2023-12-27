@@ -310,6 +310,12 @@ static inline bool Tiny_IsThreadDone(const Tiny_StateThread *thread) { return th
 // Returns whether the cycle was executed or not.
 bool Tiny_ExecuteCycle(Tiny_StateThread *thread);
 
+// Run the compiled code sequentially until no more cycles can be
+// executed. Note that this may be faster than calling ExecuteCycle
+// in a loop yourself since ExecuteCycle may be inlined into
+// Tiny_Run.
+void Tiny_Run(Tiny_StateThread *thread);
+
 // Uses the allocator provided to allocate/free memory.
 // This should be used instead of global malloc to ensure you play nice with
 // all the situations in which Tiny is used.

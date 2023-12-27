@@ -50,8 +50,7 @@ int main(int argc, char** argv) {
 
     Tiny_StartThread(&stateThread);
 
-    while (Tiny_ExecuteCycle(&stateThread))
-        ;
+    Tiny_Run(&stateThread);
 
     Tiny_DestroyThread(&stateThread);
 

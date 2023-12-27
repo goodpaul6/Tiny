@@ -484,7 +484,7 @@ void Tiny_StartThread(Tiny_StateThread *thread) {
     thread->pc = 0;
 }
 
-static bool ExecuteCycle(Tiny_StateThread *thread);
+inline static bool ExecuteCycle(Tiny_StateThread *thread);
 
 int Tiny_GetGlobalIndex(const Tiny_State *state, const char *name) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
@@ -572,6 +572,11 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const 
 }
 
 bool Tiny_ExecuteCycle(Tiny_StateThread *thread) { return ExecuteCycle(thread); }
+
+void Tiny_Run(Tiny_StateThread *thread) {
+    while (ExecuteCycle(thread))
+        ;
+}
 
 void Tiny_DestroyThread(Tiny_StateThread *thread) {
     thread->pc = -1;
@@ -1087,7 +1092,7 @@ inline static bool ExpectBool(const Tiny_Value value) {
     return value.boolean;
 }
 
-static bool ExecuteCycle(Tiny_StateThread *thread) {
+inline static bool ExecuteCycle(Tiny_StateThread *thread) {
     assert(thread && thread->state);
 
     if (thread->pc < 0) return false;
