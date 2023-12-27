@@ -68,8 +68,5 @@ enum {
 
     TINY_OP_HALT,
 
-    TINY_OP_FILE,
-    TINY_OP_LINE,
-
     TINY_OP_MISALIGNED_INSTRUCTION
 };

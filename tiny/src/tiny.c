@@ -457,9 +457,6 @@ void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *stat
 
     thread->fc = 0;
 
-    thread->fileName = NULL;
-    thread->lineNumber = -1;
-
     thread->userdata = NULL;
 }
 
@@ -533,9 +530,6 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const 
 
     int pc, fp, sp, fc;
 
-    const char *fileName = thread->fileName;
-    int lineNumber = thread->lineNumber;
-
     pc = thread->pc;
     fp = thread->fp;
     sp = thread->sp;
@@ -562,9 +556,6 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const 
     thread->fp = fp;
     thread->sp = sp;
     thread->fc = fc;
-
-    thread->fileName = fileName;
-    thread->lineNumber = lineNumber;
 
     thread->retVal = retVal;
 
@@ -1387,24 +1378,7 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
         } break;
 
         case TINY_OP_HALT: {
-            thread->fileName = NULL;
-            thread->lineNumber = -1;
-
             thread->pc = -1;
-        } break;
-
-        case TINY_OP_FILE: {
-            ++thread->pc;
-            int stringIndex = ReadInteger(thread);
-
-            thread->fileName = thread->state->strings[stringIndex];
-        } break;
-
-        case TINY_OP_LINE: {
-            ++thread->pc;
-            int line = ReadInteger(thread);
-
-            thread->lineNumber = line;
         } break;
 
         case TINY_OP_MISALIGNED_INSTRUCTION: {
@@ -3390,14 +3364,80 @@ static void PatchBreakContinue(Tiny_State *state, Expr *body, int breakPC, int c
     }
 }
 
-static void CompileStatement(Tiny_State *state, Expr *exp) {
-    if (state->l.fileName) {
-        GenerateCode(state, TINY_OP_FILE);
-        GenerateInt(state, RegisterString(state, state->l.fileName));
+static void AddPCFileLineRecord(Tiny_State *state, const Tiny_PCToFileLine record) {
+    if (sb_count(state->pcToFileLine) > 0) {
+        Tiny_PCToFileLine last = sb_last(state->pcToFileLine);
+
+        // Make sure we have a new/greater PC for the record
+        assert(record.pc > last.pc);
     }
 
-    GenerateCode(state, TINY_OP_LINE);
-    GenerateInt(state, exp->lineNumber);
+    sb_push(&state->ctx, state->pcToFileLine, record);
+}
+
+static void GetFileLineForPC(const Tiny_State *state, int pc, const char **fileName, int *line) {
+    if (fileName) {
+        *fileName = NULL;
+    }
+    if (line) {
+        *line = 0;
+    }
+
+    if (pc < 0 || sb_count(state->pcToFileLine) == 0) {
+        return;
+    }
+
+    int lo = 0;
+    int hi = sb_count(state->pcToFileLine);
+    int curIndex = 0;
+
+    for (;;) {
+        curIndex = (lo + hi) / 2;
+
+        if (lo + 1 >= hi) {
+            break;
+        }
+
+        int curPC = state->pcToFileLine[curIndex].pc;
+
+        if (curPC < pc) {
+            lo = curIndex;
+            continue;
+        }
+
+        if (curPC > pc) {
+            hi = curIndex;
+            continue;
+        }
+
+        break;
+    }
+
+    Tiny_PCToFileLine pcToFileLine = state->pcToFileLine[curIndex];
+
+    if (fileName && pcToFileLine.fileStrIndex >= 0) {
+        assert(pcToFileLine.fileStrIndex < state->numStrings);
+
+        *fileName = state->strings[pcToFileLine.fileStrIndex];
+    }
+
+    if (line) {
+        *line = pcToFileLine.line;
+    }
+}
+
+void Tiny_GetExecutingFileLine(const Tiny_StateThread *thread, const char **fileName, int *line) {
+    GetFileLineForPC(thread->state, thread->pc, fileName, line);
+}
+
+static void CompileStatement(Tiny_State *state, Expr *exp) {
+    AddPCFileLineRecord(
+        state,
+        (Tiny_PCToFileLine){
+            .pc = sb_count(state->program),
+            .fileStrIndex = state->l.fileName ? RegisterString(state, state->l.fileName) : -1,
+            .line = exp->lineNumber,
+        });
 
     switch (exp->type) {
         case EXP_CALL: {

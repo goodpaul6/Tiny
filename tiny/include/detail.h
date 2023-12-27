@@ -37,6 +37,12 @@ typedef struct Tiny_Object {
     };
 } Tiny_Object;
 
+typedef struct Tiny_PCToFileLine {
+    int pc;
+    int fileStrIndex;
+    int line;
+} Tiny_PCToFileLine;
+
 typedef struct Tiny_State {
     Tiny_Context ctx;
 
@@ -59,6 +65,11 @@ typedef struct Tiny_State {
     Tiny_Symbol *currFunc;
 
     Tiny_Symbol **globalSymbols;  // array
+
+    // We keep information about what file and line number
+    // correspond to what PC. It is sorted by PC so we should
+    // be able to do a lookup in log(n) time.
+    Tiny_PCToFileLine *pcToFileLine;  // array
 
     Tiny_Lexer l;
 } Tiny_State;

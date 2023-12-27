@@ -1,6 +1,7 @@
 #ifndef TINY_H
 #define TINY_H
 
+#include <setjmp.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -60,7 +61,7 @@ typedef enum {
     TINY_VAL_CONST_STRING,
     TINY_VAL_NATIVE,
     TINY_VAL_LIGHT_NATIVE,
-    TINY_VAL_STRUCT
+    TINY_VAL_STRUCT,
 } Tiny_ValueType;
 
 typedef struct Tiny_Value {
@@ -106,11 +107,6 @@ typedef struct Tiny_StateThread {
 
     int fc;
     Tiny_Frame frames[TINY_THREAD_MAX_CALL_DEPTH];
-
-    // These keep track of what file/line of source code
-    // the instruction at the current PC originated from
-    const char *fileName;
-    int lineNumber;
 
     // Userdata pointer. Set to NULL when InitThread is called. Use it for
     // whatever you want
@@ -315,6 +311,14 @@ bool Tiny_ExecuteCycle(Tiny_StateThread *thread);
 // in a loop yourself since ExecuteCycle may be inlined into
 // Tiny_Run.
 void Tiny_Run(Tiny_StateThread *thread);
+
+// This will write the filename and line number of the currently executing
+// piece of Tiny code to `fileName` and `line` respectively. You can provide
+// NULL for either if you don't care about their value.
+//
+// If it isn't able to determine valid info for either, it will set them to
+// `NULL` and `0` respectively, as needed.
+void Tiny_GetExecutingFileLine(const Tiny_StateThread *thread, const char **fileName, int *line);
 
 // Uses the allocator provided to allocate/free memory.
 // This should be used instead of global malloc to ensure you play nice with

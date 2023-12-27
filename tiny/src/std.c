@@ -990,6 +990,13 @@ static TINY_FOREIGN_FUNCTION(CallFunction) {
     return Tiny_CallFunction(thread, i, args + 1, count - 1);
 }
 
+static TINY_FOREIGN_FUNCTION(GetExecutingLine) {
+    int line = 0;
+    Tiny_GetExecutingFileLine(thread, NULL, &line);
+
+    return Tiny_NewInt(line);
+}
+
 void Tiny_BindStandardLib(Tiny_State *state) {
     Tiny_BindConstInt(state, "INT_MAX", INT_MAX);
 
@@ -1031,6 +1038,8 @@ void Tiny_BindStandardLib(Tiny_State *state) {
     Tiny_BindFunction(state, "str_to_json", Lib_PrimitiveToJson);
     Tiny_BindFunction(state, "int_to_json", Lib_PrimitiveToJson);
     Tiny_BindFunction(state, "float_to_json", Lib_PrimitiveToJson);
+
+    Tiny_BindFunction(state, "get_executing_line", GetExecutingLine);
 
     Tiny_BindMacro(state, "json", JsonMacroFunction);
 }
