@@ -407,6 +407,8 @@ Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx) {
     state->currFunc = NULL;
     state->globalSymbols = NULL;
 
+    state->pcToFileLine = NULL;
+
     Tiny_BindFunction(state, "int(float): int", Lib_ToInt);
     Tiny_BindFunction(state, "float(int): float", Lib_ToFloat);
 
@@ -3368,8 +3370,13 @@ static void AddPCFileLineRecord(Tiny_State *state, const Tiny_PCToFileLine recor
     if (sb_count(state->pcToFileLine) > 0) {
         Tiny_PCToFileLine last = sb_last(state->pcToFileLine);
 
-        // Make sure we have a new/greater PC for the record
-        assert(record.pc > last.pc);
+        if(record.pc == last.pc) {
+            // If the PC matches, just update it. This means that the previous
+            // statement we compiled may have resulted in no code generated.
+            last.line = record.line;
+            last.fileStrIndex = record.fileStrIndex;
+            return;
+        }
     }
 
     sb_push(&state->ctx, state->pcToFileLine, record);

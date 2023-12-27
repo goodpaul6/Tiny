@@ -27,7 +27,7 @@ func pop_hop(): void {
         return;
     }
     
-    y := cast(array_int_pop(hop_buffer), int)
+    y := array_int_pop(hop_buffer)
     
     if array_int_len(unhop_buffer) >= max_hop_buffer_len {
         array_int_shift(unhop_buffer)
@@ -43,7 +43,7 @@ func pop_unhop(): void {
         return;
     }
     
-    y := cast(array_int_pop(unhop_buffer), int)
+    y := array_int_pop(unhop_buffer)
      
     push_hop()
     
@@ -129,15 +129,19 @@ func get_prev_word_x(): int {
     s := get_line()
     
     if i > 0 {
+        if i >= strlen(s) {
+            i = strlen(s) - 1
+        }
+
         if i - 1 >= 0 && stridx(s, i - 1) == ' ' {
             i -= 1
-            while stridx(s, i) == ' ' && i >= 0 {
+            while i >= 0 && stridx(s, i) == ' ' {
                 i -= 1
             }
 
             return i
         } else {
-            while stridx(s, i) != ' ' && i >= 0 {
+            while i >= 0 && stridx(s, i) != ' ' {
                 i -= 1
             }
 

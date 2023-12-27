@@ -59,10 +59,6 @@ static Tiny_Value Lib_ReloadScriptsNextFrame(Tiny_StateThread* thread, const Tin
     return Tiny_Null;
 }
 
-static Tiny_Value Lib_Exit(Tiny_StateThread* thread, const Tiny_Value* args, int count) {
-    exit((int)Tiny_ToNumber(args[0]));
-}
-
 static Tiny_Value Lib_Strspn(Tiny_StateThread* thread, const Tiny_Value* args, int count) {
     assert(count == 2);
     return Tiny_NewInt(strspn(Tiny_ToString(args[0]), Tiny_ToString(args[1])));
@@ -187,16 +183,6 @@ static Tiny_Value Lib_GetTempLine(Tiny_StateThread* thread, const Tiny_Value* ar
     assert(index >= 0 && index < ed->numTempLines);
 
     return Tiny_NewConstString(ed->tempLines[index]);
-}
-
-static Tiny_Value Lib_Floor(Tiny_StateThread* thread, const Tiny_Value* args, int count) {
-    assert(count == 1);
-    return Tiny_NewFloat(floorf(Tiny_ToNumber(args[0])));
-}
-
-static Tiny_Value Lib_Ceil(Tiny_StateThread* thread, const Tiny_Value* args, int count) {
-    assert(count == 1);
-    return Tiny_NewFloat(ceilf(Tiny_ToNumber(args[0])));
 }
 
 static Tiny_Value Lib_OpenFile(Tiny_StateThread* thread, const Tiny_Value* args, int count) {
@@ -606,15 +592,10 @@ static void BindFunctions(Tiny_State* state) {
 
     Tiny_BindStandardArray(state);
 
-    Tiny_BindFunction(state, "exit(int): void", Lib_Exit);
-
     Tiny_BindStandardLib(state);
 
     Tiny_BindFunction(state, "strspn(str, str): int", Lib_Strspn);
     Tiny_BindFunction(state, "strtod(str): float", Lib_Strtod);
-
-    Tiny_BindFunction(state, "floor(float): float", Lib_Floor);
-    Tiny_BindFunction(state, "ceil(float): float", Lib_Ceil);
 
     Tiny_BindFunction(state, "set_token_color", Lib_SetTokenColor);
 
