@@ -2323,8 +2323,9 @@ static Expr *ParseStatement(Tiny_State *state) {
                             "you do that? Why would you do any of that?");
             }
 
-            GetNextToken(state);
             Expr *exp = Expr_create(EXP_RETURN, state);
+
+            GetNextToken(state);
             if (CurTok == TINY_TOK_SEMI) {
                 GetNextToken(state);
                 exp->retExpr = NULL;
