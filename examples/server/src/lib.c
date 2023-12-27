@@ -18,7 +18,7 @@
 
 char* estrdup(const char* s);
 
-static void FinalizeBuf(void* bp) {
+static void FinalizeBuf(Tiny_Context* ctx, void* bp) {
     sb_free(*(unsigned char**)bp);
     free(bp);
 }
@@ -287,12 +287,12 @@ void BindBuffer(Tiny_State* state) {
 
 void BindIO(Tiny_State* state) {
     Tiny_RegisterType(state, "buf");
-    Tiny_RegisterType(state, "array");
+    Tiny_RegisterType(state, "array_str");
 
     Tiny_BindFunction(state, "get_file_contents(str): buf", GetFileContents);
     Tiny_BindFunction(state, "file_put_contents(str, buf): bool", FilePutContents);
 
-    Tiny_BindFunction(state, "list_dir(str): array", ListDir);
+    Tiny_BindFunction(state, "list_dir(str): array_str", ListDir);
 }
 
 void BindHttpUtils(Tiny_State* state) {
