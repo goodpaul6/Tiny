@@ -40,7 +40,7 @@ static const Tiny_Value* ReadVar(const char* filename, int* line, FILE* f, Dict*
             ERROR("Attempted to use '$_' outside of array expansion.\n");
         }
 
-        assert(arrIndex >= 0 && arrIndex < arr->length);
+        assert(arrIndex >= 0 && arrIndex < ArrayLen(arr));
 
         var[0] = '_';
         var[1] = 0;
@@ -61,7 +61,10 @@ static const Tiny_Value* ReadVar(const char* filename, int* line, FILE* f, Dict*
 
         var[i] = 0;
 
-        val = DictGet(env, var);
+        val = DictGet(env, (Tiny_Value){
+            .type = TINY_VAL_CONST_STRING,
+            .cstr = var,
+        });
     }
 
     return val;
@@ -131,7 +134,7 @@ static bool Expand(const char* filename, int* line, FILE* f, char** pBuf, int en
 
                 *pBuf = buf;
 
-                for (int i = 0; i < a->length; ++i) {
+                for (int i = 0; i < ArrayLen(a); ++i) {
                     fseek(f, epos, SEEK_SET);
                     Expand(filename, line, f, pBuf, '}', env, a, i);
                 }

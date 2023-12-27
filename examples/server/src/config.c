@@ -189,8 +189,7 @@ void InitConfig(Config* c, const char* filename, int argc, char** argv) {
 
     Tiny_StartThread(&thread);
 
-    while (Tiny_ExecuteCycle(&thread))
-        ;
+    Tiny_Run(&thread);
 
     Tiny_DestroyThread(&thread);
     Tiny_DeleteState(state);

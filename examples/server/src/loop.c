@@ -135,8 +135,13 @@ static TINY_FOREIGN_FUNCTION(Sendf) {
                 } break;
 
                 default: {
+                    const char* fileName = NULL;
+                    int line = 0;
+
+                    Tiny_GetExecutingFileLine(thread, &fileName, &line);
+
                     fprintf(stderr, "%s(%i): Invalid format specifier '%%%c' in sendf.\n",
-                            thread->fileName, thread->lineNumber, *s);
+                            fileName, line, *s);
                 } break;
             }
 

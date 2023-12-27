@@ -92,9 +92,7 @@ static TINY_FOREIGN_FUNCTION(BufLen) {
 static TINY_FOREIGN_FUNCTION(BufToStr) {
     unsigned char** buf = Tiny_ToAddr(args[0]);
 
-    char* s = estrdup((char*)(*buf));
-
-    return Tiny_NewString(thread, s);
+    return Tiny_NewStringCopy(thread, *buf, sb_count(*buf));
 }
 
 static TINY_FOREIGN_FUNCTION(GetFileContents) {
@@ -168,13 +166,13 @@ static TINY_FOREIGN_FUNCTION(ListDir) {
 
     Array* a = malloc(sizeof(Array));
 
-    InitArray(a, sizeof(Tiny_Value));
+    InitArray(a, thread->ctx);
 
     do {
         if (data.cFileName[0] == '.') continue;
 
-        Tiny_Value val = Tiny_NewString(thread, estrdup(data.cFileName));
-        ArrayPush(a, &val);
+        Tiny_Value val = Tiny_NewStringCopyNullTerminated(thread, data.cFileName);
+        ArrayPush(a, val);
     } while (FindNextFile(hFind, &data));
 
     FindClose(hFind);
@@ -211,7 +209,9 @@ static char* DecodeURL(const char* s) {
 
 static TINY_FOREIGN_FUNCTION(Lib_DecodeURL) {
     const char* s = Tiny_ToString(args[0]);
-    return Tiny_NewString(thread, DecodeURL(s));
+    char* buf = DecodeURL(s);
+
+    return Tiny_NewString(thread, buf, sb_count(buf));
 }
 
 static TINY_FOREIGN_FUNCTION(ParseFormValues) {
@@ -226,7 +226,7 @@ static TINY_FOREIGN_FUNCTION(ParseFormValues) {
 
     Dict* d = malloc(sizeof(Dict));
 
-    InitDict(d, sizeof(Tiny_Value));
+    InitDict(d, thread->ctx);
 
     while (*dec) {
         while (*dec && *dec != '=') {
@@ -258,9 +258,9 @@ static TINY_FOREIGN_FUNCTION(ParseFormValues) {
 
         printf("Parsed form value: %s=%s\n", name, value);
 
-        Tiny_Value val = Tiny_NewString(thread, estrdup(value));
+        Tiny_Value val = Tiny_NewStringCopyNullTerminated(thread, value);
 
-        DictSet(d, name, &val);
+        DictSet(d, Tiny_NewStringCopyNullTerminated(thread, name), val);
 
         sb_free(name);
         sb_free(value);
