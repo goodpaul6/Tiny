@@ -14,6 +14,7 @@
 #include "opcodes.h"
 #include "stretchy_buffer.h"
 #include "util.h"
+#include "expr.h"
 
 #ifndef UCHAR_MAX
 #define UCHAR_MAX 255
@@ -1399,137 +1400,8 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
     return true;
 }
 
-typedef enum {
-    EXP_ID,
-    EXP_CALL,
-    EXP_NULL,
-    EXP_BOOL,
-    EXP_CHAR,
-    EXP_INT,
-    EXP_FLOAT,
-    EXP_STRING,
-    EXP_BINARY,
-    EXP_PAREN,
-    EXP_BLOCK,
-    EXP_PROC,
-    EXP_IF,
-    EXP_UNARY,
-    EXP_RETURN,
-    EXP_WHILE,
-    EXP_FOR,
-    EXP_DOT,
-    EXP_CONSTRUCTOR,
-    EXP_CAST,
-    EXP_BREAK,
-    EXP_CONTINUE,
-    EXP_USE,
-} ExprType;
-
-typedef struct sExpr {
-    ExprType type;
-
-    Tiny_TokenPos pos;
-    int lineNumber;
-
-    Tiny_Symbol *tag;
-
-    union {
-        bool boolean;
-
-        int iValue;
-        float fValue;
-        int sIndex;
-
-        struct {
-            char *name;
-            Tiny_Symbol *sym;
-        } id;
-
-        struct {
-            char *calleeName;
-            struct sExpr **args;  // array
-        } call;
-
-        struct {
-            struct sExpr *lhs;
-            struct sExpr *rhs;
-            int op;
-        } binary;
-
-        struct sExpr *paren;
-
-        struct {
-            int op;
-            struct sExpr *exp;
-        } unary;
-
-        struct sExpr **block;  // array
-
-        struct {
-            Tiny_Symbol *decl;
-            struct sExpr *body;
-        } proc;
-
-        struct {
-            struct sExpr *cond;
-            struct sExpr *body;
-            struct sExpr *alt;
-        } ifx;
-
-        struct {
-            struct sExpr *cond;
-            struct sExpr *body;
-        } whilex;
-
-        struct {
-            struct sExpr *init;
-            struct sExpr *cond;
-            struct sExpr *step;
-            struct sExpr *body;
-        } forx;
-
-        struct {
-            struct sExpr *lhs;
-            char *field;
-        } dot;
-
-        struct {
-            Tiny_Symbol *structTag;
-
-            // This is only used for if the constructor has named arguments. Otherwise this is
-            // NULL.
-            //
-            // If specified, these will get re-ordered (alongside the args) during the
-            // `ResolveTypes` phase to ensure they're in the order that the struct wants.
-            char **argNames;
-
-            struct sExpr **args;
-        } constructor;
-
-        struct {
-            struct sExpr *value;
-            Tiny_Symbol *tag;
-        } cast;
-
-        struct sExpr *retExpr;
-
-        struct {
-            // For a break, this index in the bytecode should be patched with the pc at the exit of
-            // the loop. For a continue, this index should be patched with the PC before the
-            // conditional.
-            int patchLoc;
-        } breakContinue;
-
-        struct {
-            char *moduleName;
-            char **args;  // array
-            char *asName;
-        } use;
-    };
-} Expr;
-
-static Expr *Expr_create(ExprType type, Tiny_State *state) {
-    Expr *exp = TMalloc(&state->ctx, sizeof(Expr));
+static Tiny_Expr *Expr_create(Tiny_ExprType type, Tiny_State *state) {
+    Tiny_Expr *exp = TMalloc(&state->ctx, sizeof(Tiny_Expr));
 
     exp->pos = state->l.pos;
     exp->lineNumber = state->l.lineNumber;
@@ -1552,7 +1424,7 @@ static void GetExpectToken(Tiny_State *state, int tok, const char *msg) {
     if (CurTok != tok) ReportError(state, msg);
 }
 
-static Expr *ParseExpr(Tiny_State *state);
+static Tiny_Expr *ParseExpr(Tiny_State *state);
 
 static void ReportError(Tiny_State *state, const char *s, ...) {
     va_list args;
@@ -1564,7 +1436,7 @@ static void ReportError(Tiny_State *state, const char *s, ...) {
     exit(1);
 }
 
-static void ReportErrorE(Tiny_State *state, const Expr *exp, const char *s, ...) {
+static void ReportErrorE(Tiny_State *state, const Tiny_Expr *exp, const char *s, ...) {
     va_list args;
     va_start(args, s);
 
@@ -1678,10 +1550,10 @@ static Tiny_Symbol *ParseType(Tiny_State *state) {
     return s;
 }
 
-static Expr *ParseStatement(Tiny_State *state);
+static Tiny_Expr *ParseStatement(Tiny_State *state);
 
-static Expr *ParseIf(Tiny_State *state) {
-    Expr *exp = Expr_create(EXP_IF, state);
+static Tiny_Expr *ParseIf(Tiny_State *state) {
+    Tiny_Expr *exp = Expr_create(EXP_IF, state);
 
     GetNextToken(state);
 
@@ -1697,10 +1569,10 @@ static Expr *ParseIf(Tiny_State *state) {
     return exp;
 }
 
-static Expr *ParseBlock(Tiny_State *state) {
+static Tiny_Expr *ParseBlock(Tiny_State *state) {
     assert(CurTok == TINY_TOK_OPENCURLY);
 
-    Expr *exp = Expr_create(EXP_BLOCK, state);
+    Tiny_Expr *exp = Expr_create(EXP_BLOCK, state);
 
     exp->block = NULL;
 
@@ -1709,7 +1581,7 @@ static Expr *ParseBlock(Tiny_State *state) {
     OpenScope(state);
 
     while (CurTok != TINY_TOK_CLOSECURLY) {
-        Expr *e = ParseStatement(state);
+        Tiny_Expr *e = ParseStatement(state);
         assert(e);
 
         sb_push(&state->ctx, exp->block, e);
@@ -1722,7 +1594,7 @@ static Expr *ParseBlock(Tiny_State *state) {
     return exp;
 }
 
-static Expr *ParseFunc(Tiny_State *state) {
+static Tiny_Expr *ParseFunc(Tiny_State *state) {
     assert(CurTok == TINY_TOK_FUNC);
 
     if (state->currFunc) {
@@ -1730,7 +1602,7 @@ static Expr *ParseFunc(Tiny_State *state) {
                     state->currFunc->name);
     }
 
-    Expr *exp = Expr_create(EXP_PROC, state);
+    Tiny_Expr *exp = Expr_create(EXP_PROC, state);
 
     GetExpectToken(state, TINY_TOK_IDENT, "Function name must be identifier!");
 
@@ -1861,10 +1733,10 @@ static Tiny_Symbol *ParseStruct(Tiny_State *state) {
     return s;
 }
 
-static Expr *ParseCall(Tiny_State *state, char *ident) {
+static Tiny_Expr *ParseCall(Tiny_State *state, char *ident) {
     assert(CurTok == TINY_TOK_OPENPAREN);
 
-    Expr *exp = Expr_create(EXP_CALL, state);
+    Tiny_Expr *exp = Expr_create(EXP_CALL, state);
 
     exp->call.args = NULL;
 
@@ -1886,10 +1758,10 @@ static Expr *ParseCall(Tiny_State *state, char *ident) {
     return exp;
 }
 
-static Expr *ParseFactor(Tiny_State *state) {
+static Tiny_Expr *ParseFactor(Tiny_State *state) {
     switch (CurTok) {
         case TINY_TOK_NULL: {
-            Expr *exp = Expr_create(EXP_NULL, state);
+            Tiny_Expr *exp = Expr_create(EXP_NULL, state);
 
             GetNextToken(state);
 
@@ -1897,7 +1769,7 @@ static Expr *ParseFactor(Tiny_State *state) {
         } break;
 
         case TINY_TOK_BOOL: {
-            Expr *exp = Expr_create(EXP_BOOL, state);
+            Tiny_Expr *exp = Expr_create(EXP_BOOL, state);
 
             exp->boolean = state->l.bValue;
 
@@ -1915,7 +1787,7 @@ static Expr *ParseFactor(Tiny_State *state) {
 
             if (CurTok == TINY_TOK_OPENPAREN) return ParseCall(state, ident);
 
-            Expr *exp = Expr_create(EXP_ID, state);
+            Tiny_Expr *exp = Expr_create(EXP_ID, state);
 
             exp->pos = pos;
             exp->lineNumber = lineNumber;
@@ -1924,7 +1796,7 @@ static Expr *ParseFactor(Tiny_State *state) {
             exp->id.name = ident;
 
             while (CurTok == TINY_TOK_DOT) {
-                Expr *e = Expr_create(EXP_DOT, state);
+                Tiny_Expr *e = Expr_create(EXP_DOT, state);
 
                 GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
@@ -1943,7 +1815,7 @@ static Expr *ParseFactor(Tiny_State *state) {
         case TINY_TOK_BANG: {
             int op = CurTok;
             GetNextToken(state);
-            Expr *exp = Expr_create(EXP_UNARY, state);
+            Tiny_Expr *exp = Expr_create(EXP_UNARY, state);
             exp->unary.op = op;
             exp->unary.exp = ParseFactor(state);
 
@@ -1951,28 +1823,28 @@ static Expr *ParseFactor(Tiny_State *state) {
         } break;
 
         case TINY_TOK_CHAR: {
-            Expr *exp = Expr_create(EXP_CHAR, state);
+            Tiny_Expr *exp = Expr_create(EXP_CHAR, state);
             exp->iValue = state->l.iValue;
             GetNextToken(state);
             return exp;
         } break;
 
         case TINY_TOK_INT: {
-            Expr *exp = Expr_create(EXP_INT, state);
+            Tiny_Expr *exp = Expr_create(EXP_INT, state);
             exp->iValue = state->l.iValue;
             GetNextToken(state);
             return exp;
         } break;
 
         case TINY_TOK_FLOAT: {
-            Expr *exp = Expr_create(EXP_FLOAT, state);
+            Tiny_Expr *exp = Expr_create(EXP_FLOAT, state);
             exp->fValue = state->l.fValue;
             GetNextToken(state);
             return exp;
         } break;
 
         case TINY_TOK_STRING: {
-            Expr *exp = Expr_create(EXP_STRING, state);
+            Tiny_Expr *exp = Expr_create(EXP_STRING, state);
             exp->sIndex = RegisterString(state, state->l.lexeme);
             GetNextToken(state);
             return exp;
@@ -1980,18 +1852,18 @@ static Expr *ParseFactor(Tiny_State *state) {
 
         case TINY_TOK_OPENPAREN: {
             GetNextToken(state);
-            Expr *inner = ParseExpr(state);
+            Tiny_Expr *inner = ParseExpr(state);
 
             ExpectToken(state, TINY_TOK_CLOSEPAREN, "Expected matching ')' after previous '('");
             GetNextToken(state);
 
-            Expr *exp = Expr_create(EXP_PAREN, state);
+            Tiny_Expr *exp = Expr_create(EXP_PAREN, state);
             exp->paren = inner;
             return exp;
         } break;
 
         case TINY_TOK_NEW: {
-            Expr *exp = Expr_create(EXP_CONSTRUCTOR, state);
+            Tiny_Expr *exp = Expr_create(EXP_CONSTRUCTOR, state);
 
             GetNextToken(state);
 
@@ -2021,7 +1893,7 @@ static Expr *ParseFactor(Tiny_State *state) {
                     GetNextToken(state);
                 }
 
-                Expr *e = ParseExpr(state);
+                Tiny_Expr *e = ParseExpr(state);
 
                 sb_push(&state->ctx, exp->constructor.args, e);
 
@@ -2038,7 +1910,7 @@ static Expr *ParseFactor(Tiny_State *state) {
         } break;
 
         case TINY_TOK_CAST: {
-            Expr *exp = Expr_create(EXP_CAST, state);
+            Tiny_Expr *exp = Expr_create(EXP_CAST, state);
 
             GetExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after cast");
 
@@ -2058,7 +1930,7 @@ static Expr *ParseFactor(Tiny_State *state) {
             GetNextToken(state);
 
             while (CurTok == TINY_TOK_DOT) {
-                Expr *e = Expr_create(EXP_DOT, state);
+                Tiny_Expr *e = Expr_create(EXP_DOT, state);
 
                 GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
@@ -2115,7 +1987,7 @@ static int GetTokenPrec() {
     return prec;
 }
 
-static Expr *ParseBinRhs(Tiny_State *state, int exprPrec, Expr *lhs) {
+static Tiny_Expr *ParseBinRhs(Tiny_State *state, int exprPrec, Tiny_Expr *lhs) {
     while (true) {
         int prec = GetTokenPrec();
 
@@ -2125,12 +1997,12 @@ static Expr *ParseBinRhs(Tiny_State *state, int exprPrec, Expr *lhs) {
 
         GetNextToken(state);
 
-        Expr *rhs = ParseFactor(state);
+        Tiny_Expr *rhs = ParseFactor(state);
         int nextPrec = GetTokenPrec();
 
         if (prec < nextPrec) rhs = ParseBinRhs(state, prec + 1, rhs);
 
-        Expr *newLhs = Expr_create(EXP_BINARY, state);
+        Tiny_Expr *newLhs = Expr_create(EXP_BINARY, state);
 
         newLhs->binary.lhs = lhs;
         newLhs->binary.rhs = rhs;
@@ -2140,12 +2012,12 @@ static Expr *ParseBinRhs(Tiny_State *state, int exprPrec, Expr *lhs) {
     }
 }
 
-static Expr *ParseExpr(Tiny_State *state) {
-    Expr *factor = ParseFactor(state);
+static Tiny_Expr *ParseExpr(Tiny_State *state) {
+    Tiny_Expr *factor = ParseFactor(state);
     return ParseBinRhs(state, 0, factor);
 }
 
-static Expr *ParseStatement(Tiny_State *state) {
+static Tiny_Expr *ParseStatement(Tiny_State *state) {
     switch (CurTok) {
         case TINY_TOK_OPENCURLY:
             return ParseBlock(state);
@@ -2156,13 +2028,13 @@ static Expr *ParseStatement(Tiny_State *state) {
 
             if (CurTok == TINY_TOK_OPENPAREN) return ParseCall(state, ident);
 
-            Expr *lhs = Expr_create(EXP_ID, state);
+            Tiny_Expr *lhs = Expr_create(EXP_ID, state);
 
             lhs->id.sym = ReferenceVariable(state, ident);
             lhs->id.name = ident;
 
             while (CurTok == TINY_TOK_DOT) {
-                Expr *e = Expr_create(EXP_DOT, state);
+                Tiny_Expr *e = Expr_create(EXP_DOT, state);
 
                 GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
@@ -2207,7 +2079,7 @@ static Expr *ParseStatement(Tiny_State *state) {
 
             GetNextToken(state);
 
-            Expr *rhs = ParseExpr(state);
+            Tiny_Expr *rhs = ParseExpr(state);
 
             if (op == TINY_TOK_DECLARECONST) {
                 if (lhs->type != EXP_ID) {
@@ -2235,7 +2107,7 @@ static Expr *ParseStatement(Tiny_State *state) {
                 }
             }
 
-            Expr *bin = Expr_create(EXP_BINARY, state);
+            Tiny_Expr *bin = Expr_create(EXP_BINARY, state);
 
             bin->lineNumber = lineNumber;
             bin->pos = pos;
@@ -2255,7 +2127,7 @@ static Expr *ParseStatement(Tiny_State *state) {
 
         case TINY_TOK_WHILE: {
             GetNextToken(state);
-            Expr *exp = Expr_create(EXP_WHILE, state);
+            Tiny_Expr *exp = Expr_create(EXP_WHILE, state);
 
             exp->whilex.cond = ParseExpr(state);
 
@@ -2271,7 +2143,7 @@ static Expr *ParseStatement(Tiny_State *state) {
         case TINY_TOK_FOR: {
             GetNextToken(state);
 
-            Expr *exp = Expr_create(EXP_FOR, state);
+            Tiny_Expr *exp = Expr_create(EXP_FOR, state);
 
             // Every local declared after this is scoped to the for
             OpenScope(state);
@@ -2304,7 +2176,7 @@ static Expr *ParseStatement(Tiny_State *state) {
                             "you do that? Why would you do any of that?");
             }
 
-            Expr *exp = Expr_create(EXP_RETURN, state);
+            Tiny_Expr *exp = Expr_create(EXP_RETURN, state);
 
             GetNextToken(state);
             if (CurTok == TINY_TOK_SEMI) {
@@ -2326,7 +2198,7 @@ static Expr *ParseStatement(Tiny_State *state) {
         // TODO(Apaar): Labeled break/continue
         case TINY_TOK_BREAK: {
             GetNextToken(state);
-            Expr *exp = Expr_create(EXP_BREAK, state);
+            Tiny_Expr *exp = Expr_create(EXP_BREAK, state);
 
             // Set to -1 to make sure we don't get into trouble
             exp->breakContinue.patchLoc = -1;
@@ -2335,7 +2207,7 @@ static Expr *ParseStatement(Tiny_State *state) {
         } break;
 
         case TINY_TOK_CONTINUE: {
-            Expr *exp = Expr_create(EXP_CONTINUE, state);
+            Tiny_Expr *exp = Expr_create(EXP_CONTINUE, state);
 
             GetNextToken(state);
 
@@ -2351,7 +2223,7 @@ static Expr *ParseStatement(Tiny_State *state) {
                             "'use' statements are only valid at the top-level of a Tiny file.");
             }
 
-            Expr *exp = Expr_create(EXP_USE, state);
+            Tiny_Expr *exp = Expr_create(EXP_USE, state);
 
             GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'use'");
 
@@ -2399,17 +2271,17 @@ static Expr *ParseStatement(Tiny_State *state) {
     return NULL;
 }
 
-static Expr **ParseProgram(Tiny_State *state) {
+static Tiny_Expr **ParseProgram(Tiny_State *state) {
     GetNextToken(state);
 
     if (CurTok != TINY_TOK_EOF) {
-        Expr **arr = NULL;
+        Tiny_Expr **arr = NULL;
 
         while (CurTok != TINY_TOK_EOF) {
             if (CurTok == TINY_TOK_STRUCT) {
                 ParseStruct(state);
             } else {
-                Expr *stmt = ParseStatement(state);
+                Tiny_Expr *stmt = ParseStatement(state);
                 sb_push(&state->ctx, arr, stmt);
             }
         }
@@ -2466,7 +2338,7 @@ static bool IsTagAssignableTo(const Tiny_Symbol *src, const Tiny_Symbol *dest) {
     return false;
 }
 
-static void ResolveTypes(Tiny_State *state, Expr *exp) {
+static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
     if (exp->tag) return;
 
     switch (exp->type) {
@@ -2903,7 +2775,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
                         // Swap the arg name at [j] with the one at [i] so that we
                         // end up re-ordering these as we go.
                         char *oldName = exp->constructor.argNames[i];
-                        Expr *oldExp = exp->constructor.args[i];
+                        Tiny_Expr *oldExp = exp->constructor.args[i];
 
                         exp->constructor.argNames[i] = name;
                         exp->constructor.args[i] = exp->constructor.args[j];
@@ -2961,7 +2833,7 @@ static void ResolveTypes(Tiny_State *state, Expr *exp) {
     }
 }
 
-static void CompileProgram(Tiny_State *state, Expr **program);
+static void CompileProgram(Tiny_State *state, Tiny_Expr **program);
 
 static void GeneratePushInt(Tiny_State *state, int iValue) {
     if (iValue == 0) {
@@ -2999,9 +2871,9 @@ static void GeneratePushString(Tiny_State *state, int sIndex) {
     }
 }
 
-static void CompileExpr(Tiny_State *state, Expr *exp);
+static void CompileExpr(Tiny_State *state, Tiny_Expr *exp);
 
-static void CompileGetIdOrDot(Tiny_State *state, Expr *exp) {
+static void CompileGetIdOrDot(Tiny_State *state, Tiny_Expr *exp) {
     if (exp->type == EXP_ID) {
         if (!exp->id.sym)
             ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name);
@@ -3056,7 +2928,7 @@ static void CompileGetIdOrDot(Tiny_State *state, Expr *exp) {
     }
 }
 
-static void CompileCall(Tiny_State *state, Expr *exp) {
+static void CompileCall(Tiny_State *state, Tiny_Expr *exp) {
     assert(exp->type == EXP_CALL);
 
     if (sb_count(exp->call.args) > UCHAR_MAX) {
@@ -3092,7 +2964,7 @@ static void CompileCall(Tiny_State *state, Expr *exp) {
     }
 }
 
-static void CompileExpr(Tiny_State *state, Expr *exp) {
+static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
     switch (exp->type) {
         case EXP_NULL: {
             GenerateCode(state, TINY_OP_PUSH_NULL);
@@ -3318,7 +3190,7 @@ static void CompileExpr(Tiny_State *state, Expr *exp) {
     }
 }
 
-static void PatchBreakContinue(Tiny_State *state, Expr *body, int breakPC, int continuePC) {
+static void PatchBreakContinue(Tiny_State *state, Tiny_Expr *body, int breakPC, int continuePC) {
     // For convenience
     if (!body) {
         return;
@@ -3437,7 +3309,7 @@ void Tiny_GetExecutingFileLine(const Tiny_StateThread *thread, const char **file
     GetFileLineForPC(thread->state, thread->pc, fileName, line);
 }
 
-static void CompileStatement(Tiny_State *state, Expr *exp) {
+static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
     AddPCFileLineRecord(
         state,
         (Tiny_PCToFileLine){
@@ -3692,16 +3564,16 @@ static void CompileStatement(Tiny_State *state, Expr *exp) {
     }
 }
 
-static void CompileProgram(Tiny_State *state, Expr **program) {
-    Expr **arr = program;
+static void CompileProgram(Tiny_State *state, Tiny_Expr **program) {
+    Tiny_Expr **arr = program;
     for (int i = 0; i < sb_count(arr); ++i) {
         CompileStatement(state, arr[i]);
     }
 }
 
-static void DeleteProgram(Expr **program, Tiny_Context *ctx);
+static void DeleteProgram(Tiny_Expr **program, Tiny_Context *ctx);
 
-static void Expr_destroy(Expr *exp, Tiny_Context *ctx) {
+static void Expr_destroy(Tiny_Expr *exp, Tiny_Context *ctx) {
     switch (exp->type) {
         case EXP_ID: {
             TFree(ctx, exp->id.name);
@@ -3811,8 +3683,8 @@ static void Expr_destroy(Expr *exp, Tiny_Context *ctx) {
     TFree(ctx, exp);
 }
 
-void DeleteProgram(Expr **program, Tiny_Context *ctx) {
-    Expr **arr = program;
+void DeleteProgram(Tiny_Expr **program, Tiny_Context *ctx) {
+    Tiny_Expr **arr = program;
     for (int i = 0; i < sb_count(program); ++i) {
         Expr_destroy(arr[i], ctx);
     }
@@ -3860,7 +3732,7 @@ static void BuildForeignFunctions(Tiny_State *state) {
     }
 }
 
-static void CompileState(Tiny_State *state, Expr **prog) {
+static void CompileState(Tiny_State *state, Tiny_Expr **prog) {
     // If this state was already compiled and it ends with an TINY_OP_HALT, We'll
     // just overwrite it
     if (sb_count(state->program) > 0) {
@@ -3907,13 +3779,13 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
 
     int firstSymIndex = sb_count(state->globalSymbols);
 
-    Expr **prog = ParseProgram(state);
+    Tiny_Expr **prog = ParseProgram(state);
 
     int lastSymIndex = sb_count(state->globalSymbols);
 
     // Just before we do into the type resolution state, apply all the module functions
     for (int i = 0; i < sb_count(prog); ++i) {
-        Expr *exp = prog[i];
+        Tiny_Expr *exp = prog[i];
 
         if (exp->type != EXP_USE) {
             continue;

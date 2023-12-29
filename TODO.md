@@ -1,6 +1,11 @@
 # TODO
 
-* IDEA Adopt Zig's `break value` syntax to support expression-oriented blocks
+- IDEA Be able to launch other `StateThread` and cooperatively yield from them
+
+  - They don't share heaps though so what do we do about that?
+  - Should we instead just have an actual coroutine/fiber thing that just has a stack?
+
+- IDEA Adopt Zig's `break value` syntax to support expression-oriented blocks
 
 ```
 a := 10
@@ -13,87 +18,89 @@ x := {
 }
 ```
 
-* TEST Short circuting &&
-* TEST Short circuiting ||
-* TEST Break and continue in for loops
-* TEST Got rid of null-terminated strings but didn't really add too many tests
+- TEST Short circuting &&
+- TEST Short circuiting ||
+- TEST Break and continue in for loops
+- TEST Got rid of null-terminated strings but didn't really add too many tests
 
-* BAD Right now always crashes if the same symbol is bound twice
-* BAD Cannot store any context `void*` with modules/bound functions
-* BAD You can return `any`, but you cannot assign `any` to anything; it is more like "unknown" I guess?
-Except in the event that you're returning it lol???
+- BAD Right now always crashes if the same symbol is bound twice
+- BAD Cannot store any context `void*` with modules/bound functions
+- BAD You can return `any`, but you cannot assign `any` to anything; it is more like "unknown" I guess?
+  Except in the event that you're returning it lol???
 
-* BAD Array out of bounds asserts in debug and segfaults in real
-* BAD `Tiny_Value` is 16 bytes because we store type tag even though technically we can get away
+- BAD Array out of bounds asserts in debug and segfaults in real
+- BAD `Tiny_Value` is 16 bytes because we store type tag even though technically we can get away
   with only boxing "any" or reference types (see the `snow-common` branch)
-    * Likely a big performance win
-    * Will need typed 
-* BAD Cannot cast reference types to any
-* BAD No ternary operator
-* BAD Accessing null values causes segfault
-* BAD No type aliases (strong)
+  - Likely a big performance win
+  - Will need typed
+- BAD Cannot cast reference types to any
+- BAD No ternary operator
+- BAD Accessing null values causes segfault
+- BAD No type aliases (strong)
 
-* BUG The following compiles without error (no checking of whether function returns value)
-    * This would require some amount of control flow analysis though (for the non-trivial case)
-    * Could just always require the top-level block to contain a return expression? Could catch 90% of these bugs
+- BUG The following compiles without error (no checking of whether function returns value)
+  - This would require some amount of control flow analysis though (for the non-trivial case)
+  - Could just always require the top-level block to contain a return expression? Could catch 90% of these bugs
+
 ```
 func test(): int {}
 ```
 
-* BAD No error types/error info
-    * Add "error" primitive type which is just an error code (int? string? it's own primitive type)
+- BAD No error types/error info
+  - Add "error" primitive type which is just an error code (int? string? it's own primitive type)
     and a pointer to a context object
-* BAD No runtime type information on struct object (could probably stuff a uint16_t struct ID somewhere at least?)
-    * Could even just get rid of teh `nfields` since I think that's only used for pretty printing
+- BAD No runtime type information on struct object (could probably stuff a uint16_t struct ID somewhere at least?)
+  - Could even just get rid of teh `nfields` since I think that's only used for pretty printing
     and debug checks
-* BAD Cannot access type information in C binding functions
-    * Would be mega useful to make things type-safe
-    * For example, could allow you to succinctly define a `delegate` binding
-        * Just need the function name, nothing else
-* BAD No interface to allocate/deallocate using the thread's context allocator
-* BAD No standard regex
-* BAD No syntax highlighting
-* BAD Pretty printing `%q` in printf
-* BAD No panics??
-* BAD Memory unsafety introduced by varargs functions (unless we do runtime type checking)
-    * For example, `i64_add_many`
-* BAD Sometimes error messages point to the wrong line (off by one?)
-* BAD No functions-as-values (not even without captures)
-    * Could patch this hole with runtime polymorphism but ehhhhh
-    * Could also technically implement this with a C library haha
-* BAD No ranges/range-based loops
-* BAD All types are nullable?
-* BAD No multiline comments
-* BAD No builtin array or dict
-    * Mainly for type safety; parametric polymorphism (at the library level only?) could solve this
-    * The library-only parapoly prevents the script code from becoming too complex
-    * Builtin array or dict will probably cover most use cases though (see Golang)
-* BAD No 64-bit integers
-* BAD No char type
-* BAD No polymorphism of any kind
+- BAD Cannot access type information in C binding functions
+  - Would be mega useful to make things type-safe
+  - For example, could allow you to succinctly define a `delegate` binding
+    - Just need the function name, nothing else
+- BAD No interface to allocate/deallocate using the thread's context allocator
+- BAD No standard regex
+- BAD No syntax highlighting
+- BAD Pretty printing `%q` in printf
+- BAD No panics??
+- BAD Memory unsafety introduced by varargs functions (unless we do runtime type checking)
+  - For example, `i64_add_many`
+- BAD Sometimes error messages point to the wrong line (off by one?)
+- BAD No functions-as-values (not even without captures)
+  - Could patch this hole with runtime polymorphism but ehhhhh
+  - Could also technically implement this with a C library haha
+- BAD No ranges/range-based loops
+- BAD All types are nullable?
+- BAD No multiline comments
+- BAD No builtin array or dict
+  - Mainly for type safety; parametric polymorphism (at the library level only?) could solve this
+  - The library-only parapoly prevents the script code from becoming too complex
+  - Builtin array or dict will probably cover most use cases though (see Golang)
+- BAD No 64-bit integers
+- BAD No char type
+- BAD No polymorphism of any kind
 
-* Make `CurTok` local or at least thread local
+- Make `CurTok` local or at least thread local
 
-* Pass in alignment to used provided allocation function
+- Pass in alignment to used provided allocation function
 
-* Refactor VM from compiler
+- Refactor VM from compiler
 
-* First class types (store a "type" which is just an integer in the VM)
+- First class types (store a "type" which is just an integer in the VM)
 
-* Once "any" is safe, we can have typed bytecode instructions; `OP_ADD_INT`, `OP_EQUAL_STRING` etc
-    * Untagged values
+- Once "any" is safe, we can have typed bytecode instructions; `OP_ADD_INT`, `OP_EQUAL_STRING` etc
 
-* Function overloading
+  - Untagged values
 
-* "Method" sugar (first argument to func matches type of x => x.func())
+- Function overloading
 
-* Do not `exit` anywhere in the library; user code must be able to handle errors
+- "Method" sugar (first argument to func matches type of x => x.func())
 
-* Less haphazard allocation: Allow the user to supply a malloc, use Arenas
+- Do not `exit` anywhere in the library; user code must be able to handle errors
 
-* Function return type inference (Kind of unsafe at times tho)
+- Less haphazard allocation: Allow the user to supply a malloc, use Arenas
 
-* Interfaces? There is currently no ways of doing polymorphism and I think the golang approach
+- Function return type inference (Kind of unsafe at times tho)
+
+- Interfaces? There is currently no ways of doing polymorphism and I think the golang approach
   to interfaces is pretty nice:
 
 ```
@@ -124,10 +131,11 @@ func thing(v: Vec2) {
 
 ```
 
-* Anonymous functions (closures)
+- Anonymous functions (closures)
 
 HARD TO IMPLEMENT AND MAYBE OVERSTEPPING THE BOUNDARIES OF A SCRIPTING LANGUAGE:
-* SIMPLE GENERICS (See how C# does it):
+
+- SIMPLE GENERICS (See how C# does it):
 
 ```
 // NOTE: This is not a C++ template; the types are just used for type-checking at the call site;
@@ -141,6 +149,7 @@ e.get(ItemComponent)
 ```
 
 Of course, if it's implemented at the tiny level, then generics must also be implemented at the C level:
+
 ```c
 // $$t means pass in the actual type value as well (so we can inspect it in the C code to get the appropriate component for example)
 Tiny_BindFunction(state, "get(entity, $$t): t", Lib_GetComponent);
@@ -155,11 +164,10 @@ Tiny_BindFunction(state, "get(array($t), int): t");
 
 # Done
 
-* BAD Cannot do `.` subscript on cast expression values
-* BAD No designated struct init
-* BUG Comparing structs does nothing
-* BUG Assigning to arguments doesn't seem to work, repro
-
+- BAD Cannot do `.` subscript on cast expression values
+- BAD No designated struct init
+- BUG Comparing structs does nothing
+- BUG Assigning to arguments doesn't seem to work, repro
 
 ```
 func mutate_arg(i: int) {
@@ -171,17 +179,18 @@ func mutate_arg(i: int) {
 mutate_arg(5)
 ```
 
-* BAD NULL TERMINATED STRINGS?? 
-* BUG The following compiles without error
+- BAD NULL TERMINATED STRINGS??
+- BUG The following compiles without error
+
 ```
 func split_lines(s: str): array {
     return ""
 }
 ```
 
-* BAD || does not short circuit
-* BAD %c is not handled as a format specifier
-* BUG `&&` doesn't short circuit?
-* BUG `continue` doesn't seem to run the "step" part of the for loop
-* Make sure VM bytecode instructions and data are aligned properly
-* Safer "any" type: must be explicitly converted
+- BAD || does not short circuit
+- BAD %c is not handled as a format specifier
+- BUG `&&` doesn't short circuit?
+- BUG `continue` doesn't seem to run the "step" part of the for loop
+- Make sure VM bytecode instructions and data are aligned properly
+- Safer "any" type: must be explicitly converted
