@@ -4,10 +4,10 @@
 
 #include "util.h"
 
-static ArenaPage* AllocPage(Tiny_Context* ctx, size_t size) {
-    ArenaPage* page = TMalloc(ctx, sizeof(ArenaPage));
+static Tiny_ArenaPage* AllocPage(Tiny_Context* ctx, size_t size) {
+    Tiny_ArenaPage* page = TMalloc(ctx, sizeof(Tiny_ArenaPage) + size);
 
-    page->data = TMalloc(ctx, size);
+    page->data = (char*)page + sizeof(Tiny_ArenaPage);
     page->cap = size;
     page->used = 0;
     page->next = NULL;
@@ -30,14 +30,14 @@ static size_t NextMultipleOf(size_t value, size_t factor) {
     return (value & ~(factor - 1)) + factor;
 }
 
-void InitArena(Arena* a, Tiny_Context ctx) {
+void Tiny_InitArena(Tiny_Arena* a, Tiny_Context ctx) {
     a->ctx = ctx;
     a->head = NULL;
 }
 
-void* ArenaAlloc(Arena* a, size_t size, size_t align) {
+void* Tiny_ArenaAlloc(Tiny_Arena* a, size_t size, size_t align) {
     if (size > ARENA_PAGE_SIZE) {
-        ArenaPage* page = AllocPage(&a->ctx, size);
+        Tiny_ArenaPage* page = AllocPage(&a->ctx, size);
 
         page->used = size;
 
@@ -52,7 +52,7 @@ void* ArenaAlloc(Arena* a, size_t size, size_t align) {
     }
 
     if (!a->head || NextMultipleOf(a->head->used, align) + size > a->head->cap) {
-        ArenaPage* page = AllocPage(&a->ctx, ARENA_PAGE_SIZE);
+        Tiny_ArenaPage* page = AllocPage(&a->ctx, ARENA_PAGE_SIZE);
 
         page->used = size;
 
@@ -69,13 +69,12 @@ void* ArenaAlloc(Arena* a, size_t size, size_t align) {
     return data;
 }
 
-void DestroyArena(Arena* a) {
-    ArenaPage* next = NULL;
+void Tiny_DestroyArena(Tiny_Arena* a) {
+    Tiny_ArenaPage* next = NULL;
 
-    for (ArenaPage* node = a->head; node; node = next) {
+    for (Tiny_ArenaPage* node = a->head; node; node = next) {
         next = node->next;
 
-        TFree(&a->ctx, node->data);
         TFree(&a->ctx, node);
     }
 }

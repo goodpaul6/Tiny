@@ -629,29 +629,29 @@ static void test_CheckMallocs() {
 }
 
 static void test_Arena() {
-    Arena a;
+    Tiny_Arena a;
 
-    InitArena(&a, Context);
+    Tiny_InitArena(&a, Context);
 
-    void *data = ArenaAlloc(&a, 10, 1);
+    void *data = Tiny_ArenaAlloc(&a, 10, 1);
 
     lequal((int)a.head->used, 10);
 
     char s[10] = "hello wor\0";
     strcpy(data, s);
 
-    void *data2 = ArenaAlloc(&a, ARENA_PAGE_SIZE + 10, 1);
+    void *data2 = Tiny_ArenaAlloc(&a, ARENA_PAGE_SIZE + 10, 1);
 
     // This is checking that the large allocation we perform above
     // does not cause the "small allocation" page to be moved back.
     lequal((int)a.head->used, 10);
 
-    void *data3 = ArenaAlloc(&a, 7, 8);
+    void *data3 = Tiny_ArenaAlloc(&a, 7, 8);
 
     lequal((int)((uintptr_t)data3 % 8), 0);
     lequal((int)a.head->used, 23);
 
-    DestroyArena(&a);
+    Tiny_DestroyArena(&a);
 }
 
 static void test_StructTypeSafe() {
