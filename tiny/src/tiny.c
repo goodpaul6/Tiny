@@ -2408,7 +2408,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
             if (!func) {
                 ReportErrorE(state, exp, "Calling undeclared function '%s'.\n",
-                             exp->call.calleeName);
+                             exp->call.calleeName->value);
             }
 
             int argc = func->type == TINY_SYM_FOREIGN_FUNCTION ?
@@ -2425,13 +2425,13 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
                 if(func->type == TINY_SYM_FOREIGN_FUNCTION) {
                     if(i < argc) {
-                        expectedArgTag = func->type == TINY_SYM_FOREIGN_FUNCTION ?
-                            func->foreignFunc.argTags[i] :
-                            func->func.args[i]->var.tag;
+                        expectedArgTag = func->foreignFunc.argTags[i];
                     } else if(!isVarargs) {
                         ReportErrorE(state, node, "Too many arguments to function '%s' (%d expected).",
                             exp->call.calleeName, argc);
                     }
+                } else {
+                    expectedArgTag = func->func.args[i]->var.tag;
                 }
 
                 if(!expectedArgTag) {
