@@ -2418,7 +2418,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             bool isVarargs = func->type == TINY_SYM_FOREIGN_FUNCTION && func->foreignFunc.varargs;
 
             int i = 0;
-            for (Tiny_Expr* node = exp->call.argsHead; node; node = node->next) {
+            for (Tiny_Expr* node = exp->call.argsHead; node; (node = node->next, ++i)) {
                 ResolveTypes(state, node);
 
                 const Tiny_Symbol* expectedArgTag = NULL;
@@ -2437,7 +2437,6 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                 }
 
                 if(!expectedArgTag) {
-                    ++i;
                     continue;
                 }
 
@@ -2447,8 +2446,6 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                         "Argument %i is supposed to be a %s but you supplied a %s\n", i + 1,
                         GetTagName(expectedArgTag), GetTagName(node->tag));
                 }
-
-                ++i;
             }
 
             exp->tag = func->type == TINY_SYM_FOREIGN_FUNCTION ?
@@ -2752,7 +2749,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             Tiny_StringNode* nameNode = exp->constructor.argNamesHead;
 
             int i = 0;
-            for(Tiny_Expr* argNode = exp->constructor.argsHead; argNode; argNode = argNode->next) {
+            for(Tiny_Expr* argNode = exp->constructor.argsHead; argNode; (argNode = argNode->next, ++i)) {
                 ResolveTypes(state, argNode);
 
                 if(!nameNode && exp->constructor.argNamesHead) {
@@ -2817,8 +2814,6 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                 if(nameNode) {
                     nameNode = nameNode->next;
                 }
-
-                ++i;
             }
 
             exp->tag = exp->constructor.structTag;
