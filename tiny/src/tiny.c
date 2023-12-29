@@ -39,13 +39,28 @@ static void *DefaultAlloc(void *ptr, size_t size, void *userdata) {
 
 Tiny_Context Tiny_DefaultContext = {DefaultAlloc, NULL};
 
-char *CloneString(Tiny_Context *ctx, const char *str) {
+static char *CloneString(Tiny_Context *ctx, const char *str) {
     size_t len = strlen(str);
 
     char *dup = TMalloc(ctx, len + 1);
     memcpy(dup, str, len + 1);
 
     return dup;
+}
+
+// Create a string node specifically for being put inside an expr (i.e. allocated in the parser arena)
+static Tiny_StringNode* CreateExprStringNode(Tiny_State* state, const char* str) {
+    size_t len = strlen(str);
+
+    Tiny_StringNode* node = Tiny_ArenaAlloc(&state->parserArena, sizeof(Tiny_StringNode) + len + 1,
+        sizeof(void*));
+    char* dup = (char*)node + sizeof(Tiny_StringNode);
+
+    memcpy(dup, str, len + 1);
+    node->value = dup;
+    node->next = NULL;
+
+    return node;
 }
 
 static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj) {
@@ -1401,8 +1416,9 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
 }
 
 static Tiny_Expr *Expr_create(Tiny_ExprType type, Tiny_State *state) {
-    Tiny_Expr *exp = TMalloc(&state->ctx, sizeof(Tiny_Expr));
+    Tiny_Expr *exp = Tiny_ArenaAlloc(&state->parserArena, sizeof(Tiny_Expr), sizeof(void*));
 
+    exp->next = NULL;
     exp->pos = state->l.pos;
     exp->lineNumber = state->l.lineNumber;
     exp->type = type;
@@ -1574,7 +1590,8 @@ static Tiny_Expr *ParseBlock(Tiny_State *state) {
 
     Tiny_Expr *exp = Expr_create(TINY_EXP_BLOCK, state);
 
-    exp->block = NULL;
+    exp->blockHead = NULL;
+    Tiny_Expr* blockTail = NULL;
 
     GetNextToken(state);
 
@@ -1584,7 +1601,7 @@ static Tiny_Expr *ParseBlock(Tiny_State *state) {
         Tiny_Expr *e = ParseStatement(state);
         assert(e);
 
-        sb_push(&state->ctx, exp->block, e);
+        TINY_LL_APPEND(exp->blockHead, blockTail, e);
     }
 
     GetNextToken(state);
@@ -1733,21 +1750,22 @@ static Tiny_Symbol *ParseStruct(Tiny_State *state) {
     return s;
 }
 
-static Tiny_Expr *ParseCall(Tiny_State *state, char *ident) {
+static Tiny_Expr *ParseCall(Tiny_State *state, Tiny_StringNode *ident) {
     assert(CurTok == TINY_TOK_OPENPAREN);
 
     Tiny_Expr *exp = Expr_create(TINY_EXP_CALL, state);
 
-    exp->call.args = NULL;
+    exp->call.argsHead = NULL;
+    Tiny_Expr* argsTail = NULL;
 
     GetNextToken(state);
 
     while (CurTok != TINY_TOK_CLOSEPAREN) {
-        sb_push(&state->ctx, exp->call.args, ParseExpr(state));
+        TINY_LL_APPEND(exp->call.argsHead, argsTail, ParseExpr(state));
 
-        if (CurTok == TINY_TOK_COMMA)
+        if (CurTok == TINY_TOK_COMMA) {
             GetNextToken(state);
-        else if (CurTok != TINY_TOK_CLOSEPAREN) {
+        } else if (CurTok != TINY_TOK_CLOSEPAREN) {
             ReportError(state, "Expected ')' after call.");
         }
     }
@@ -1774,7 +1792,7 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
             exp->boolean = state->l.bValue;
 
             GetNextToken(state);
-
+ 
             return exp;
         } break;
 
@@ -1782,7 +1800,7 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
             Tiny_TokenPos pos = state->l.pos;
             int lineNumber = state->l.lineNumber;
 
-            char *ident = CloneString(&state->ctx, state->l.lexeme);
+            Tiny_StringNode* ident = CreateExprStringNode(state, state->l.lexeme);
             GetNextToken(state);
 
             if (CurTok == TINY_TOK_OPENPAREN) return ParseCall(state, ident);
@@ -1792,7 +1810,7 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
             exp->pos = pos;
             exp->lineNumber = lineNumber;
 
-            exp->id.sym = ReferenceVariable(state, ident);
+            exp->id.sym = ReferenceVariable(state, ident->value);
             exp->id.name = ident;
 
             while (CurTok == TINY_TOK_DOT) {
@@ -1801,7 +1819,7 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
                 GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
                 e->dot.lhs = exp;
-                e->dot.field = CloneString(&state->ctx, state->l.lexeme);
+                e->dot.field = CreateExprStringNode(state, state->l.lexeme);
 
                 GetNextToken(state);
 
@@ -1870,8 +1888,12 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
             Tiny_Symbol *tag = DeclareStruct(state, state->l.lexeme, true);
 
             exp->constructor.structTag = tag;
-            exp->constructor.argNames = NULL;
-            exp->constructor.args = NULL;
+
+            exp->constructor.argNamesHead = NULL;
+            Tiny_StringNode* argNamesTail = NULL;
+
+            exp->constructor.argsHead = NULL;
+            Tiny_Expr* argsTail = NULL;
 
             GetExpectToken(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name");
 
@@ -1883,9 +1905,9 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
                     GetExpectToken(state, TINY_TOK_IDENT,
                                    "Expected identifier after '.' in designated initializer.");
 
-                    char *ident = CloneString(&state->ctx, state->l.lexeme);
+                    Tiny_StringNode *ident = CreateExprStringNode(state, state->l.lexeme);
 
-                    sb_push(&state->ctx, exp->constructor.argNames, ident);
+                    TINY_LL_APPEND(exp->constructor.argNamesHead, argNamesTail, ident);
 
                     GetExpectToken(state, TINY_TOK_EQUAL,
                                    "Expected = after designated initializer");
@@ -1895,7 +1917,7 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
 
                 Tiny_Expr *e = ParseExpr(state);
 
-                sb_push(&state->ctx, exp->constructor.args, e);
+                TINY_LL_APPEND(exp->constructor.argsHead, argsTail, e);
 
                 if (CurTok != TINY_TOK_CLOSECURLY && CurTok != TINY_TOK_COMMA) {
                     ReportError(state, "Expected '}' or ',' in constructor arg list.");
@@ -1935,7 +1957,7 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
                 GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
                 e->dot.lhs = exp;
-                e->dot.field = CloneString(&state->ctx, state->l.lexeme);
+                e->dot.field = CreateExprStringNode(state, state->l.lexeme);
 
                 GetNextToken(state);
 
@@ -2023,14 +2045,14 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
             return ParseBlock(state);
 
         case TINY_TOK_IDENT: {
-            char *ident = CloneString(&state->ctx, state->l.lexeme);
+            Tiny_StringNode *ident = CreateExprStringNode(state, state->l.lexeme);
             GetNextToken(state);
 
             if (CurTok == TINY_TOK_OPENPAREN) return ParseCall(state, ident);
 
             Tiny_Expr *lhs = Expr_create(TINY_EXP_ID, state);
 
-            lhs->id.sym = ReferenceVariable(state, ident);
+            lhs->id.sym = ReferenceVariable(state, ident->value);
             lhs->id.name = ident;
 
             while (CurTok == TINY_TOK_DOT) {
@@ -2039,7 +2061,7 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
                 GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
                 e->dot.lhs = lhs;
-                e->dot.field = CloneString(&state->ctx, state->l.lexeme);
+                e->dot.field = CreateExprStringNode(state, state->l.lexeme);
 
                 GetNextToken(state);
 
@@ -2057,9 +2079,9 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
                 }
 
                 if (state->currFunc) {
-                    lhs->id.sym = DeclareLocal(state, ident);
+                    lhs->id.sym = DeclareLocal(state, ident->value);
                 } else {
-                    lhs->id.sym = DeclareGlobalVar(state, ident);
+                    lhs->id.sym = DeclareGlobalVar(state, ident->value);
                 }
 
                 if (CurTok == TINY_TOK_COLON) {
@@ -2087,23 +2109,23 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
                 }
 
                 if (rhs->type == TINY_EXP_BOOL) {
-                    DeclareConst(state, lhs->id.name, GetPrimTag(TINY_SYM_TAG_BOOL))
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_BOOL))
                         ->constant.bValue = rhs->boolean;
                 } else if (rhs->type == TINY_EXP_CHAR) {
-                    DeclareConst(state, lhs->id.name, GetPrimTag(TINY_SYM_TAG_INT))
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_INT))
                         ->constant.iValue = rhs->iValue;
                 } else if (rhs->type == TINY_EXP_INT) {
-                    DeclareConst(state, lhs->id.name, GetPrimTag(TINY_SYM_TAG_INT))
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_INT))
                         ->constant.iValue = rhs->iValue;
                 } else if (rhs->type == TINY_EXP_FLOAT) {
-                    DeclareConst(state, lhs->id.name, GetPrimTag(TINY_SYM_TAG_FLOAT))
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_FLOAT))
                         ->constant.fValue = rhs->fValue;
                 } else if (rhs->type == TINY_EXP_STRING) {
-                    DeclareConst(state, lhs->id.name, GetPrimTag(TINY_SYM_TAG_STR))
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_STR))
                         ->constant.sIndex = rhs->sIndex;
                 } else {
                     ReportError(state, "Expected number or string to be bound to constant '%s'.",
-                                lhs->id.name);
+                                lhs->id.name->value);
                 }
             }
 
@@ -2227,8 +2249,11 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
 
             GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'use'");
 
-            exp->use.moduleName = CloneString(&state->ctx, state->l.lexeme);
-            exp->use.args = NULL;
+            exp->use.moduleName = CreateExprStringNode(state, state->l.lexeme);
+
+            exp->use.argsHead = NULL;
+            Tiny_StringNode* argsTail = NULL;
+
             exp->use.asName = NULL;
 
             GetExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after 'use' module name");
@@ -2238,9 +2263,9 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
             while (CurTok != TINY_TOK_CLOSEPAREN) {
                 ExpectToken(state, TINY_TOK_STRING, "Expected string as arg to 'use' module name");
 
-                char *arg = CloneString(&state->ctx, state->l.lexeme);
+                Tiny_StringNode *arg = CreateExprStringNode(state, state->l.lexeme);
 
-                sb_push(&state->ctx, exp->use.args, arg);
+                TINY_LL_APPEND(exp->use.argsHead, argsTail, arg);
 
                 GetNextToken(state);
 
@@ -2258,7 +2283,7 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
             if (CurTok == TINY_TOK_IDENT && strcmp(state->l.lexeme, "as") == 0) {
                 GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'as'");
 
-                exp->use.asName = CloneString(&state->ctx, state->l.lexeme);
+                exp->use.asName = CreateExprStringNode(state, state->l.lexeme);
 
                 GetNextToken(state);
             }
@@ -2271,25 +2296,25 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
     return NULL;
 }
 
-static Tiny_Expr **ParseProgram(Tiny_State *state) {
+static Tiny_Expr *ParseProgram(Tiny_State *state) {
     GetNextToken(state);
 
-    if (CurTok != TINY_TOK_EOF) {
-        Tiny_Expr **arr = NULL;
-
-        while (CurTok != TINY_TOK_EOF) {
-            if (CurTok == TINY_TOK_STRUCT) {
-                ParseStruct(state);
-            } else {
-                Tiny_Expr *stmt = ParseStatement(state);
-                sb_push(&state->ctx, arr, stmt);
-            }
-        }
-
-        return arr;
+    if(CurTok == TINY_TOK_EOF) {
+        return NULL;
     }
 
-    return NULL;
+    Tiny_Expr* head = NULL;
+    Tiny_Expr* tail = NULL;
+
+    while (CurTok != TINY_TOK_EOF) {
+        if (CurTok == TINY_TOK_STRUCT) {
+            ParseStruct(state);
+        } else {
+            TINY_LL_APPEND(head, tail, ParseStatement(state));
+        }
+    }
+
+    return head;
 }
 
 static const char *GetTagName(const Tiny_Symbol *tag) {
@@ -2379,60 +2404,52 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
         } break;
 
         case TINY_EXP_CALL: {
-            Tiny_Symbol *func = ReferenceFunction(state, exp->call.calleeName);
+            Tiny_Symbol *func = ReferenceFunction(state, exp->call.calleeName->value);
 
             if (!func) {
                 ReportErrorE(state, exp, "Calling undeclared function '%s'.\n",
                              exp->call.calleeName);
             }
 
-            if (func->type == TINY_SYM_FOREIGN_FUNCTION) {
-                for (int i = 0; i < sb_count(exp->call.args); ++i) {
-                    ResolveTypes(state, exp->call.args[i]);
+            int argc = func->type == TINY_SYM_FOREIGN_FUNCTION ?
+                sb_count(func->foreignFunc.argTags) :
+                sb_count(func->func.args);
+            
+            bool isVarargs = func->type == TINY_SYM_FOREIGN_FUNCTION && func->foreignFunc.varargs;
 
-                    if (i >= sb_count(func->foreignFunc.argTags)) {
-                        if (!func->foreignFunc.varargs) {
-                            ReportErrorE(state, exp->call.args[i],
-                                         "Too many arguments to function '%s' (%d expected).\n",
-                                         exp->call.calleeName, sb_count(func->foreignFunc.argTags));
-                        }
+            int i = 0;
+            for (Tiny_Expr* node = exp->call.argsHead; node; node = node->next) {
+                ResolveTypes(state, node);
 
-                        // We don't break because we want all types to be resolved
-                    } else {
-                        const Tiny_Symbol *argTag = func->foreignFunc.argTags[i];
+                const Tiny_Symbol* expectedArgTag = NULL;
 
-                        if (!IsTagAssignableTo(exp->call.args[i]->tag, argTag)) {
-                            ReportErrorE(
-                                state, exp->call.args[i],
-                                "Argument %i is supposed to be a %s but you supplied a %s\n", i + 1,
-                                GetTagName(argTag), GetTagName(exp->call.args[i]->tag));
-                        }
+                if(func->type == TINY_SYM_FOREIGN_FUNCTION) {
+                    if(i < argc) {
+                        expectedArgTag = func->type == TINY_SYM_FOREIGN_FUNCTION ?
+                            func->foreignFunc.argTags[i] :
+                            func->func.args[i]->var.tag;
+                    } else if(!isVarargs) {
+                        ReportErrorE(state, node, "Too many arguments to function '%s' (%d expected).",
+                            exp->call.calleeName, argc);
                     }
                 }
 
-                exp->tag = func->foreignFunc.returnTag;
-            } else {
-                if (sb_count(exp->call.args) != sb_count(func->func.args)) {
-                    ReportErrorE(state, exp, "%s expects %d arguments but you supplied %d.\n",
-                                 exp->call.calleeName, sb_count(func->func.args),
-                                 sb_count(exp->call.args));
+                if(!expectedArgTag) {
+                    continue;
                 }
 
-                for (int i = 0; i < sb_count(exp->call.args); ++i) {
-                    ResolveTypes(state, exp->call.args[i]);
-
-                    const Tiny_Symbol *argSym = func->func.args[i];
-
-                    if (!IsTagAssignableTo(exp->call.args[i]->tag, argSym->var.tag)) {
-                        ReportErrorE(state, exp->call.args[i],
-                                     "Argument %i is supposed to be a %s but you supplied a %s\n",
-                                     i + 1, GetTagName(argSym->var.tag),
-                                     GetTagName(exp->call.args[i]->tag));
-                    }
+                if (!IsTagAssignableTo(node->tag, expectedArgTag)) {
+                    ReportErrorE(
+                        state, node,
+                        "Argument %i is supposed to be a %s but you supplied a %s\n", i + 1,
+                        GetTagName(expectedArgTag), GetTagName(node->tag));
                 }
 
-                exp->tag = func->func.returnTag;
+                ++i;
             }
+
+            exp->tag = func->type == TINY_SYM_FOREIGN_FUNCTION ?
+                func->foreignFunc.returnTag : func->func.returnTag;
         } break;
 
         case TINY_EXP_PAREN: {
@@ -2623,8 +2640,8 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
         } break;
 
         case TINY_EXP_BLOCK: {
-            for (int i = 0; i < sb_count(exp->block); ++i) {
-                ResolveTypes(state, exp->block[i]);
+            for (Tiny_Expr* node = exp->blockHead; node; node = node->next) {
+                ResolveTypes(state, node);
             }
 
             exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
@@ -2716,98 +2733,89 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                 ReportErrorE(state, exp, "Cannot use '.' on a %s", GetTagName(exp->dot.lhs->tag));
             }
 
-            exp->tag = GetFieldTag(exp->dot.lhs->tag, exp->dot.field, NULL);
+            exp->tag = GetFieldTag(exp->dot.lhs->tag, exp->dot.field->value, NULL);
 
             if (!exp->tag) {
                 ReportErrorE(state, exp, "Struct %s doesn't have a field named %s",
-                             exp->dot.lhs->tag->name, exp->dot.field);
+                             exp->dot.lhs->tag->name, exp->dot.field->value);
             }
         } break;
 
         case TINY_EXP_CONSTRUCTOR: {
             assert(exp->constructor.structTag->sstruct.defined);
-            assert(sb_count(exp->constructor.args) <= UCHAR_MAX);
 
-            int meCount = sb_count(exp->constructor.args);
             int tagCount = sb_count(exp->constructor.structTag->sstruct.fields);
 
-            if (meCount != tagCount) {
-                ReportErrorE(state, exp,
-                             "struct %s constructor expects %d args but you supplied %d.",
-                             exp->constructor.structTag->name, tagCount, meCount);
-            }
+            Tiny_StringNode* nameNode = exp->constructor.argNamesHead;
 
-            int namedCount = sb_count(exp->constructor.argNames);
+            int i = 0;
+            for(Tiny_Expr* argNode = exp->constructor.argsHead; argNode; argNode = argNode->next) {
+                ResolveTypes(state, argNode);
 
-            if (exp->constructor.argNames) {
-                if (namedCount != tagCount) {
+                if(!nameNode && exp->constructor.argNamesHead) {
                     ReportErrorE(state, exp,
                                  "Invalid designated initializer for struct %s. Make sure you "
                                  "initialize every field.",
-                                 exp->constructor.structTag->name);
+                                 GetTagName(exp->constructor.structTag));
                 }
 
-                for (int i = 0; i < tagCount; ++i) {
-                    Tiny_Symbol *expectedField = exp->constructor.structTag->sstruct.fields[i];
+                if(i >= tagCount) {
+                    ReportErrorE(state, exp,
+                                "struct %s constructor expects %d args but you supplied more.",
+                                GetTagName(exp->constructor.structTag), tagCount);
+                }
 
+                if(exp->constructor.argNamesHead) {
                     bool found = false;
 
-                    for (int j = 0; j < namedCount; ++j) {
-                        char *name = exp->constructor.argNames[j];
+                    for(int j = 0; j < tagCount; ++j) {
+                        Tiny_Symbol *expectedField = exp->constructor.structTag->sstruct.fields[j];
+                        assert(expectedField->type == TINY_SYM_FIELD);
 
-                        if (strcmp(name, expectedField->name) != 0) {
+                        if(strcmp(nameNode->value, expectedField->name) != 0) {
                             continue;
                         }
 
-                        ResolveTypes(state, exp->constructor.args[j]);
-
-                        Tiny_Symbol *provided = exp->constructor.args[j]->tag;
-
-                        if (!CompareTags(provided, expectedField->fieldTag)) {
-                            ReportErrorE(state, exp->constructor.args[j],
+                        if (!IsTagAssignableTo(argNode->tag, expectedField->fieldTag)) {
+                            ReportErrorE(state, argNode,
                                          "Designated initializer .%s to constructor is supposed to "
                                          "be a %s but "
                                          "you supplied a %s",
-                                         name, GetTagName(expectedField->fieldTag),
-                                         GetTagName(provided));
+                                         expectedField->name, 
+                                         GetTagName(expectedField->fieldTag),
+                                         GetTagName(argNode->tag));
                         }
-
-                        // Swap the arg name at [j] with the one at [i] so that we
-                        // end up re-ordering these as we go.
-                        char *oldName = exp->constructor.argNames[i];
-                        Tiny_Expr *oldExp = exp->constructor.args[i];
-
-                        exp->constructor.argNames[i] = name;
-                        exp->constructor.args[i] = exp->constructor.args[j];
-
-                        exp->constructor.argNames[j] = oldName;
-                        exp->constructor.args[j] = oldExp;
 
                         found = true;
                         break;
                     }
 
-                    if (!found) {
-                        ReportErrorE(
-                            state, exp,
-                            "Could not find designated initializer for field %s in constructor",
-                            expectedField->name);
+                    if(!found) {
+                        ReportErrorE(state, argNode, "Designated initializer .%s doesn't correspond to any"
+                                                     "field on struct %s", nameNode->value, 
+                                                     GetTagName(exp->constructor.structTag));
+                    }
+                } else {
+                    Tiny_Symbol *expectedField = exp->constructor.structTag->sstruct.fields[i];
+                    assert(expectedField->type == TINY_SYM_FIELD);
+
+                    if (!IsTagAssignableTo(argNode->tag, expectedField->fieldTag)) {
+                        ReportErrorE(state, argNode,
+                                        "Initializer %i (for field '%s') to constructor is supposed to "
+                                        "be a %s but "
+                                        "you supplied a %s",
+                                        i + 1,
+                                        expectedField->name, 
+                                        GetTagName(expectedField->fieldTag),
+                                        GetTagName(argNode->tag));
                     }
                 }
-            } else {
-                for (int i = 0; i < sb_count(exp->constructor.args); ++i) {
-                    ResolveTypes(state, exp->constructor.args[i]);
 
-                    Tiny_Symbol *provided = exp->constructor.args[i]->tag;
-                    Tiny_Symbol *expected = exp->constructor.structTag->sstruct.fields[i]->fieldTag;
-
-                    if (!CompareTags(provided, expected)) {
-                        ReportErrorE(state, exp->constructor.args[i],
-                                     "Argument %d to constructor is supposed to be a %s but "
-                                     "you supplied a %s",
-                                     i + 1, GetTagName(expected), GetTagName(provided));
-                    }
+                if(nameNode) {
+                    nameNode = nameNode->next;
                 }
+
+                ++i;
             }
 
             exp->tag = exp->constructor.structTag;
@@ -2833,7 +2841,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
     }
 }
 
-static void CompileProgram(Tiny_State *state, Tiny_Expr **program);
+static void CompileProgram(Tiny_State *state, Tiny_Expr *program);
 
 static void GeneratePushInt(Tiny_State *state, int iValue) {
     if (iValue == 0) {
@@ -2917,7 +2925,7 @@ static void CompileGetIdOrDot(Tiny_State *state, Tiny_Expr *exp) {
 
         int idx;
 
-        GetFieldTag(exp->dot.lhs->tag, exp->dot.field, &idx);
+        GetFieldTag(exp->dot.lhs->tag, exp->dot.field->value, &idx);
 
         assert(idx >= 0 && idx <= UCHAR_MAX);
 
@@ -2931,13 +2939,17 @@ static void CompileGetIdOrDot(Tiny_State *state, Tiny_Expr *exp) {
 static void CompileCall(Tiny_State *state, Tiny_Expr *exp) {
     assert(exp->type == TINY_EXP_CALL);
 
-    if (sb_count(exp->call.args) > UCHAR_MAX) {
-        ReportErrorE(state, exp, "Exceeded maximum number of arguments (%d).", UCHAR_MAX);
+    int nargs = 0;
+    for(Tiny_Expr* node = exp->call.argsHead; node; node = node->next) {
+        if(nargs >= UCHAR_MAX) {
+            ReportErrorE(state, exp, "Exceeded maximum number of arguments (%d).", UCHAR_MAX);
+        }
+
+        CompileExpr(state, node);
+        ++nargs;
     }
 
-    for (int i = 0; i < sb_count(exp->call.args); ++i) CompileExpr(state, exp->call.args[i]);
-
-    Tiny_Symbol *sym = ReferenceFunction(state, exp->call.calleeName);
+    Tiny_Symbol *sym = ReferenceFunction(state, exp->call.calleeName->value);
     if (!sym) {
         ReportErrorE(state, exp, "Attempted to call undefined function '%s'.\n",
                      exp->call.calleeName);
@@ -2946,7 +2958,6 @@ static void CompileCall(Tiny_State *state, Tiny_Expr *exp) {
     if (sym->type == TINY_SYM_FOREIGN_FUNCTION) {
         GenerateCode(state, TINY_OP_CALLF);
 
-        int nargs = sb_count(exp->call.args);
         int fNargs = sb_count(sym->foreignFunc.argTags);
 
         if (!(sym->foreignFunc.varargs && nargs >= fNargs) && fNargs != nargs) {
@@ -2955,11 +2966,11 @@ static void CompileCall(Tiny_State *state, Tiny_Expr *exp) {
                          nargs);
         }
 
-        GenerateCode(state, (Word)sb_count(exp->call.args));
+        GenerateCode(state, (Word)nargs);
         GenerateInt(state, sym->foreignFunc.index);
     } else {
         GenerateCode(state, TINY_OP_CALL);
-        GenerateCode(state, (Word)sb_count(exp->call.args));
+        GenerateCode(state, (Word)nargs);
         GenerateInt(state, sym->func.index);
     }
 }
@@ -2999,20 +3010,33 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
 
         case TINY_EXP_CONSTRUCTOR: {
             assert(exp->constructor.structTag->sstruct.defined);
-            assert(sb_count(exp->constructor.args) <= UCHAR_MAX);
 
-            int meCount = sb_count(exp->constructor.args);
-            int tagCount = sb_count(exp->constructor.structTag->sstruct.fields);
+            if(exp->constructor.argNamesHead) {
+                // Compile in the order of the struct definition
+                // and search for the arg name at each step
+                for(int i = 0; i < sb_count(exp->constructor.structTag->sstruct.fields); ++i) {
+                    const char* fieldName = exp->constructor.structTag->sstruct.fields[i]->name;
 
-            // Should be checked in ResolveTypes
-            assert(meCount == tagCount);
+                    Tiny_StringNode* nameNode = exp->constructor.argNamesHead;
+                    
+                    for(Tiny_Expr* node = exp->constructor.argsHead; node; node = node->next) {
+                        if(strcmp(nameNode->value, fieldName) != 0) {
+                            nameNode = nameNode->next;
+                            continue;
+                        }
 
-            for (int i = 0; i < sb_count(exp->constructor.args); ++i) {
-                CompileExpr(state, exp->constructor.args[i]);
+                        CompileExpr(state, node);
+                        break;
+                    }
+                }
+            } else {
+                for(Tiny_Expr* node = exp->constructor.argsHead; node; node = node->next) {
+                    CompileExpr(state, node);
+                }
             }
 
             GenerateCode(state, TINY_OP_PUSH_STRUCT);
-            GenerateCode(state, sb_count(exp->constructor.args));
+            GenerateCode(state, sb_count(exp->constructor.structTag->sstruct.fields));
         } break;
 
         case TINY_EXP_CAST: {
@@ -3208,8 +3232,8 @@ static void PatchBreakContinue(Tiny_State *state, Tiny_Expr *body, int breakPC, 
         } break;
 
         case TINY_EXP_BLOCK: {
-            for (int i = 0; i < sb_count(body->block); ++i) {
-                PatchBreakContinue(state, body->block[i], breakPC, continuePC);
+            for(Tiny_Expr* node = body->blockHead; node; node = node->next) {
+                PatchBreakContinue(state, node, breakPC, continuePC);
             }
         } break;
 
@@ -3324,8 +3348,8 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
         } break;
 
         case TINY_EXP_BLOCK: {
-            for (int i = 0; i < sb_count(exp->block); ++i) {
-                CompileStatement(state, exp->block[i]);
+            for (Tiny_Expr* node = exp->blockHead; node; node = node->next) {
+                CompileStatement(state, node);
             }
         } break;
 
@@ -3434,7 +3458,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
 
                             int idx;
 
-                            GetFieldTag(exp->binary.lhs->dot.lhs->tag, exp->binary.lhs->dot.field,
+                            GetFieldTag(exp->binary.lhs->dot.lhs->tag, exp->binary.lhs->dot.field->value,
                                         &idx);
 
                             assert(idx >= 0 && idx <= UCHAR_MAX);
@@ -3564,132 +3588,10 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
     }
 }
 
-static void CompileProgram(Tiny_State *state, Tiny_Expr **program) {
-    Tiny_Expr **arr = program;
-    for (int i = 0; i < sb_count(arr); ++i) {
-        CompileStatement(state, arr[i]);
+static void CompileProgram(Tiny_State *state, Tiny_Expr *progHead) {
+    for (Tiny_Expr* exp = progHead; exp; exp = exp->next) {
+        CompileStatement(state, exp);
     }
-}
-
-static void DeleteProgram(Tiny_Expr **program, Tiny_Context *ctx);
-
-static void Expr_destroy(Tiny_Expr *exp, Tiny_Context *ctx) {
-    switch (exp->type) {
-        case TINY_EXP_ID: {
-            TFree(ctx, exp->id.name);
-        } break;
-
-        case TINY_EXP_NULL:
-        case TINY_EXP_BOOL:
-        case TINY_EXP_CHAR:
-        case TINY_EXP_INT:
-        case TINY_EXP_FLOAT:
-        case TINY_EXP_STRING:
-        case TINY_EXP_BREAK:
-        case TINY_EXP_CONTINUE:
-            break;
-
-        case TINY_EXP_CALL: {
-            TFree(ctx, exp->call.calleeName);
-            for (int i = 0; i < sb_count(exp->call.args); ++i) Expr_destroy(exp->call.args[i], ctx);
-
-            sb_free(ctx, exp->call.args);
-        } break;
-
-        case TINY_EXP_BLOCK: {
-            for (int i = 0; i < sb_count(exp->block); ++i) {
-                Expr_destroy(exp->block[i], ctx);
-            }
-
-            sb_free(ctx, exp->block);
-        } break;
-
-        case TINY_EXP_BINARY:
-            Expr_destroy(exp->binary.lhs, ctx);
-            Expr_destroy(exp->binary.rhs, ctx);
-            break;
-        case TINY_EXP_PAREN:
-            Expr_destroy(exp->paren, ctx);
-            break;
-
-        case TINY_EXP_PROC: {
-            if (exp->proc.body) Expr_destroy(exp->proc.body, ctx);
-        } break;
-
-        case TINY_EXP_IF:
-            Expr_destroy(exp->ifx.cond, ctx);
-            if (exp->ifx.body) Expr_destroy(exp->ifx.body, ctx);
-            if (exp->ifx.alt) Expr_destroy(exp->ifx.alt, ctx);
-            break;
-        case TINY_EXP_WHILE:
-            Expr_destroy(exp->whilex.cond, ctx);
-            if (exp->whilex.body) Expr_destroy(exp->whilex.body, ctx);
-            break;
-        case TINY_EXP_RETURN:
-            if (exp->retExpr) Expr_destroy(exp->retExpr, ctx);
-            break;
-        case TINY_EXP_UNARY:
-            Expr_destroy(exp->unary.exp, ctx);
-            break;
-
-        case TINY_EXP_FOR: {
-            Expr_destroy(exp->forx.init, ctx);
-            Expr_destroy(exp->forx.cond, ctx);
-            Expr_destroy(exp->forx.step, ctx);
-
-            Expr_destroy(exp->forx.body, ctx);
-        } break;
-
-        case TINY_EXP_DOT: {
-            Expr_destroy(exp->dot.lhs, ctx);
-            TFree(ctx, exp->dot.field);
-        } break;
-
-        case TINY_EXP_CONSTRUCTOR: {
-            for (int i = 0; i < sb_count(exp->constructor.argNames); ++i) {
-                TFree(ctx, exp->constructor.argNames[i]);
-            }
-
-            sb_free(ctx, exp->constructor.argNames);
-
-            for (int i = 0; i < sb_count(exp->constructor.args); ++i) {
-                Expr_destroy(exp->constructor.args[i], ctx);
-            }
-
-            sb_free(ctx, exp->constructor.args);
-        } break;
-
-        case TINY_EXP_CAST: {
-            Expr_destroy(exp->cast.value, ctx);
-        } break;
-
-        case TINY_EXP_USE: {
-            TFree(ctx, exp->use.moduleName);
-
-            for (int i = 0; i < sb_count(exp->use.args); ++i) {
-                TFree(ctx, exp->use.args[i]);
-            }
-
-            sb_free(ctx, exp->use.args);
-
-            TFree(ctx, exp->use.asName);
-        } break;
-
-        default:
-            assert(false);
-            break;
-    }
-
-    TFree(ctx, exp);
-}
-
-void DeleteProgram(Tiny_Expr **program, Tiny_Context *ctx) {
-    Tiny_Expr **arr = program;
-    for (int i = 0; i < sb_count(program); ++i) {
-        Expr_destroy(arr[i], ctx);
-    }
-
-    sb_free(ctx, program);
 }
 
 // This will only check the symbols declared between firstSymIndex and lastSymIndex.
@@ -3732,7 +3634,7 @@ static void BuildForeignFunctions(Tiny_State *state) {
     }
 }
 
-static void CompileState(Tiny_State *state, Tiny_Expr **prog) {
+static void CompileState(Tiny_State *state, Tiny_Expr *progHead) {
     // If this state was already compiled and it ends with an TINY_OP_HALT, We'll
     // just overwrite it
     if (sb_count(state->program) > 0) {
@@ -3741,8 +3643,8 @@ static void CompileState(Tiny_State *state, Tiny_Expr **prog) {
         }
     }
 
-    for (int i = 0; i < sb_count(prog); ++i) {
-        ResolveTypes(state, prog[i]);
+    for (Tiny_Expr* exp = progHead; exp; exp = exp->next) {
+        ResolveTypes(state, exp);
     }
 
     // Allocate room for vm execution info
@@ -3765,28 +3667,28 @@ static void CompileState(Tiny_State *state, Tiny_Expr **prog) {
 
     BuildForeignFunctions(state);
 
-    CompileProgram(state, prog);
+    CompileProgram(state, progHead);
     GenerateCode(state, TINY_OP_HALT);
 }
 
 void Tiny_CompileString(Tiny_State *state, const char *name, const char *string) {
-    // In order to make this function re-entrant, we save the lexer on the stack
+    // In order to make this function re-entrant, we save the lexer/parser arena on the stack
     Tiny_Lexer prevLexer = state->l;
+    Tiny_Arena prevParserArena = state->parserArena;
 
     Tiny_InitLexer(&state->l, name, string, state->ctx);
+    Tiny_InitArena(&state->parserArena, state->ctx);
 
     CurTok = 0;
 
     int firstSymIndex = sb_count(state->globalSymbols);
 
-    Tiny_Expr **prog = ParseProgram(state);
+    Tiny_Expr *progHead = ParseProgram(state);
 
     int lastSymIndex = sb_count(state->globalSymbols);
 
     // Just before we do into the type resolution state, apply all the module functions
-    for (int i = 0; i < sb_count(prog); ++i) {
-        Tiny_Expr *exp = prog[i];
-
+    for (Tiny_Expr* exp = progHead; exp; exp = exp->next) {
         if (exp->type != TINY_EXP_USE) {
             continue;
         }
@@ -3796,9 +3698,22 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
 
         for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
             Tiny_Symbol *s = state->globalSymbols[i];
-            if (s->type == TINY_SYM_MODULE && strcmp(s->name, exp->use.moduleName) == 0) {
+            if (s->type == TINY_SYM_MODULE && strcmp(s->name, exp->use.moduleName->value) == 0) {
+                // TODO(Apaar): Document this limit and assert above
+                char* args[128] = { 0 };
+                char** argp = args;
+
+                for(Tiny_StringNode* node = exp->use.argsHead; node; node = node->next) {
+                    if(argp - args > sizeof(args) / sizeof(args[0])) {
+                        ReportErrorE(state, exp, "Macro %s takes too many args (limit is %d)", exp->use.moduleName->value,
+                            sizeof(args) / sizeof(args[0]));
+                    }
+
+                    *argp++ = node->value;
+                }
+
                 Tiny_MacroResult result =
-                    s->modFunc(state, exp->use.args, sb_count(exp->use.args), exp->use.asName);
+                    s->modFunc(state, args, (int)(argp - args), exp->use.asName ? exp->use.asName->value : NULL);
 
                 if (result.type != TINY_MACRO_SUCCESS) {
                     ReportErrorE(
@@ -3825,7 +3740,7 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
         }
     }
 
-    CompileState(state, prog);
+    CompileState(state, progHead);
 
     CheckInitialized(state, firstSymIndex,
                      lastSymIndex);  // Done after compilation because it might have registered
@@ -3833,9 +3748,11 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
 
     Tiny_DestroyLexer(&state->l);
 
-    DeleteProgram(prog, &state->ctx);
+    // Deletes all the parser data in one go, no deletion chores required
+    Tiny_DestroyArena(&state->parserArena);
 
     state->l = prevLexer;
+    state->parserArena = prevParserArena;
 }
 
 void Tiny_CompileFile(Tiny_State *state, const char *filename) {

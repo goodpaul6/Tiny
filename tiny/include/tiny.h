@@ -433,7 +433,7 @@ typedef struct Tiny_Symbol {
             union {
                 bool bValue;  // for bool
                 int iValue;   // for char/int
-                int fValue;   // for float
+                float fValue;   // for float
                 int sIndex;   // for string
             };
         } constant;

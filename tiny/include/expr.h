@@ -31,6 +31,15 @@ typedef enum {
     TINY_EXP_USE,
 } Tiny_ExprType;
 
+// Node for a singly-linked list of strings.
+//
+// Occasionally used for individual strings too so that we don't have to bother with
+// having a separate special case for individual strings (e.g. moduleName below).
+typedef struct Tiny_StringNode {
+    struct Tiny_StringNode* next;
+    char* value;
+} Tiny_StringNode;
+
 typedef struct Tiny_Expr {
     Tiny_ExprType type;
 
@@ -38,6 +47,11 @@ typedef struct Tiny_Expr {
     int lineNumber;
 
     Tiny_Symbol *tag;
+
+    // Arrays not worth it; return to intrusive linked list.
+    // We make use of memory arenas to eliminate having to
+    // manage this memory ourselves.
+    struct Tiny_Expr* next;
 
     union {
         bool boolean;
@@ -47,13 +61,13 @@ typedef struct Tiny_Expr {
         int sIndex;
 
         struct {
-            char *name;
+            Tiny_StringNode* name;
             Tiny_Symbol *sym;
         } id;
 
         struct {
-            char *calleeName;
-            struct Tiny_Expr **args;  // array
+            Tiny_StringNode* calleeName;
+            struct Tiny_Expr *argsHead;
         } call;
 
         struct {
@@ -69,7 +83,7 @@ typedef struct Tiny_Expr {
             struct Tiny_Expr *exp;
         } unary;
 
-        struct Tiny_Expr **block;  // array
+        struct Tiny_Expr *blockHead;
 
         struct {
             Tiny_Symbol *decl;
@@ -96,7 +110,7 @@ typedef struct Tiny_Expr {
 
         struct {
             struct Tiny_Expr *lhs;
-            char *field;
+            Tiny_StringNode* field;
         } dot;
 
         struct {
@@ -107,9 +121,8 @@ typedef struct Tiny_Expr {
             //
             // If specified, these will get re-ordered (alongside the args) during the
             // `ResolveTypes` phase to ensure they're in the order that the struct wants.
-            char **argNames;
-
-            struct Tiny_Expr **args;
+            Tiny_StringNode* argNamesHead;
+            struct Tiny_Expr *argsHead;
         } constructor;
 
         struct {
@@ -127,9 +140,9 @@ typedef struct Tiny_Expr {
         } breakContinue;
 
         struct {
-            char *moduleName;
-            char **args;  // array
-            char *asName;
+            Tiny_StringNode* moduleName;
+            Tiny_StringNode* argsHead;
+            Tiny_StringNode* asName;
         } use;
     };
 } Tiny_Expr;

@@ -16,6 +16,10 @@ static Tiny_ArenaPage* AllocPage(Tiny_Context* ctx, size_t size) {
 }
 
 static size_t NextMultipleOf(size_t value, size_t factor) {
+    if(factor == 1) {
+        return value;
+    }
+
     assert(factor % 2 == 0);
 
     // Seems correct, I have tried 2 numbers

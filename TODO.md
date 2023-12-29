@@ -1,5 +1,7 @@
 # TODO
 
+- BAD Would be nice to have a generic AST visitor function that takes in some context
+
 - IDEA Be able to launch other `StateThread` and cooperatively yield from them
 
   - They don't share heaps though so what do we do about that?

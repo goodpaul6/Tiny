@@ -5,6 +5,17 @@
 
 #include "tiny.h"
 
+// Append to intrusive linked list
+#define TINY_LL_APPEND(head, tail, node) \
+    do { \
+        if(!(head) && !(tail)) { \
+            head = tail = (node); \
+        } else { \
+            (tail)->next = (node); \
+            tail = (tail)->next; \
+        } \
+    } while(0)
+
 typedef struct Tiny_Context Tiny_Context;
 
 void *TMalloc(Tiny_Context *ctx, size_t size);

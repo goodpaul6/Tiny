@@ -2,6 +2,7 @@
 
 #include "lexer.h"
 #include "tiny.h"
+#include "arena.h"
 
 #define MAX_NUMBERS 512
 #define MAX_STRINGS 1024
@@ -72,4 +73,8 @@ typedef struct Tiny_State {
     Tiny_PCToFileLine *pcToFileLine;  // array
 
     Tiny_Lexer l;
+
+    // Ephemeral arena for the parser. Storing it on state so we
+    // don't have to drill it into every parser function.
+    Tiny_Arena parserArena;
 } Tiny_State;
