@@ -8,7 +8,6 @@ Tiny is a small statically-typed language with an embeddable compiler and byteco
 and does its best to avoid doing allocations/garbage collection.
 
 ```
-
 // Reverse polish notation calculator
 
 stack := array()
