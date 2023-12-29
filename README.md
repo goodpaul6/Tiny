@@ -1,11 +1,14 @@
 # Tiny
 
-<img src="https://github.com/goodpaul6/Tiny/assets/854222/a5ebffeb-782e-41fc-b1bb-c50d5dbcb447" width="250" />
+<p align="center">
+    <img src="https://github.com/goodpaul6/Tiny/assets/3721423/99231ec9-c0e6-42da-9c89-3c41128cba8c" width="250" />
+</p>
 
 Tiny is a small statically-typed language with an embeddable compiler and bytecode interpreter; it is designed to be easy to embed
 and does its best to avoid doing allocations/garbage collection.
 
 ```
+
 // Reverse polish notation calculator
 
 stack := array()
