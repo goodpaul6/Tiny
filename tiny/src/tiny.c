@@ -2423,18 +2423,21 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
                 const Tiny_Symbol* expectedArgTag = NULL;
 
+                if(i >= argc && !isVarargs) {
+                    ReportErrorE(state, node, "Too many arguments to function '%s' (%d expected).",
+                        exp->call.calleeName, argc);
+                }
+
                 if(func->type == TINY_SYM_FOREIGN_FUNCTION) {
                     if(i < argc) {
                         expectedArgTag = func->foreignFunc.argTags[i];
-                    } else if(!isVarargs) {
-                        ReportErrorE(state, node, "Too many arguments to function '%s' (%d expected).",
-                            exp->call.calleeName, argc);
                     }
                 } else {
                     expectedArgTag = func->func.args[i]->var.tag;
                 }
 
                 if(!expectedArgTag) {
+                    ++i;
                     continue;
                 }
 
