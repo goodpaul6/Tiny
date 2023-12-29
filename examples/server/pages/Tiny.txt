@@ -1,0 +1,16 @@
+<p>
+This is a replication of the wiki created in the Golang "Writing web applications" tutorial but created using Tiny and C99.
+</p>
+
+<p>
+This example includes a custom HTTP parser, multithreaded web server, and a
+templating engine.
+</p>
+
+<p>
+Take a look at the <code>scripts</code> folder in the example. I'd argue the resulting Tiny code is even simpler than the equivalent Go code!
+</p>
+
+<p>
+It even leverages <code>Tiny_StateThread</code> to enable multiple requests to execute concurrently on the same OS thread.
+</p>

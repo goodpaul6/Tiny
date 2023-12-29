@@ -27,4 +27,6 @@ func view(title: str) {
     send_http_buf("200 OK", "text/html", res)
 }
 
-call_wait("view", substr(get_request_target(), strlen("/edit/"), -1))
+use call_wait("view") as wait_view
+
+wait_view(substr(get_request_target(), strlen("/edit/"), -1))

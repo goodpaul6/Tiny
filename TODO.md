@@ -1,5 +1,7 @@
 # TODO
 
+- BAD In macros, when we're doing codegen on top of functions, sometimes we want to "forward" parameter packs,
+  and this ends up being really annoying (see `CallWaitMacro` and `Delegate` stuff)
 - BAD Would be nice to have a generic AST visitor function that takes in some context
 
 - IDEA Be able to launch other `StateThread` and cooperatively yield from them

@@ -26,4 +26,6 @@ func save(title: str) {
 
 title := substr(get_request_target(), strlen("/save/"), -1)
 
-call_wait("save", title)
+use call_wait("save") as wait_save
+
+wait_save(title)
