@@ -1779,7 +1779,9 @@ static Tiny_Expr *ParseCall(Tiny_State *state, Tiny_StringNode *ident) {
     return exp;
 }
 
-static Tiny_Expr *ParseFactor(Tiny_State *state) {
+static Tiny_Expr *ParseFactor(Tiny_State *state);
+
+static Tiny_Expr *ParseValue(Tiny_State *state) {
     switch (CurTok) {
         case TINY_TOK_NULL: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_NULL, state);
@@ -1806,7 +1808,9 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
             Tiny_StringNode *ident = CreateExprStringNode(state, state->l.lexeme);
             GetNextToken(state);
 
-            if (CurTok == TINY_TOK_OPENPAREN) return ParseCall(state, ident);
+            if (CurTok == TINY_TOK_OPENPAREN) {
+                return ParseCall(state, ident);
+            }
 
             Tiny_Expr *exp = Expr_create(TINY_EXP_ID, state);
 
@@ -1815,19 +1819,6 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
 
             exp->id.sym = ReferenceVariable(state, ident->value);
             exp->id.name = ident;
-
-            while (CurTok == TINY_TOK_DOT) {
-                Tiny_Expr *e = Expr_create(TINY_EXP_DOT, state);
-
-                GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
-
-                e->dot.lhs = exp;
-                e->dot.field = CreateExprStringNode(state, state->l.lexeme);
-
-                GetNextToken(state);
-
-                exp = e;
-            }
 
             return exp;
         } break;
@@ -1976,6 +1967,25 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
 
     ReportError(state, "Unexpected token '%s'\n", state->l.lexeme);
     return NULL;
+}
+
+static Tiny_Expr *ParseFactor(Tiny_State *state) {
+    Tiny_Expr *exp = ParseValue(state);
+
+    while (CurTok == TINY_TOK_DOT) {
+        Tiny_Expr *e = Expr_create(TINY_EXP_DOT, state);
+
+        GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
+
+        e->dot.lhs = exp;
+        e->dot.field = CreateExprStringNode(state, state->l.lexeme);
+
+        GetNextToken(state);
+
+        exp = e;
+    }
+
+    return exp;
 }
 
 static int GetTokenPrec() {
@@ -2391,7 +2401,8 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
         case TINY_EXP_ID: {
             if (!exp->id.sym) {
-                ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name);
+                ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n",
+                             exp->id.name->value);
             }
 
             assert(exp->id.sym->type == TINY_SYM_GLOBAL || exp->id.sym->type == TINY_SYM_LOCAL ||

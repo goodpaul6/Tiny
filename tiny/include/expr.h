@@ -29,6 +29,7 @@ typedef enum {
     TINY_EXP_BREAK,
     TINY_EXP_CONTINUE,
     TINY_EXP_USE,
+    TINY_EXP_INDEX,
 } Tiny_ExprType;
 
 // Node for a singly-linked list of strings.
@@ -36,8 +37,8 @@ typedef enum {
 // Occasionally used for individual strings too so that we don't have to bother with
 // having a separate special case for individual strings (e.g. moduleName below).
 typedef struct Tiny_StringNode {
-    struct Tiny_StringNode* next;
-    char* value;
+    struct Tiny_StringNode *next;
+    char *value;
 } Tiny_StringNode;
 
 typedef struct Tiny_Expr {
@@ -51,7 +52,7 @@ typedef struct Tiny_Expr {
     // Arrays not worth it; return to intrusive linked list.
     // We make use of memory arenas to eliminate having to
     // manage this memory ourselves.
-    struct Tiny_Expr* next;
+    struct Tiny_Expr *next;
 
     union {
         bool boolean;
@@ -61,12 +62,12 @@ typedef struct Tiny_Expr {
         int sIndex;
 
         struct {
-            Tiny_StringNode* name;
+            Tiny_StringNode *name;
             Tiny_Symbol *sym;
         } id;
 
         struct {
-            Tiny_StringNode* calleeName;
+            Tiny_StringNode *calleeName;
             struct Tiny_Expr *argsHead;
         } call;
 
@@ -110,7 +111,7 @@ typedef struct Tiny_Expr {
 
         struct {
             struct Tiny_Expr *lhs;
-            Tiny_StringNode* field;
+            Tiny_StringNode *field;
         } dot;
 
         struct {
@@ -121,7 +122,7 @@ typedef struct Tiny_Expr {
             //
             // If specified, these will get re-ordered (alongside the args) during the
             // `ResolveTypes` phase to ensure they're in the order that the struct wants.
-            Tiny_StringNode* argNamesHead;
+            Tiny_StringNode *argNamesHead;
             struct Tiny_Expr *argsHead;
         } constructor;
 
@@ -140,9 +141,9 @@ typedef struct Tiny_Expr {
         } breakContinue;
 
         struct {
-            Tiny_StringNode* moduleName;
-            Tiny_StringNode* argsHead;
-            Tiny_StringNode* asName;
+            Tiny_StringNode *moduleName;
+            Tiny_StringNode *argsHead;
+            Tiny_StringNode *asName;
         } use;
     };
 } Tiny_Expr;

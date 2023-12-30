@@ -75,3 +75,7 @@ my_point := array_pt_get(pt_array, 0)
 printf("pt_array=%q, my_point.y=%q\n", pt_array, my_point.y)
 
 printf("%q\n", Point_to_json(my_point))
+
+x := (new Point{10, 20}).x
+
+printf("%q\n", x)
