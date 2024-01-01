@@ -3529,8 +3529,10 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
                              0xff);
             }
 
-            GenerateCode(state, TINY_OP_PUSH_NULL_N);
-            GenerateCode(state, (Word)sb_count(exp->proc.decl->func.locals));
+            if (sb_count(exp->proc.decl->func.locals) > 0) {
+                GenerateCode(state, TINY_OP_PUSH_NULL_N);
+                GenerateCode(state, (Word)sb_count(exp->proc.decl->func.locals));
+            }
 
             if (exp->proc.body) {
                 CompileStatement(state, exp->proc.body);
