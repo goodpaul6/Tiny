@@ -7,43 +7,7 @@
 Tiny is a small statically-typed language with an embeddable compiler and bytecode interpreter; it is designed to be easy to embed
 and does its best to avoid doing allocations/garbage collection.
 
-```
-// Reverse polish notation calculator
-
-stack := array()
-
-// The type of the 'stack' variable is inferred to be 'array'
-// I can also explicitly specify it by doing
-// stack: array = array(), but that's no fun
-
-op := ""
-
-// Constants
-plus_op     :: '+'
-minus_op    :: '-'
-mul_op      :: '*'
-div_op      :: '/'
-print_op    :: "="
-quit_op     :: "quit"
-
-while op != quit_op {
-    op = input()
-
-    if stridx(op, 0) == plus_op {
-        array_push(stack, array_pop(stack) + array_pop(stack))
-    } else if stridx(op, 0) == minus_op {
-        array_push(stack, array_pop(stack) - array_pop(stack))
-    } else if stridx(op, 0) == mul_op {
-        array_push(stack, array_pop(stack) * array_pop(stack))
-    } else if stridx(op, 0) == div_op {
-        array_push(stack, array_pop(stack) / array_pop(stack))
-    } else if op == print_op {
-        print(array_pop(stack))
-    } else if op != quit_op {
-        array_push(stack, ston(op))
-    }
-}
-```
+![RPN Calculator Code](https://github.com/goodpaul6/Tiny/assets/3721423/990cb99b-1a46-4601-b3a6-fe9cc50ba880)
 
 ## Usage
 
