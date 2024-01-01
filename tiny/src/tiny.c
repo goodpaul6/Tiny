@@ -1972,7 +1972,30 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
 static Tiny_Expr *ParseFactor(Tiny_State *state) {
     Tiny_Expr *exp = ParseValue(state);
 
-    while (CurTok == TINY_TOK_DOT) {
+    while (CurTok == TINY_TOK_DOT || CurTok == TINY_TOK_ARROW) {
+        if (CurTok == TINY_TOK_ARROW) {
+            // There is always a call on the rhs of an arrow.
+            GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after ->");
+
+            // Since the arrow "operator" is just syntax sugar, we
+            // actually rewrite the AST as we're producing it rather
+            // than doing some transformation later.
+
+            Tiny_StringNode *ident = CreateExprStringNode(state, state->l.lexeme);
+
+            GetExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after -> and function name");
+
+            Tiny_Expr *callExp = ParseCall(state, ident);
+
+            // Prepend the expression on the lhs to the call expression on the rhs
+            exp->next = callExp->call.argsHead;
+            callExp->call.argsHead = exp;
+
+            exp = callExp;
+
+            continue;
+        }
+
         Tiny_Expr *e = Expr_create(TINY_EXP_DOT, state);
 
         GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");

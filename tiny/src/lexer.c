@@ -114,6 +114,8 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
     MATCH2("<=", LTE);
     MATCH2(">=", GTE);
 
+    MATCH2("->", ARROW);
+
 #define MATCH(c, tok)                       \
     do {                                    \
         if (l->last == c) {                 \
