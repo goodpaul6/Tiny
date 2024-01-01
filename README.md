@@ -8,7 +8,7 @@ Tiny is a small statically-typed language with an embeddable compiler and byteco
 and does its best to avoid doing allocations/garbage collection.
 
 <p align="center">
-    <img src="https://github.com/goodpaul6/Tiny/assets/3721423/990cb99b-1a46-4601-b3a6-fe9cc50ba880" alt="RPN Calculator Code" width="400" />
+    <img src="https://github.com/goodpaul6/Tiny/assets/3721423/990cb99b-1a46-4601-b3a6-fe9cc50ba880" alt="RPN Calculator Code" width="800" />
 </p>
 
 ## Usage
