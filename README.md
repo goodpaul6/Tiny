@@ -7,7 +7,9 @@
 Tiny is a small statically-typed language with an embeddable compiler and bytecode interpreter; it is designed to be easy to embed
 and does its best to avoid doing allocations/garbage collection.
 
-![RPN Calculator Code](https://github.com/goodpaul6/Tiny/assets/3721423/990cb99b-1a46-4601-b3a6-fe9cc50ba880)
+<p align="center">
+    <img src="https://github.com/goodpaul6/Tiny/assets/3721423/990cb99b-1a46-4601-b3a6-fe9cc50ba880" alt="RPN Calculator Code" width="400" />
+</p>
 
 ## Usage
 
