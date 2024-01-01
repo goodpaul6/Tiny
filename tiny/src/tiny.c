@@ -3088,14 +3088,24 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
             switch (exp->binary.op) {
                 case TINY_TOK_PLUS: {
                     CompileExpr(state, exp->binary.lhs);
-                    CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, TINY_OP_ADD);
+
+                    if (exp->binary.rhs->type == TINY_EXP_INT && exp->binary.rhs->iValue == 1) {
+                        GenerateCode(state, TINY_OP_ADD1);
+                    } else {
+                        CompileExpr(state, exp->binary.rhs);
+                        GenerateCode(state, TINY_OP_ADD);
+                    }
                 } break;
 
                 case TINY_TOK_MINUS: {
                     CompileExpr(state, exp->binary.lhs);
-                    CompileExpr(state, exp->binary.rhs);
-                    GenerateCode(state, TINY_OP_SUB);
+
+                    if (exp->binary.rhs->type == TINY_EXP_INT && exp->binary.rhs->iValue == 1) {
+                        GenerateCode(state, TINY_OP_SUB1);
+                    } else {
+                        CompileExpr(state, exp->binary.rhs);
+                        GenerateCode(state, TINY_OP_SUB);
+                    }
                 } break;
 
                 case TINY_TOK_STAR: {
