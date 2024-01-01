@@ -855,7 +855,7 @@ void Tiny_BindStandardIO(Tiny_State *state) {
     Tiny_BindFunction(state, "read_file(str): str", Lib_ReadFile);
     Tiny_BindFunction(state, "write_file(str, str): bool", Lib_WriteFile);
 
-    Tiny_BindFunction(state, "input(...): void", Lib_Input);
+    Tiny_BindFunction(state, "input(...): str", Lib_Input);
     Tiny_BindFunction(state, "printf(str, ...): void", Lib_Printf);
 }
 
@@ -1002,11 +1002,13 @@ void Tiny_BindStandardLib(Tiny_State *state) {
 
     Tiny_BindFunction(state, "strlen(str): int", Strlen);
     Tiny_BindFunction(state, "stridx(str, int): int", Stridx);
+    Tiny_BindFunction(state, "sget(str, int): int", Stridx);
     Tiny_BindFunction(state, "strchr(str, int): int", Strchr);
     Tiny_BindFunction(state, "strcat(str, str, ...): str", Strcat);
     Tiny_BindFunction(state, "substr(str, int, int): str", Lib_Substr);
 
     Tiny_BindFunction(state, "ston(str): float", Lib_Ston);
+    Tiny_BindFunction(state, "str_to_int(str): int", Lib_Stoi);
     Tiny_BindFunction(state, "ntos(...): str", Lib_Ntos);
 
     Tiny_BindFunction(state, "stoi(str, int): int", Lib_Stoi);

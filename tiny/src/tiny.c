@@ -1969,8 +1969,8 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
     return NULL;
 }
 
-static Tiny_Expr *ParseFactor(Tiny_State *state) {
-    Tiny_Expr *exp = ParseValue(state);
+static Tiny_Expr *ParseArrowOrDot(Tiny_State *state, Tiny_Expr *lhs) {
+    Tiny_Expr *exp = lhs;
 
     while (CurTok == TINY_TOK_DOT || CurTok == TINY_TOK_ARROW) {
         if (CurTok == TINY_TOK_ARROW) {
@@ -1986,6 +1986,9 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
             GetExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after -> and function name");
 
             Tiny_Expr *callExp = ParseCall(state, ident);
+
+            callExp->lineNumber = exp->lineNumber;
+            callExp->pos = exp->pos;
 
             // Prepend the expression on the lhs to the call expression on the rhs
             exp->next = callExp->call.argsHead;
@@ -2009,6 +2012,11 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
     }
 
     return exp;
+}
+
+static Tiny_Expr *ParseFactor(Tiny_State *state) {
+    Tiny_Expr *exp = ParseValue(state);
+    return ParseArrowOrDot(state, exp);
 }
 
 static int GetTokenPrec() {
@@ -2091,17 +2099,11 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
             lhs->id.sym = ReferenceVariable(state, ident->value);
             lhs->id.name = ident;
 
-            while (CurTok == TINY_TOK_DOT) {
-                Tiny_Expr *e = Expr_create(TINY_EXP_DOT, state);
+            lhs = ParseArrowOrDot(state, lhs);
 
-                GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
-
-                e->dot.lhs = lhs;
-                e->dot.field = CreateExprStringNode(state, state->l.lexeme);
-
-                GetNextToken(state);
-
-                lhs = e;
+            if (lhs->type == TINY_EXP_CALL) {
+                // It ended up being call, so just return it
+                return lhs;
             }
 
             int op = CurTok;
@@ -2477,9 +2479,10 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                 }
 
                 if (!IsTagAssignableTo(node->tag, expectedArgTag)) {
-                    ReportErrorE(state, node,
-                                 "Argument %i is supposed to be a %s but you supplied a %s\n",
-                                 i + 1, GetTagName(expectedArgTag), GetTagName(node->tag));
+                    ReportErrorE(
+                        state, node,
+                        "Argument %i to '%s' is supposed to be a '%s' but you supplied a '%s'\n",
+                        i + 1, func->name, GetTagName(expectedArgTag), GetTagName(node->tag));
                 }
             }
 

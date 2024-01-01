@@ -13,6 +13,16 @@ arr := array_int()
 
 array_int_push(arr, 10)
 
+ar := array_int_iter(arr)
+
+for ar := arr->aint_iter(); !ar->iter_int_done(); ar->iter_int_next() {
+    ar->iter_int_get()
+}
+
+while ar->iter_int_next() {
+    ar->iter_int_get()
+}
+
 printf("%q\n", arr)
 
 s := ""

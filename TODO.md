@@ -47,8 +47,7 @@
       - Could be useful for other tools too
       - What happens if the code fails to compile though? Can't dump symbols then
         - I guess that's fine, you need to have a baseline which compiles
-      - Just point the LSP to an executable that dumps the symbols you care about for a given file, and the LSP will run it as
-        you make changes
+      - Just point the LSP to an executable that dumps the symbols you care about for a given file, and the LSP will run it as you make changes
 
 - COOL Trailing commas in function calls are fine! That makes it really easy to do the "parameter pack" thing below kinda generically
 
