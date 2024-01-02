@@ -528,7 +528,7 @@ int Tiny_GetFunctionIndex(const Tiny_State *state, const char *name) {
     return -1;
 }
 
-static void DoPushIndir(Tiny_StateThread *thread, int nargs);
+static void DoPushIndir(Tiny_StateThread *thread, uint8_t nargs);
 static void DoPush(Tiny_StateThread *thread, Tiny_Value value);
 
 Tiny_Value Tiny_GetGlobal(const Tiny_StateThread *thread, int globalIndex) {
@@ -1086,7 +1086,7 @@ static void DoPush(Tiny_StateThread *thread, Tiny_Value value) {
 
 static inline Tiny_Value DoPop(Tiny_StateThread *thread) { return thread->stack[--thread->sp]; }
 
-static void DoPushIndir(Tiny_StateThread *thread, int nargs) {
+static void DoPushIndir(Tiny_StateThread *thread, uint8_t nargs) {
     assert(thread->fc < TINY_THREAD_MAX_CALL_DEPTH);
 
     thread->frames[thread->fc++] = (Tiny_Frame){thread->pc, thread->fp, nargs};
@@ -3650,8 +3650,9 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
             if (exp->retExpr) {
                 CompileExpr(state, exp->retExpr);
                 GenerateCode(state, TINY_OP_RETURN_VALUE);
-            } else
+            } else {
                 GenerateCode(state, TINY_OP_RETURN);
+            }
         } break;
 
         case TINY_EXP_BREAK:

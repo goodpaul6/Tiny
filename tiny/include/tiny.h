@@ -79,7 +79,7 @@ typedef struct Tiny_Value {
 
 typedef struct Tiny_Frame {
     int pc, fp;
-    int nargs;
+    uint8_t nargs;
 } Tiny_Frame;
 
 typedef struct Tiny_StateThread {
