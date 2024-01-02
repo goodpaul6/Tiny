@@ -358,6 +358,16 @@ void Tiny_DestroyThread(Tiny_StateThread *thread);
 // You shouldn't need these in most cases, but if you do, please refer
 // to std.c for examples of how you can take advantage of them.
 
+// Disassemble one bytecode instruction into the destination buffer
+// `buf`. This modifies PC to point to the next valid instruction after
+// it's done.
+//
+// Note that if it is unable to disassemble an instruction, it will
+// write an appropriate message into the buffer and return false.
+// You can choose how you respond to that (e.g. just increment PC and
+// continue disassembling).
+bool Tiny_DisasmOne(const Tiny_State *state, int *pc, char *buf, size_t maxlen);
+
 typedef enum Tiny_MacroResultType {
     TINY_MACRO_SUCCESS = 0,
     TINY_MACRO_ERROR = 1
@@ -431,10 +441,10 @@ typedef struct Tiny_Symbol {
             struct Tiny_Symbol *tag;
 
             union {
-                bool bValue;  // for bool
-                int iValue;   // for char/int
-                float fValue;   // for float
-                int sIndex;   // for string
+                bool bValue;   // for bool
+                int iValue;    // for char/int
+                float fValue;  // for float
+                int sIndex;    // for string
             };
         } constant;
 

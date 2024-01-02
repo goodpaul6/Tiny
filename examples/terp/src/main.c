@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "tiny.h"
 
@@ -32,6 +33,14 @@ int main(int argc, char** argv) {
         return 1;
     }
 
+    bool dis = false;
+
+    for (int i = 2; i < argc; ++i) {
+        if (strcmp(argv[i], "--dis") == 0) {
+            dis = true;
+        }
+    }
+
     Tiny_State* state = Tiny_CreateState();
 
     Tiny_BindStandardIO(state);
@@ -43,6 +52,21 @@ int main(int argc, char** argv) {
     Tiny_BindMacro(state, "import", ImportModuleFunction);
 
     Tiny_CompileFile(state, argv[1]);
+
+    if (dis) {
+        char buf[1024];
+
+        int pc = 0;
+        while (pc >= 0) {
+            bool res = Tiny_DisasmOne(state, &pc, buf, sizeof(buf));
+
+            printf("%s\n", buf);
+
+            if (!res) {
+                break;
+            }
+        }
+    }
 
     Tiny_StateThread stateThread;
 

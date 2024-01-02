@@ -1054,25 +1054,31 @@ void Tiny_BindConstString(Tiny_State *state, const char *name, const char *strin
         RegisterString(state, string);
 }
 
+inline static int ReadIntegerAt(const Tiny_State *state, int *pc) {
+    // Move PC up to the next 4 aligned thing
+    *pc = (*pc + 3) & ~3;
+
+    int val = *(int *)(&state->program[*pc]);
+    *pc += sizeof(int) / sizeof(Word);
+
+    return val;
+}
+
 static int ReadInteger(Tiny_StateThread *thread) {
-    // Move PC up to the next 4 aligned thing
-    thread->pc = (thread->pc + 3) & ~3;
+    return ReadIntegerAt(thread->state, &thread->pc);
+}
 
-    int val = *(int *)(&thread->state->program[thread->pc]);
-    thread->pc += sizeof(int) / sizeof(Word);
+inline static float ReadFloatAt(const Tiny_State *state, int *pc) {
+    // Move PC up to the next 4 aligned thing
+    *pc = (*pc + 3) & ~3;
+
+    float val = *(float *)(&state->program[*pc]);
+    *pc += sizeof(float) / sizeof(Word);
 
     return val;
 }
 
-static float ReadFloat(Tiny_StateThread *thread) {
-    // Move PC up to the next 4 aligned thing
-    thread->pc += (thread->pc % 4 == 0) ? 0 : (4 - thread->pc % 4);
-
-    float val = *(float *)(&thread->state->program[thread->pc]);
-    thread->pc += sizeof(float) / sizeof(Word);
-
-    return val;
-}
+static float ReadFloat(Tiny_StateThread *thread) { return ReadFloatAt(thread->state, &thread->pc); }
 
 static void DoPush(Tiny_StateThread *thread, Tiny_Value value) {
     thread->stack[thread->sp++] = value;
@@ -1232,19 +1238,21 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
             vstruct.obj->ostruct.fields[i] = val;
         } break;
 
-#define BIN_OP(OP, operator)                                                 \
-    case TINY_OP_##OP: {                                                     \
-        Tiny_Value val2 = DoPop(thread);                                     \
-        Tiny_Value val1 = DoPop(thread);                                     \
-        if (val1.type == TINY_VAL_FLOAT && val2.type == TINY_VAL_INT)        \
-            DoPush(thread, Tiny_NewFloat(val1.f operator(float) val2.i));    \
-        else if (val1.type == TINY_VAL_INT && val2.type == TINY_VAL_FLOAT)   \
-            DoPush(thread, Tiny_NewFloat((float)val1.i operator val2.f));    \
-        else if (val1.type == TINY_VAL_FLOAT && val2.type == TINY_VAL_FLOAT) \
-            DoPush(thread, Tiny_NewFloat(val1.f operator val2.f));           \
-        else                                                                 \
-            DoPush(thread, Tiny_NewInt(val1.i operator val2.i));             \
-        ++thread->pc;                                                        \
+#define BIN_OP(OP, operator)                                                \
+    case TINY_OP_##OP: {                                                    \
+        Tiny_Value *a = &thread->stack[thread->sp - 2];                     \
+        Tiny_Value b = thread->stack[--thread->sp];                         \
+        if (a->type == TINY_VAL_INT && b.type == TINY_VAL_INT) {            \
+            a->i = a->i operator b.i;                                       \
+        } else if (a->type == TINY_VAL_FLOAT && b.type == TINY_VAL_FLOAT) { \
+            a->f = a->f operator b.f;                                       \
+        } else if (a->type == TINY_VAL_INT) {                               \
+            a->type = TINY_VAL_FLOAT;                                       \
+            a->f = (float)a->i operator b.f;                                \
+        } else {                                                            \
+            a->f = a->f operator(float) b.i;                                \
+        }                                                                   \
+        ++thread->pc;                                                       \
     } break;
 
 #define BIN_OP_INT(OP, operator)                                       \
@@ -1255,19 +1263,43 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
         ++thread->pc;                                                  \
     } break;
 
-#define REL_OP(OP, operator)                                                 \
-    case TINY_OP_##OP: {                                                     \
-        Tiny_Value val2 = DoPop(thread);                                     \
-        Tiny_Value val1 = DoPop(thread);                                     \
-        if (val1.type == TINY_VAL_FLOAT && val2.type == TINY_VAL_INT)        \
-            DoPush(thread, Tiny_NewBool(val1.f operator(float) val2.i));     \
-        else if (val1.type == TINY_VAL_INT && val2.type == TINY_VAL_FLOAT)   \
-            DoPush(thread, Tiny_NewBool((float)val1.i operator val2.f));     \
-        else if (val1.type == TINY_VAL_FLOAT && val2.type == TINY_VAL_FLOAT) \
-            DoPush(thread, Tiny_NewBool(val1.f operator val2.f));            \
-        else                                                                 \
-            DoPush(thread, Tiny_NewBool(val1.i operator val2.i));            \
-        ++thread->pc;                                                        \
+        case TINY_OP_LTE: {
+            Tiny_Value *a = &thread->stack[thread->sp - 2];
+            const Tiny_Value *b = &thread->stack[--thread->sp];
+            if (a->type == TINY_VAL_FLOAT && b->type == TINY_VAL_FLOAT) {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = a->f <= b->f;
+            } else if (a->type == TINY_VAL_INT && b->type == TINY_VAL_INT) {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = a->i <= b->i;
+            } else if (a->type == TINY_VAL_INT) {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = (float)a->i <= b->f;
+            } else {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = a->f <= (float)b->i;
+            }
+            ++thread->pc;
+        } break;
+
+#define REL_OP(OP, operator)                                            \
+    case TINY_OP_##OP: {                                                \
+        Tiny_Value *a = &thread->stack[thread->sp - 2];                 \
+        Tiny_Value b = thread->stack[--thread->sp];                     \
+        if (a->type == TINY_VAL_FLOAT && b.type == TINY_VAL_FLOAT) {    \
+            a->type = TINY_VAL_BOOL;                                    \
+            a->boolean = a->f operator b.f;                             \
+        } else if (a->type == TINY_VAL_INT && b.type == TINY_VAL_INT) { \
+            a->type = TINY_VAL_BOOL;                                    \
+            a->boolean = a->i operator b.i;                             \
+        } else if (a->type == TINY_VAL_INT) {                           \
+            a->type = TINY_VAL_BOOL;                                    \
+            a->boolean = (float)a->i operator b.f;                      \
+        } else {                                                        \
+            a->type = TINY_VAL_BOOL;                                    \
+            a->boolean = a->f operator(float) b.i;                      \
+        }                                                               \
+        ++thread->pc;                                                   \
     } break;
 
             BIN_OP(ADD, +)
@@ -1279,7 +1311,6 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
             BIN_OP_INT(AND, &)
 
             REL_OP(LT, <)
-            REL_OP(LTE, <=)
             REL_OP(GT, >)
             REL_OP(GTE, >=)
 
@@ -3310,13 +3341,13 @@ static void PatchBreakContinue(Tiny_State *state, Tiny_Expr *body, int breakPC, 
 
 static void AddPCFileLineRecord(Tiny_State *state, const Tiny_PCToFileLine record) {
     if (sb_count(state->pcToFileLine) > 0) {
-        Tiny_PCToFileLine last = sb_last(state->pcToFileLine);
+        Tiny_PCToFileLine *last = &state->pcToFileLine[sb_count(state->pcToFileLine) - 1];
 
-        if (record.pc == last.pc) {
+        if (record.pc == last->pc) {
             // If the PC matches, just update it. This means that the previous
             // statement we compiled may have resulted in no code generated.
-            last.line = record.line;
-            last.fileStrIndex = record.fileStrIndex;
+            last->line = record.line;
+            last->fileStrIndex = record.fileStrIndex;
             return;
         }
     }
@@ -3560,14 +3591,18 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
 
             if (exp->ifx.body) CompileStatement(state, exp->ifx.body);
 
-            GenerateCode(state, TINY_OP_GOTO);
-            int exitGotoPc = GenerateInt(state, 0);
+            if (exp->ifx.alt) {
+                GenerateCode(state, TINY_OP_GOTO);
+                int exitGotoPc = GenerateInt(state, 0);
 
-            GenerateIntAt(state, sb_count(state->program), skipGotoPc);
+                GenerateIntAt(state, sb_count(state->program), skipGotoPc);
 
-            if (exp->ifx.alt) CompileStatement(state, exp->ifx.alt);
+                CompileStatement(state, exp->ifx.alt);
 
-            GenerateIntAt(state, sb_count(state->program), exitGotoPc);
+                GenerateIntAt(state, sb_count(state->program), exitGotoPc);
+            } else {
+                GenerateIntAt(state, sb_count(state->program), skipGotoPc);
+            }
         } break;
 
         case TINY_EXP_WHILE: {
@@ -3829,6 +3864,234 @@ void Tiny_CompileFile(Tiny_State *state, const char *filename) {
     Tiny_CompileString(state, filename, s);
 
     TFree(&state->ctx, s);
+}
+
+bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen) {
+    int pc = *ppc;
+
+    assert(pc >= 0 && pc < sb_count(state->program));
+
+    const char *fname = NULL;
+    int line = 0;
+
+    GetFileLineForPC(state, pc, &fname, &line);
+
+    int used = snprintf(buf, maxlen, "%d (%s:%d)\t", pc, fname, line);
+
+    if (used >= maxlen) {
+        return -1;
+    }
+
+    buf += used;
+    maxlen -= used;
+
+    switch (state->program[pc]) {
+#define OP_NO_ARGS(op)              \
+    case TINY_OP_##op: {            \
+        snprintf(buf, maxlen, #op); \
+        ++pc;                       \
+    } break;
+
+        OP_NO_ARGS(PUSH_NULL)
+
+        case TINY_OP_PUSH_NULL_N: {
+            Word count = state->program[++pc];
+            snprintf(buf, maxlen, "PUSH_NULL_N %d", count);
+            ++pc;
+        } break;
+
+            OP_NO_ARGS(PUSH_TRUE)
+            OP_NO_ARGS(PUSH_FALSE)
+            OP_NO_ARGS(PUSH_0)
+            OP_NO_ARGS(PUSH_1)
+
+        case TINY_OP_PUSH_CHAR: {
+            char ch = state->program[++pc];
+
+            snprintf(buf, maxlen, "PUSH_CHAR '%c'", ch);
+            ++pc;
+        } break;
+
+        case TINY_OP_PUSH_INT: {
+            ++pc;
+
+            int i = ReadIntegerAt(state, &pc);
+
+            snprintf(buf, maxlen, "PUSH_INT %d", i);
+        } break;
+
+        case TINY_OP_PUSH_FLOAT: {
+            ++pc;
+
+            float f = ReadFloatAt(state, &pc);
+
+            snprintf(buf, maxlen, "PUSH_FLOAT %f", f);
+        } break;
+
+        case TINY_OP_PUSH_STRING: {
+            ++pc;
+
+            int stringIndex = ReadIntegerAt(state, &pc);
+
+            snprintf(buf, maxlen, "PUSH_STRING %d (\"%s\")", stringIndex,
+                     state->strings[stringIndex]);
+        } break;
+
+        case TINY_OP_PUSH_STRING_FF: {
+            ++pc;
+
+            int stringIndex = (int)state->program[pc];
+
+            snprintf(buf, maxlen, "PUSH_STRING_FF %d (\"%s\")", stringIndex,
+                     state->strings[stringIndex]);
+            ++pc;
+        } break;
+
+        case TINY_OP_PUSH_STRUCT: {
+            ++pc;
+
+            Word nFields = state->program[pc];
+            assert(nFields > 0);
+
+            snprintf(buf, maxlen, "PUSH_STRUCT %d", nFields);
+            ++pc;
+        } break;
+
+        case TINY_OP_STRUCT_GET: {
+            ++pc;
+
+            Word i = state->program[pc];
+
+            snprintf(buf, maxlen, "STRUCT_GET %d", i);
+            ++pc;
+        } break;
+
+        case TINY_OP_STRUCT_SET: {
+            ++pc;
+
+            Word i = state->program[pc];
+
+            snprintf(buf, maxlen, "STRUCT_SET %d", i);
+            ++pc;
+        } break;
+
+            // TODO(Apaar): Refactor some of the instrs above to use this
+
+            OP_NO_ARGS(ADD)
+            OP_NO_ARGS(SUB)
+            OP_NO_ARGS(MUL)
+            OP_NO_ARGS(DIV)
+            OP_NO_ARGS(MOD)
+            OP_NO_ARGS(OR)
+            OP_NO_ARGS(AND)
+            OP_NO_ARGS(LT)
+            OP_NO_ARGS(LTE)
+            OP_NO_ARGS(GT)
+            OP_NO_ARGS(GTE)
+
+            OP_NO_ARGS(ADD1)
+            OP_NO_ARGS(SUB1)
+
+            OP_NO_ARGS(EQU)
+
+            OP_NO_ARGS(LOG_NOT)
+
+        case TINY_OP_SET: {
+            ++pc;
+            int varIdx = ReadIntegerAt(state, &pc);
+
+            // TODO(Apaar): Be helpful by searching global
+            // symbols for this vars name.
+
+            snprintf(buf, maxlen, "SET %d", varIdx);
+        } break;
+
+        case TINY_OP_GET: {
+            ++pc;
+            int varIdx = ReadIntegerAt(state, &pc);
+
+            snprintf(buf, maxlen, "GET %d", varIdx);
+        } break;
+
+        case TINY_OP_GOTO: {
+            ++pc;
+            int newPC = ReadIntegerAt(state, &pc);
+
+            snprintf(buf, maxlen, "GOTO %d", newPC);
+        } break;
+
+        case TINY_OP_GOTOZ: {
+            ++pc;
+            int newPC = ReadIntegerAt(state, &pc);
+
+            snprintf(buf, maxlen, "GOTOZ %d", newPC);
+        } break;
+
+        case TINY_OP_CALL: {
+            ++pc;
+            Word nargs = state->program[pc++];
+            int pcIdx = ReadIntegerAt(state, &pc);
+
+            // TODO(Apaar): Print function name too
+
+            snprintf(buf, maxlen, "CALL %d %d (%d)", nargs, pcIdx, state->functionPcs[pcIdx]);
+        } break;
+
+            OP_NO_ARGS(RETURN)
+            OP_NO_ARGS(RETURN_VALUE)
+
+        case TINY_OP_CALLF: {
+            ++pc;
+            Word nargs = state->program[pc++];
+            int fIdx = ReadIntegerAt(state, &pc);
+
+            // TODO(Apaar): Print function name too
+
+            // Can't print fptr with %p because that's only for
+            // data pointers.
+            snprintf(buf, maxlen, "CALLF %d %d", nargs, fIdx);
+        } break;
+
+        case TINY_OP_GETLOCAL: {
+            ++pc;
+            int varIdx = ReadIntegerAt(state, &pc);
+
+            snprintf(buf, maxlen, "GETLOCAL %d", varIdx);
+        } break;
+
+        case TINY_OP_GETLOCAL_W: {
+            ++pc;
+            Word i = state->program[pc++];
+
+            snprintf(buf, maxlen, "GETLOCAL_W %d", i);
+        } break;
+
+        case TINY_OP_SETLOCAL: {
+            ++pc;
+            int varIdx = ReadIntegerAt(state, &pc);
+
+            snprintf(buf, maxlen, "SETLOCAL %d", varIdx);
+        } break;
+
+            OP_NO_ARGS(GET_RETVAL)
+            OP_NO_ARGS(HALT)
+            OP_NO_ARGS(MISALIGNED_INSTRUCTION)
+
+#undef OP_NO_ARGS
+
+        default: {
+            snprintf(buf, maxlen, "(unknown opcode %d)", state->program[pc]);
+            return false;
+        } break;
+    }
+
+    if (pc >= sb_count(state->program)) {
+        *ppc = -1;
+        return true;
+    }
+
+    *ppc = pc;
+    return true;
 }
 
 void Tiny_BindMacro(Tiny_State *state, const char *name, Tiny_MacroFunction fn) {
