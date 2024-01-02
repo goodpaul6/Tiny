@@ -2139,97 +2139,6 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
         case TINY_TOK_OPENCURLY:
             return ParseBlock(state);
 
-        case TINY_TOK_IDENT: {
-            Tiny_StringNode *ident = CreateExprStringNode(state, state->l.lexeme);
-            GetNextToken(state);
-
-            if (CurTok == TINY_TOK_OPENPAREN) return ParseCall(state, ident);
-
-            Tiny_Expr *lhs = Expr_create(TINY_EXP_ID, state);
-
-            lhs->id.sym = ReferenceVariable(state, ident->value);
-            lhs->id.name = ident;
-
-            lhs = ParseArrowOrDot(state, lhs);
-
-            if (lhs->type == TINY_EXP_CALL) {
-                // It ended up being call, so just return it
-                return lhs;
-            }
-
-            int op = CurTok;
-
-            int lineNumber = state->l.lineNumber;
-            Tiny_TokenPos pos = state->l.pos;
-
-            if (CurTok == TINY_TOK_DECLARE || CurTok == TINY_TOK_COLON) {
-                if (lhs->type != TINY_EXP_ID) {
-                    ReportError(state, "Left hand side of declaration must be identifier.");
-                }
-
-                if (state->currFunc) {
-                    lhs->id.sym = DeclareLocal(state, ident->value);
-                } else {
-                    lhs->id.sym = DeclareGlobalVar(state, ident->value);
-                }
-
-                if (CurTok == TINY_TOK_COLON) {
-                    GetNextToken(state);
-                    lhs->id.sym->var.tag = ParseType(state);
-
-                    ExpectToken(state, TINY_TOK_EQUAL, "Expected '=' after typename.");
-
-                    op = TINY_TOK_EQUAL;
-                }
-            }
-
-            // If the precedence is >= 0 then it's an expression operator
-            if (GetTokenPrec(op) >= 0) {
-                ReportError(state, "Expected assignment statement.");
-            }
-
-            GetNextToken(state);
-
-            Tiny_Expr *rhs = ParseExpr(state);
-
-            if (op == TINY_TOK_DECLARECONST) {
-                if (lhs->type != TINY_EXP_ID) {
-                    ReportError(state, "Left hand side of declaration must be identifier.");
-                }
-
-                if (rhs->type == TINY_EXP_BOOL) {
-                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_BOOL))
-                        ->constant.bValue = rhs->boolean;
-                } else if (rhs->type == TINY_EXP_CHAR) {
-                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_INT))
-                        ->constant.iValue = rhs->iValue;
-                } else if (rhs->type == TINY_EXP_INT) {
-                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_INT))
-                        ->constant.iValue = rhs->iValue;
-                } else if (rhs->type == TINY_EXP_FLOAT) {
-                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_FLOAT))
-                        ->constant.fValue = rhs->fValue;
-                } else if (rhs->type == TINY_EXP_STRING) {
-                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_STR))
-                        ->constant.sIndex = rhs->sIndex;
-                } else {
-                    ReportError(state, "Expected number or string to be bound to constant '%s'.",
-                                lhs->id.name->value);
-                }
-            }
-
-            Tiny_Expr *bin = Expr_create(TINY_EXP_BINARY, state);
-
-            bin->lineNumber = lineNumber;
-            bin->pos = pos;
-
-            bin->binary.lhs = lhs;
-            bin->binary.rhs = rhs;
-            bin->binary.op = op;
-
-            return bin;
-        } break;
-
         case TINY_TOK_FUNC:
             return ParseFunc(state);
 
@@ -2378,6 +2287,87 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
             }
 
             return exp;
+        } break;
+
+        default: {
+            Tiny_Expr *lhs = ParseFactor(state);
+
+            if (lhs->type == TINY_EXP_CALL) {
+                // It ended up being call, so just return it
+                return lhs;
+            }
+
+            int op = CurTok;
+
+            int lineNumber = state->l.lineNumber;
+            Tiny_TokenPos pos = state->l.pos;
+
+            if (CurTok == TINY_TOK_DECLARE || CurTok == TINY_TOK_COLON) {
+                if (lhs->type != TINY_EXP_ID) {
+                    ReportError(state, "Left hand side of declaration must be identifier.");
+                }
+
+                if (state->currFunc) {
+                    lhs->id.sym = DeclareLocal(state, lhs->id.name->value);
+                } else {
+                    lhs->id.sym = DeclareGlobalVar(state, lhs->id.name->value);
+                }
+
+                if (CurTok == TINY_TOK_COLON) {
+                    GetNextToken(state);
+                    lhs->id.sym->var.tag = ParseType(state);
+
+                    ExpectToken(state, TINY_TOK_EQUAL, "Expected '=' after typename.");
+
+                    op = TINY_TOK_EQUAL;
+                }
+            }
+
+            // If the precedence is >= 0 then it's an expression operator
+            if (GetTokenPrec(op) >= 0) {
+                ReportError(state, "Expected assignment statement.");
+            }
+
+            GetNextToken(state);
+
+            Tiny_Expr *rhs = ParseExpr(state);
+
+            if (op == TINY_TOK_DECLARECONST) {
+                if (lhs->type != TINY_EXP_ID) {
+                    ReportError(state, "Left hand side of declaration must be identifier.");
+                }
+
+                if (rhs->type == TINY_EXP_BOOL) {
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_BOOL))
+                        ->constant.bValue = rhs->boolean;
+                } else if (rhs->type == TINY_EXP_CHAR) {
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_INT))
+                        ->constant.iValue = rhs->iValue;
+                } else if (rhs->type == TINY_EXP_INT) {
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_INT))
+                        ->constant.iValue = rhs->iValue;
+                } else if (rhs->type == TINY_EXP_FLOAT) {
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_FLOAT))
+                        ->constant.fValue = rhs->fValue;
+                } else if (rhs->type == TINY_EXP_STRING) {
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_STR))
+                        ->constant.sIndex = rhs->sIndex;
+                } else {
+                    ReportError(state, "Expected number or string to be bound to constant '%s'.",
+                                lhs->id.name->value);
+                }
+            }
+
+            Tiny_Expr *bin = Expr_create(TINY_EXP_BINARY, state);
+
+            bin->lineNumber = lineNumber;
+            bin->pos = pos;
+
+            bin->binary.lhs = lhs;
+            bin->binary.rhs = rhs;
+            bin->binary.op = op;
+
+            return bin;
         } break;
     }
 
