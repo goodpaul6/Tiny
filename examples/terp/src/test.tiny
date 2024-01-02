@@ -81,3 +81,7 @@ printf("%q\n", Point_to_json(my_point))
 x := (new Point{10, 20}).x
 
 printf("%q\n", x)
+
+x = if 5 > 10 10 else 20
+
+printf("%q\n", x)

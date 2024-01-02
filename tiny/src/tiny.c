@@ -1992,6 +1992,26 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
             return exp;
         } break;
 
+        // This is effectively a ternary
+        case TINY_TOK_IF: {
+            Tiny_Expr *exp = Expr_create(TINY_EXP_IF_TERNARY, state);
+
+            GetNextToken(state);
+
+            exp->ifx.cond = ParseExpr(state);
+
+            // Body and else statement must evaluate to a value
+            exp->ifx.body = ParseExpr(state);
+
+            ExpectToken(state, TINY_TOK_ELSE, "Expected 'else' after true value in if expression");
+
+            GetNextToken(state);
+
+            exp->ifx.alt = ParseExpr(state);
+
+            return exp;
+        } break;
+
         default:
             break;
     }
@@ -2905,6 +2925,32 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
             exp->tag = exp->cast.tag;
         } break;
+
+        case TINY_EXP_IF_TERNARY: {
+            assert(exp->ifx.cond);
+            assert(exp->ifx.body);
+            assert(exp->ifx.alt);
+
+            ResolveTypes(state, exp->ifx.cond);
+
+            if (!CompareTags(exp->ifx.cond->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
+                ReportErrorE(state, exp,
+                             "Ternary if condition is supposed to be a bool but its a %s",
+                             GetTagName(exp->ifx.cond->tag));
+            }
+
+            ResolveTypes(state, exp->ifx.body);
+            ResolveTypes(state, exp->ifx.alt);
+
+            if (!CompareTags(exp->ifx.body->tag, exp->ifx.alt->tag)) {
+                ReportErrorE(
+                    state, exp,
+                    "Ternary if 'true' value type '%s' is different from the false value type '%s'",
+                    GetTagName(exp->ifx.body->tag), GetTagName(exp->ifx.alt->tag));
+            }
+
+            exp->tag = exp->ifx.body->tag;
+        } break;
     }
 }
 
@@ -3283,6 +3329,26 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
                                  exp->unary.op);
                     break;
             }
+        } break;
+
+        case TINY_EXP_IF_TERNARY: {
+            CompileExpr(state, exp->ifx.cond);
+
+            GenerateCode(state, TINY_OP_GOTOZ);
+            int elsePcLoc = GenerateInt(state, 0);
+
+            CompileExpr(state, exp->ifx.body);
+
+            GenerateCode(state, TINY_OP_GOTO);
+            int exitPcLoc = GenerateInt(state, 0);
+
+            GenerateIntAt(state, sb_count(state->program), elsePcLoc);
+
+            assert(exp->ifx.alt);
+
+            CompileExpr(state, exp->ifx.alt);
+
+            GenerateIntAt(state, sb_count(state->program), exitPcLoc);
         } break;
 
         default:

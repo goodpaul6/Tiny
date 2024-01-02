@@ -30,6 +30,7 @@ typedef enum {
     TINY_EXP_CONTINUE,
     TINY_EXP_USE,
     TINY_EXP_INDEX,
+    TINY_EXP_IF_TERNARY,
 } Tiny_ExprType;
 
 // Node for a singly-linked list of strings.

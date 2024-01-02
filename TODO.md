@@ -89,7 +89,6 @@ x := {
   - Likely a big performance win
   - Will need typed
 - BAD Cannot cast reference types to any
-- BAD No ternary operator
 - BAD Accessing null values causes segfault
 - BAD No type aliases (strong)
 
@@ -219,6 +218,7 @@ Tiny_BindFunction(state, "get(array($t), int): t");
 
 # Done
 
+- BAD No ternary operator
 - IDEA Rescript style pipe operator
 ```
 arr := array_int()
