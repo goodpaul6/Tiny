@@ -215,15 +215,21 @@ static void test_DictSet(void) {
 
     lok(dict.filledCount == 1000);
 
+    bool allGood = true;
+
     for (int i = 0; i < 1000; ++i) {
         const Tiny_Value *pValue = DictGet(&dict, (Tiny_Value){
                                                       .type = TINY_VAL_INT,
                                                       .i = i,
                                                   });
 
-        lok(pValue);
-        lequal(pValue->i, i);
+        if (!pValue || pValue->i != i) {
+            allGood = false;
+            break;
+        }
     }
+
+    lok(allGood);
 
     DestroyDict(&dict);
 }
@@ -256,18 +262,39 @@ static void test_DictRemove(void) {
 
     lequal(dict.filledCount, 900);
 
-    for (int i = 0; i < 1000; ++i) {
+    Tiny_Value foundKey = {0};
+
+    for (int i = 0; i < 100; ++i) {
         Tiny_Value key = {
             .type = TINY_VAL_INT,
             .i = i,
         };
 
-        if (i >= 100) {
-            int value = DictGet(&dict, key)->i;
-            lequal(value, i);
-        } else
-            lok_print(!DictGet(&dict, key), "key=%d", key.i);
+        if (DictGet(&dict, key)) {
+            foundKey = key;
+            break;
+        }
     }
+
+    lok_print(Tiny_IsNull(foundKey), "key=%d", foundKey.i);
+
+    int neInt = -1;
+
+    for (int i = 100; i < 1000; ++i) {
+        Tiny_Value key = {
+            .type = TINY_VAL_INT,
+            .i = i,
+        };
+
+        int value = DictGet(&dict, key)->i;
+
+        if (value != i) {
+            neInt = i;
+            break;
+        }
+    }
+
+    lok_print(neInt == -1, "i=%d", neInt);
 
     DestroyDict(&dict);
 }
@@ -295,12 +322,21 @@ static void test_DictClear(void) {
 
     lequal(dict.filledCount, 0);
 
+    Tiny_Value foundKey = {0};
+
     for (int i = 0; i < 1000; ++i) {
-        lok(!DictGet(&dict, (Tiny_Value){
-                                .type = TINY_VAL_INT,
-                                .i = i,
-                            }));
+        Tiny_Value key = {
+            .type = TINY_VAL_INT,
+            .i = i,
+        };
+
+        if (DictGet(&dict, key)) {
+            foundKey = key;
+            break;
+        }
     }
+
+    lok_print(Tiny_IsNull(foundKey), "key=%d", foundKey.i);
 
     DestroyDict(&dict);
 }
@@ -340,44 +376,32 @@ static Tiny_Value Lib_Print(Tiny_StateThread *thread, const Tiny_Value *args, in
     return Tiny_Null;
 }
 
-static Tiny_Value Lib_Lequal(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
-    assert(count == 2);
-
-    Tiny_Value val = args[0];
-    Tiny_Value cmp = args[1];
-
-    lequal((int)val.i, (int)cmp.i);
-
-    return Tiny_Null;
-}
-
 static void test_StateCompile(void) {
     Tiny_State *state = CreateState();
 
-    Tiny_BindFunction(state, "lequal", Lib_Lequal);
-
     Tiny_CompileString(state, "test_compile",
                        "func fact(n: int): int { if n <= 1 return 1 return n * "
-                       "fact(n - 1) } lequal(fact(5), 120)");
+                       "fact(n - 1) }");
 
     static Tiny_StateThread threads[1000];
 
+    bool allEqual = true;
+
+    int factIndex = Tiny_GetFunctionIndex(state, "fact");
+
     for (int i = 0; i < 1000; ++i) {
         InitThread(&threads[i], state);
-        Tiny_StartThread(&threads[i]);
-    }
 
-    const int value = sizeof(threads[0]);
+        Tiny_Value val = Tiny_CallFunction(&threads[i], factIndex,
+                                           &(Tiny_Value){.type = TINY_VAL_INT, .i = 5}, 1);
 
-    while (true) {
-        int count = 0;
-
-        for (int i = 0; i < 1000; ++i) {
-            if (Tiny_ExecuteCycle(&threads[i])) count += 1;
+        if (Tiny_ToInt(val) != 120) {
+            allEqual = false;
+            break;
         }
-
-        if (count <= 0) break;
     }
+
+    lok(allEqual);
 
     for (int i = 0; i < 1000; ++i) Tiny_DestroyThread(&threads[i]);
 
