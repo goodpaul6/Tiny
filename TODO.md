@@ -1,5 +1,7 @@
 # TODO
 
+- BAD All types are nullable?
+- BAD No debugger of any kind
 - BAD No slices! I think the quickest way to support indexing arbitrary sequences is to allow them to produce a slice
 
   - Actually this may not be that great after all because this necessitates having generic types (e.g. one for slice)
@@ -106,10 +108,6 @@ func test(): int {}
 - BAD No runtime type information on struct object (could probably stuff a uint16_t struct ID somewhere at least?)
   - Could even just get rid of teh `nfields` since I think that's only used for pretty printing
     and debug checks
-- BAD Cannot access type information in C binding functions
-  - Would be mega useful to make things type-safe
-  - For example, could allow you to succinctly define a `delegate` binding
-    - Just need the function name, nothing else
 - BAD No interface to allocate/deallocate using the thread's context allocator
 - BAD No standard regex
 - BAD No syntax highlighting
@@ -122,7 +120,6 @@ func test(): int {}
   - Could patch this hole with runtime polymorphism but ehhhhh
   - Could also technically implement this with a C library haha
 - BAD No ranges/range-based loops
-- BAD All types are nullable?
 - BAD No multiline comments
 - BAD No builtin array or dict
   - Mainly for type safety; parametric polymorphism (at the library level only?) could solve this
@@ -217,6 +214,10 @@ Tiny_BindFunction(state, "get(array($t), int): t");
 # Done
 
 - Make `CurTok` local or at least thread local
+- BAD Cannot access type information in C binding functions
+  - Would be mega useful to make things type-safe
+  - For example, could allow you to succinctly define a `delegate` binding
+    - Just need the function name, nothing else
 - BAD No ternary operator
 - IDEA Rescript style pipe operator
 ```

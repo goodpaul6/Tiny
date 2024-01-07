@@ -999,9 +999,9 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
     Tiny_Symbol **argTags = NULL;
     bool varargs = false;
 
-    for (;;) {
-        tok = Tiny_GetToken(&l);
+    tok = Tiny_GetToken(&l);
 
+    for (;;) {
         if (tok == TINY_TOK_CLOSEPAREN) {
             break;
         }
@@ -1581,6 +1581,22 @@ static Tiny_Symbol *GetTagFromName(Tiny_State *state, const char *name, bool dec
     return NULL;
 }
 
+static Tiny_Symbol *GetOrCreateNullable(Tiny_State *state, Tiny_Symbol *inner) {
+    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        Tiny_Symbol *sym = state->globalSymbols[i];
+
+        if (sym->type == TINY_SYM_TAG_NULLABLE && sym->nullableTag == inner) {
+            return sym;
+        }
+    }
+
+    Tiny_Symbol *sym = Symbol_create(TINY_SYM_TAG_NULLABLE, NULL, state);
+
+    sym->nullableTag = inner;
+
+    return sym;
+}
+
 static Tiny_Symbol *GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
     assert(s->type == TINY_SYM_TAG_STRUCT);
     assert(s->sstruct.defined);
@@ -1601,16 +1617,21 @@ static Tiny_Symbol *GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
 
 static Tiny_TokenKind GetNextToken(Tiny_State *state) { return Tiny_GetToken(&state->l); }
 
-static Tiny_Symbol *ParseType(Tiny_State *state) {
-    ExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier for typename.");
+static Tiny_Symbol *ParseType(Tiny_State *state, Tiny_Lexer *l) {
+    ExpectTokenL(l, TINY_TOK_IDENT, "Expected identifier for typename.");
 
-    Tiny_Symbol *s = GetTagFromName(state, state->l.lexeme, true);
+    Tiny_Symbol *s = GetTagFromName(state, l->lexeme, true);
 
     if (!s) {
-        ReportErrorSL(state, "%s doesn't name a type.", state->l.lexeme);
+        ReportErrorL(l, "%s doesn't name a type.", l->lexeme);
     }
 
     GetNextToken(state);
+
+    if (state->l.lastTok == TINY_TOK_QUESTION) {
+        s = GetOrCreateNullable(state, s);
+        GetNextToken(state);
+    }
 
     return s;
 }
@@ -1700,7 +1721,7 @@ static Tiny_Expr *ParseFunc(Tiny_State *state) {
 
         GetNextToken(state);
 
-        arg.tag = ParseType(state);
+        arg.tag = ParseType(state, &state->l);
 
         sb_push(&state->ctx, args, arg);
 
@@ -1726,7 +1747,7 @@ static Tiny_Expr *ParseFunc(Tiny_State *state) {
         exp->proc.decl->func.returnTag = GetPrimTag(TINY_SYM_TAG_VOID);
     } else {
         GetNextToken(state);
-        exp->proc.decl->func.returnTag = ParseType(state);
+        exp->proc.decl->func.returnTag = ParseType(state, &state->l);
     }
 
     OpenScope(state);
@@ -1785,7 +1806,7 @@ static Tiny_Symbol *ParseStruct(Tiny_State *state) {
 
         GetNextToken(state);
 
-        f->fieldTag = ParseType(state);
+        f->fieldTag = ParseType(state, &state->l);
 
         sb_push(&state->ctx, s->sstruct.fields, f);
     }
@@ -1984,7 +2005,7 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
 
             GetNextToken(state);
 
-            exp->cast.tag = ParseType(state);
+            exp->cast.tag = ParseType(state, &state->l);
 
             ExpectTokenSL(state, TINY_TOK_CLOSEPAREN,
                           "Expected ')' to match previous '(' after cast.");
@@ -2332,7 +2353,7 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
 
                 if (state->l.lastTok == TINY_TOK_COLON) {
                     GetNextToken(state);
-                    lhs->id.sym->var.tag = ParseType(state);
+                    lhs->id.sym->var.tag = ParseType(state, &state->l);
 
                     ExpectTokenSL(state, TINY_TOK_EQUAL, "Expected '=' after typename.");
 

@@ -148,6 +148,7 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
     MATCH(';', SEMI);
     MATCH(':', COLON);
     MATCH('.', DOT);
+    MATCH('?', QUESTION);
 
     if (isalpha(l->last)) {
         ResetLexeme(l);
