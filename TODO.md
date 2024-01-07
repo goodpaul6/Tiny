@@ -1,7 +1,5 @@
 # TODO
 
-- Make `CurTok` local or at least thread local
-
 - BAD No slices! I think the quickest way to support indexing arbitrary sequences is to allow them to produce a slice
 
   - Actually this may not be that great after all because this necessitates having generic types (e.g. one for slice)
@@ -218,6 +216,7 @@ Tiny_BindFunction(state, "get(array($t), int): t");
 
 # Done
 
+- Make `CurTok` local or at least thread local
 - BAD No ternary operator
 - IDEA Rescript style pipe operator
 ```
