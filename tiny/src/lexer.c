@@ -47,9 +47,11 @@ void Tiny_InitLexer(Tiny_Lexer *l, const char *fileName, const char *src, Tiny_C
 
     l->last = ' ';
     l->lexeme = NULL;
+
+    l->lastTok = TINY_TOK_EOF;
 }
 
-Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
+static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
     while (isspace(l->last)) {
         if (l->last == '\n') l->lineNumber++;
         l->last = GetChar(l);
@@ -286,5 +288,7 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
     ReportError(l, "Unexpected character '%c'.", l->last);
     return -1;
 }
+
+Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) { return l->lastTok = GetToken(l); }
 
 void Tiny_DestroyLexer(Tiny_Lexer *l) { sb_free(&l->ctx, l->lexeme); }

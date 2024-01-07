@@ -1,5 +1,7 @@
 # TODO
 
+- Make `CurTok` local or at least thread local
+
 - BAD No slices! I think the quickest way to support indexing arbitrary sequences is to allow them to produce a slice
 
   - Actually this may not be that great after all because this necessitates having generic types (e.g. one for slice)
@@ -131,8 +133,6 @@ func test(): int {}
 - BAD No 64-bit integers
 - BAD No char type
 - BAD No polymorphism of any kind
-
-- Make `CurTok` local or at least thread local
 
 - Pass in alignment to used provided allocation function
 

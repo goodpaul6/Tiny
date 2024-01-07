@@ -39,6 +39,16 @@ static void *DefaultAlloc(void *ptr, size_t size, void *userdata) {
 
 Tiny_Context Tiny_DefaultContext = {DefaultAlloc, NULL};
 
+static void ReportErrorSL(Tiny_State *state, const char *s, ...) {
+    va_list args;
+    va_start(args, s);
+
+    Tiny_ReportErrorV(state->l.fileName, state->l.src, state->l.pos, s, args);
+
+    va_end(args);
+    exit(1);
+}
+
 static char *CloneString(Tiny_Context *ctx, const char *str) {
     size_t len = strlen(str);
 
@@ -777,16 +787,14 @@ static Tiny_Symbol *ReferenceVariable(Tiny_State *state, const char *name) {
     return NULL;
 }
 
-static void ReportError(Tiny_State *state, const char *s, ...);
-
 static Tiny_Symbol *DeclareGlobalVar(Tiny_State *state, const char *name) {
     Tiny_Symbol *sym = ReferenceVariable(state, name);
 
     if (sym && (sym->type == TINY_SYM_GLOBAL || sym->type == TINY_SYM_CONST)) {
-        ReportError(state,
-                    "Attempted to declare multiple global entities with the same "
-                    "name '%s'.",
-                    name);
+        ReportErrorSL(state,
+                      "Attempted to declare multiple global entities with the same "
+                      "name '%s'.",
+                      name);
     }
 
     Tiny_Symbol *newNode = Symbol_create(TINY_SYM_GLOBAL, name, state);
@@ -819,8 +827,8 @@ static Tiny_Symbol *DeclareArgument(Tiny_State *state, const char *name, Tiny_Sy
         assert(sym->type == TINY_SYM_LOCAL);
 
         if (strcmp(sym->name, name) == 0) {
-            ReportError(state, "Function '%s' takes multiple arguments with name '%s'.\n",
-                        state->currFunc->name, name);
+            ReportErrorSL(state, "Function '%s' takes multiple arguments with name '%s'.\n",
+                          state->currFunc->name, name);
         }
     }
 
@@ -846,10 +854,10 @@ static Tiny_Symbol *DeclareLocal(Tiny_State *state, const char *name) {
         assert(sym->type == TINY_SYM_LOCAL);
 
         if (!sym->var.scopeEnded && strcmp(sym->name, name) == 0) {
-            ReportError(state,
-                        "Function '%s' has multiple locals in the same scope with "
-                        "name '%s'.\n",
-                        state->currFunc->name, name);
+            ReportErrorSL(state,
+                          "Function '%s' has multiple locals in the same scope with "
+                          "name '%s'.\n",
+                          state->currFunc->name, name);
         }
     }
 
@@ -870,10 +878,10 @@ static Tiny_Symbol *DeclareConst(Tiny_State *state, const char *name, Tiny_Symbo
 
     if (sym && (sym->type == TINY_SYM_CONST || sym->type == TINY_SYM_LOCAL ||
                 sym->type == TINY_SYM_GLOBAL)) {
-        ReportError(state,
-                    "Attempted to define constant with the same name '%s' as "
-                    "another value.\n",
-                    name);
+        ReportErrorSL(state,
+                      "Attempted to define constant with the same name '%s' as "
+                      "another value.\n",
+                      name);
     }
 
     if (state->currFunc)
@@ -1462,28 +1470,27 @@ static Tiny_Expr *Expr_create(Tiny_ExprType type, Tiny_State *state) {
     return exp;
 }
 
-int CurTok;
-
-static int GetNextToken(Tiny_State *state) {
-    CurTok = Tiny_GetToken(&state->l);
-    return CurTok;
-}
-
-static void GetExpectToken(Tiny_State *state, int tok, const char *msg) {
-    GetNextToken(state);
-    if (CurTok != tok) ReportError(state, msg);
-}
-
 static Tiny_Expr *ParseExpr(Tiny_State *state);
 
-static void ReportError(Tiny_State *state, const char *s, ...) {
+static void ReportErrorL(Tiny_Lexer *l, const char *s, ...) {
     va_list args;
     va_start(args, s);
 
-    Tiny_ReportErrorV(state->l.fileName, state->l.src, state->l.pos, s, args);
+    Tiny_ReportErrorV(l->fileName, l->src, l->pos, s, args);
 
     va_end(args);
     exit(1);
+}
+
+static void GetExpectTokenL(Tiny_Lexer *l, Tiny_TokenKind tok, const char *msg) {
+    Tiny_GetToken(l);
+    if (l->lastTok != tok) {
+        ReportErrorL(l, msg);
+    }
+}
+
+static void GetExpectTokenSL(Tiny_State *state, Tiny_TokenKind tok, const char *msg) {
+    GetExpectTokenL(&state->l, tok, msg);
 }
 
 static void ReportErrorE(Tiny_State *state, const Tiny_Expr *exp, const char *s, ...) {
@@ -1506,8 +1513,14 @@ static void ReportErrorS(Tiny_State *state, const Tiny_Symbol *sym, const char *
     exit(1);
 }
 
-static void ExpectToken(Tiny_State *state, int tok, const char *msg) {
-    if (CurTok != tok) ReportError(state, msg);
+static void ExpectTokenL(Tiny_Lexer *l, Tiny_TokenKind tok, const char *msg) {
+    if (l->lastTok != tok) {
+        ReportErrorL(l, msg);
+    }
+}
+
+static void ExpectTokenSL(Tiny_State *state, Tiny_TokenKind tok, const char *msg) {
+    ExpectTokenL(&state->l, tok, msg);
 }
 
 static Tiny_Symbol *GetStructTag(Tiny_State *state, const char *name) {
@@ -1586,13 +1599,15 @@ static Tiny_Symbol *GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
     return NULL;
 }
 
+static Tiny_TokenKind GetNextToken(Tiny_State *state) { return Tiny_GetToken(&state->l); }
+
 static Tiny_Symbol *ParseType(Tiny_State *state) {
-    ExpectToken(state, TINY_TOK_IDENT, "Expected identifier for typename.");
+    ExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier for typename.");
 
     Tiny_Symbol *s = GetTagFromName(state, state->l.lexeme, true);
 
     if (!s) {
-        ReportError(state, "%s doesn't name a type.", state->l.lexeme);
+        ReportErrorSL(state, "%s doesn't name a type.", state->l.lexeme);
     }
 
     GetNextToken(state);
@@ -1610,7 +1625,7 @@ static Tiny_Expr *ParseIf(Tiny_State *state) {
     exp->ifx.cond = ParseExpr(state);
     exp->ifx.body = ParseStatement(state);
 
-    if (CurTok == TINY_TOK_ELSE) {
+    if (state->l.lastTok == TINY_TOK_ELSE) {
         GetNextToken(state);
         exp->ifx.alt = ParseStatement(state);
     } else
@@ -1620,7 +1635,7 @@ static Tiny_Expr *ParseIf(Tiny_State *state) {
 }
 
 static Tiny_Expr *ParseBlock(Tiny_State *state) {
-    assert(CurTok == TINY_TOK_OPENCURLY);
+    assert(state->l.lastTok == TINY_TOK_OPENCURLY);
 
     Tiny_Expr *exp = Expr_create(TINY_EXP_BLOCK, state);
 
@@ -1631,7 +1646,7 @@ static Tiny_Expr *ParseBlock(Tiny_State *state) {
 
     OpenScope(state);
 
-    while (CurTok != TINY_TOK_CLOSECURLY) {
+    while (state->l.lastTok != TINY_TOK_CLOSECURLY) {
         Tiny_Expr *e = ParseStatement(state);
         assert(e);
 
@@ -1646,21 +1661,21 @@ static Tiny_Expr *ParseBlock(Tiny_State *state) {
 }
 
 static Tiny_Expr *ParseFunc(Tiny_State *state) {
-    assert(CurTok == TINY_TOK_FUNC);
+    assert(state->l.lastTok == TINY_TOK_FUNC);
 
     if (state->currFunc) {
-        ReportError(state, "Attempted to define function inside of function '%s'.",
-                    state->currFunc->name);
+        ReportErrorSL(state, "Attempted to define function inside of function '%s'.",
+                      state->currFunc->name);
     }
 
     Tiny_Expr *exp = Expr_create(TINY_EXP_PROC, state);
 
-    GetExpectToken(state, TINY_TOK_IDENT, "Function name must be identifier!");
+    GetExpectTokenSL(state, TINY_TOK_IDENT, "Function name must be identifier!");
 
     exp->proc.decl = DeclareFunction(state, state->l.lexeme);
     state->currFunc = exp->proc.decl;
 
-    GetExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after function name");
+    GetExpectTokenSL(state, TINY_TOK_OPENPAREN, "Expected '(' after function name");
 
     GetNextToken(state);
 
@@ -1671,16 +1686,16 @@ static Tiny_Expr *ParseFunc(Tiny_State *state) {
 
     Arg *args = NULL;  // array
 
-    while (CurTok != TINY_TOK_CLOSEPAREN) {
-        ExpectToken(state, TINY_TOK_IDENT, "Expected identifier in function parameter list");
+    while (state->l.lastTok != TINY_TOK_CLOSEPAREN) {
+        ExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier in function parameter list");
 
         Arg arg;
 
         arg.name = CloneString(&state->ctx, state->l.lexeme);
         GetNextToken(state);
 
-        if (CurTok != TINY_TOK_COLON) {
-            ReportError(state, "Expected ':' after %s", arg.name);
+        if (state->l.lastTok != TINY_TOK_COLON) {
+            ReportErrorSL(state, "Expected ':' after %s", arg.name);
         }
 
         GetNextToken(state);
@@ -1689,13 +1704,13 @@ static Tiny_Expr *ParseFunc(Tiny_State *state) {
 
         sb_push(&state->ctx, args, arg);
 
-        if (CurTok != TINY_TOK_CLOSEPAREN && CurTok != TINY_TOK_COMMA) {
-            ReportError(state,
-                        "Expected ')' or ',' after parameter name in function "
-                        "parameter list.");
+        if (state->l.lastTok != TINY_TOK_CLOSEPAREN && state->l.lastTok != TINY_TOK_COMMA) {
+            ReportErrorSL(state,
+                          "Expected ')' or ',' after parameter name in function "
+                          "parameter list.");
         }
 
-        if (CurTok == TINY_TOK_COMMA) GetNextToken(state);
+        if (state->l.lastTok == TINY_TOK_COMMA) GetNextToken(state);
     }
 
     for (int i = 0; i < sb_count(args); ++i) {
@@ -1707,7 +1722,7 @@ static Tiny_Expr *ParseFunc(Tiny_State *state) {
 
     GetNextToken(state);
 
-    if (CurTok != TINY_TOK_COLON) {
+    if (state->l.lastTok != TINY_TOK_COLON) {
         exp->proc.decl->func.returnTag = GetPrimTag(TINY_SYM_TAG_VOID);
     } else {
         GetNextToken(state);
@@ -1727,46 +1742,46 @@ static Tiny_Expr *ParseFunc(Tiny_State *state) {
 
 static Tiny_Symbol *ParseStruct(Tiny_State *state) {
     if (state->currFunc) {
-        ReportError(state, "Attempted to declare struct inside func %s. Can't do that bruh.",
-                    state->currFunc->name);
+        ReportErrorSL(state, "Attempted to declare struct inside func %s. Can't do that bruh.",
+                      state->currFunc->name);
     }
 
     Tiny_TokenPos pos = state->l.pos;
 
-    GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'struct'.");
+    GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after 'struct'.");
 
     Tiny_Symbol *s = DeclareStruct(state, state->l.lexeme, true);
 
     if (s->sstruct.defined) {
-        ReportError(state, "Attempted to define struct %s multiple times.", state->l.lexeme);
+        ReportErrorSL(state, "Attempted to define struct %s multiple times.", state->l.lexeme);
     }
 
     s->pos = pos;
     s->sstruct.defined = true;
 
-    GetExpectToken(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name.");
+    GetExpectTokenSL(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name.");
 
     GetNextToken(state);
 
-    while (CurTok != TINY_TOK_CLOSECURLY) {
-        ExpectToken(state, TINY_TOK_IDENT, "Expected identifier in struct fields.");
+    while (state->l.lastTok != TINY_TOK_CLOSECURLY) {
+        ExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier in struct fields.");
 
         int count = sb_count(s->sstruct.fields);
 
         if (count >= UCHAR_MAX) {
-            ReportError(state, "Too many fields in struct.");
+            ReportErrorSL(state, "Too many fields in struct.");
         }
 
         for (int i = 0; i < count; ++i) {
             if (strcmp(s->sstruct.fields[i]->name, state->l.lexeme) == 0) {
-                ReportError(state, "Declared multiple fields with the same name %s.",
-                            state->l.lexeme);
+                ReportErrorSL(state, "Declared multiple fields with the same name %s.",
+                              state->l.lexeme);
             }
         }
 
         Tiny_Symbol *f = Symbol_create(TINY_SYM_FIELD, state->l.lexeme, state);
 
-        GetExpectToken(state, TINY_TOK_COLON, "Expected ':' after field name.");
+        GetExpectTokenSL(state, TINY_TOK_COLON, "Expected ':' after field name.");
 
         GetNextToken(state);
 
@@ -1778,14 +1793,14 @@ static Tiny_Symbol *ParseStruct(Tiny_State *state) {
     GetNextToken(state);
 
     if (!s->sstruct.fields) {
-        ReportError(state, "Struct must have at least one field.\n");
+        ReportErrorSL(state, "Struct must have at least one field.\n");
     }
 
     return s;
 }
 
 static Tiny_Expr *ParseCall(Tiny_State *state, Tiny_StringNode *ident) {
-    assert(CurTok == TINY_TOK_OPENPAREN);
+    assert(state->l.lastTok == TINY_TOK_OPENPAREN);
 
     Tiny_Expr *exp = Expr_create(TINY_EXP_CALL, state);
 
@@ -1794,13 +1809,13 @@ static Tiny_Expr *ParseCall(Tiny_State *state, Tiny_StringNode *ident) {
 
     GetNextToken(state);
 
-    while (CurTok != TINY_TOK_CLOSEPAREN) {
+    while (state->l.lastTok != TINY_TOK_CLOSEPAREN) {
         TINY_LL_APPEND(exp->call.argsHead, argsTail, ParseExpr(state));
 
-        if (CurTok == TINY_TOK_COMMA) {
+        if (state->l.lastTok == TINY_TOK_COMMA) {
             GetNextToken(state);
-        } else if (CurTok != TINY_TOK_CLOSEPAREN) {
-            ReportError(state, "Expected ')' after call.");
+        } else if (state->l.lastTok != TINY_TOK_CLOSEPAREN) {
+            ReportErrorSL(state, "Expected ')' after call.");
         }
     }
 
@@ -1813,7 +1828,7 @@ static Tiny_Expr *ParseCall(Tiny_State *state, Tiny_StringNode *ident) {
 static Tiny_Expr *ParseFactor(Tiny_State *state);
 
 static Tiny_Expr *ParseValue(Tiny_State *state) {
-    switch (CurTok) {
+    switch (state->l.lastTok) {
         case TINY_TOK_NULL: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_NULL, state);
 
@@ -1839,7 +1854,7 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
             Tiny_StringNode *ident = CreateExprStringNode(state, state->l.lexeme);
             GetNextToken(state);
 
-            if (CurTok == TINY_TOK_OPENPAREN) {
+            if (state->l.lastTok == TINY_TOK_OPENPAREN) {
                 return ParseCall(state, ident);
             }
 
@@ -1856,7 +1871,7 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
 
         case TINY_TOK_MINUS:
         case TINY_TOK_BANG: {
-            int op = CurTok;
+            int op = state->l.lastTok;
             GetNextToken(state);
             Tiny_Expr *exp = Expr_create(TINY_EXP_UNARY, state);
             exp->unary.op = op;
@@ -1897,7 +1912,7 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
             GetNextToken(state);
             Tiny_Expr *inner = ParseExpr(state);
 
-            ExpectToken(state, TINY_TOK_CLOSEPAREN, "Expected matching ')' after previous '('");
+            ExpectTokenSL(state, TINY_TOK_CLOSEPAREN, "Expected matching ')' after previous '('");
             GetNextToken(state);
 
             Tiny_Expr *exp = Expr_create(TINY_EXP_PAREN, state);
@@ -1920,22 +1935,22 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
             exp->constructor.argsHead = NULL;
             Tiny_Expr *argsTail = NULL;
 
-            GetExpectToken(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name");
+            GetExpectTokenSL(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name");
 
             GetNextToken(state);
 
-            while (CurTok != TINY_TOK_CLOSECURLY) {
-                if (CurTok == TINY_TOK_DOT) {
+            while (state->l.lastTok != TINY_TOK_CLOSECURLY) {
+                if (state->l.lastTok == TINY_TOK_DOT) {
                     // Named argument, .xyz = value
-                    GetExpectToken(state, TINY_TOK_IDENT,
-                                   "Expected identifier after '.' in designated initializer.");
+                    GetExpectTokenSL(state, TINY_TOK_IDENT,
+                                     "Expected identifier after '.' in designated initializer.");
 
                     Tiny_StringNode *ident = CreateExprStringNode(state, state->l.lexeme);
 
                     TINY_LL_APPEND(exp->constructor.argNamesHead, argNamesTail, ident);
 
-                    GetExpectToken(state, TINY_TOK_EQUAL,
-                                   "Expected = after designated initializer");
+                    GetExpectTokenSL(state, TINY_TOK_EQUAL,
+                                     "Expected = after designated initializer");
 
                     GetNextToken(state);
                 }
@@ -1944,11 +1959,11 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
 
                 TINY_LL_APPEND(exp->constructor.argsHead, argsTail, e);
 
-                if (CurTok != TINY_TOK_CLOSECURLY && CurTok != TINY_TOK_COMMA) {
-                    ReportError(state, "Expected '}' or ',' in constructor arg list.");
+                if (state->l.lastTok != TINY_TOK_CLOSECURLY && state->l.lastTok != TINY_TOK_COMMA) {
+                    ReportErrorSL(state, "Expected '}' or ',' in constructor arg list.");
                 }
 
-                if (CurTok == TINY_TOK_COMMA) GetNextToken(state);
+                if (state->l.lastTok == TINY_TOK_COMMA) GetNextToken(state);
             }
 
             GetNextToken(state);
@@ -1959,27 +1974,27 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
         case TINY_TOK_CAST: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_CAST, state);
 
-            GetExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after cast");
+            GetExpectTokenSL(state, TINY_TOK_OPENPAREN, "Expected '(' after cast");
 
             GetNextToken(state);
 
             exp->cast.value = ParseExpr(state);
 
-            ExpectToken(state, TINY_TOK_COMMA, "Expected ',' after cast value");
+            ExpectTokenSL(state, TINY_TOK_COMMA, "Expected ',' after cast value");
 
             GetNextToken(state);
 
             exp->cast.tag = ParseType(state);
 
-            ExpectToken(state, TINY_TOK_CLOSEPAREN,
-                        "Expected ')' to match previous '(' after cast.");
+            ExpectTokenSL(state, TINY_TOK_CLOSEPAREN,
+                          "Expected ')' to match previous '(' after cast.");
 
             GetNextToken(state);
 
-            while (CurTok == TINY_TOK_DOT) {
+            while (state->l.lastTok == TINY_TOK_DOT) {
                 Tiny_Expr *e = Expr_create(TINY_EXP_DOT, state);
 
-                GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
+                GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
                 e->dot.lhs = exp;
                 e->dot.field = CreateExprStringNode(state, state->l.lexeme);
@@ -2003,7 +2018,8 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
             // Body and else statement must evaluate to a value
             exp->ifx.body = ParseExpr(state);
 
-            ExpectToken(state, TINY_TOK_ELSE, "Expected 'else' after true value in if expression");
+            ExpectTokenSL(state, TINY_TOK_ELSE,
+                          "Expected 'else' after true value in if expression");
 
             GetNextToken(state);
 
@@ -2016,17 +2032,17 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
             break;
     }
 
-    ReportError(state, "Unexpected token '%s'\n", state->l.lexeme);
+    ReportErrorSL(state, "Unexpected token '%s'\n", state->l.lexeme);
     return NULL;
 }
 
 static Tiny_Expr *ParseArrowOrDot(Tiny_State *state, Tiny_Expr *lhs) {
     Tiny_Expr *exp = lhs;
 
-    while (CurTok == TINY_TOK_DOT || CurTok == TINY_TOK_ARROW) {
-        if (CurTok == TINY_TOK_ARROW) {
+    while (state->l.lastTok == TINY_TOK_DOT || state->l.lastTok == TINY_TOK_ARROW) {
+        if (state->l.lastTok == TINY_TOK_ARROW) {
             // There is always a call on the rhs of an arrow.
-            GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after ->");
+            GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after ->");
 
             // Since the arrow "operator" is just syntax sugar, we
             // actually rewrite the AST as we're producing it rather
@@ -2034,7 +2050,7 @@ static Tiny_Expr *ParseArrowOrDot(Tiny_State *state, Tiny_Expr *lhs) {
 
             Tiny_StringNode *ident = CreateExprStringNode(state, state->l.lexeme);
 
-            GetExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after -> and function name");
+            GetExpectTokenSL(state, TINY_TOK_OPENPAREN, "Expected '(' after -> and function name");
 
             Tiny_Expr *callExp = ParseCall(state, ident);
 
@@ -2052,7 +2068,7 @@ static Tiny_Expr *ParseArrowOrDot(Tiny_State *state, Tiny_Expr *lhs) {
 
         Tiny_Expr *e = Expr_create(TINY_EXP_DOT, state);
 
-        GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after '.'");
+        GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after '.'");
 
         e->dot.lhs = exp;
         e->dot.field = CreateExprStringNode(state, state->l.lexeme);
@@ -2070,9 +2086,9 @@ static Tiny_Expr *ParseFactor(Tiny_State *state) {
     return ParseArrowOrDot(state, exp);
 }
 
-static int GetTokenPrec() {
+static int GetTokenPrec(int tok) {
     int prec = -1;
-    switch (CurTok) {
+    switch (tok) {
         case TINY_TOK_STAR:
         case TINY_TOK_SLASH:
         case TINY_TOK_PERCENT:
@@ -2106,16 +2122,16 @@ static int GetTokenPrec() {
 
 static Tiny_Expr *ParseBinRhs(Tiny_State *state, int exprPrec, Tiny_Expr *lhs) {
     while (true) {
-        int prec = GetTokenPrec();
+        int prec = GetTokenPrec(state->l.lastTok);
 
         if (prec < exprPrec) return lhs;
 
-        int binOp = CurTok;
+        int binOp = state->l.lastTok;
 
         GetNextToken(state);
 
         Tiny_Expr *rhs = ParseFactor(state);
-        int nextPrec = GetTokenPrec();
+        int nextPrec = GetTokenPrec(state->l.lastTok);
 
         if (prec < nextPrec) rhs = ParseBinRhs(state, prec + 1, rhs);
 
@@ -2135,7 +2151,7 @@ static Tiny_Expr *ParseExpr(Tiny_State *state) {
 }
 
 static Tiny_Expr *ParseStatement(Tiny_State *state) {
-    switch (CurTok) {
+    switch (state->l.lastTok) {
         case TINY_TOK_OPENCURLY:
             return ParseBlock(state);
 
@@ -2170,13 +2186,13 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
 
             exp->forx.init = ParseStatement(state);
 
-            ExpectToken(state, TINY_TOK_SEMI, "Expected ';' after for initializer.");
+            ExpectTokenSL(state, TINY_TOK_SEMI, "Expected ';' after for initializer.");
 
             GetNextToken(state);
 
             exp->forx.cond = ParseExpr(state);
 
-            ExpectToken(state, TINY_TOK_SEMI, "Expected ';' after for condition.");
+            ExpectTokenSL(state, TINY_TOK_SEMI, "Expected ';' after for condition.");
 
             GetNextToken(state);
 
@@ -2191,24 +2207,24 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
 
         case TINY_TOK_RETURN: {
             if (!state->currFunc) {
-                ReportError(state,
-                            "Attempted to return from outside a function. Why? Why would "
-                            "you do that? Why would you do any of that?");
+                ReportErrorSL(state,
+                              "Attempted to return from outside a function. Why? Why would "
+                              "you do that? Why would you do any of that?");
             }
 
             Tiny_Expr *exp = Expr_create(TINY_EXP_RETURN, state);
 
             GetNextToken(state);
-            if (CurTok == TINY_TOK_SEMI) {
+            if (state->l.lastTok == TINY_TOK_SEMI) {
                 GetNextToken(state);
                 exp->retExpr = NULL;
                 return exp;
             }
 
             if (state->currFunc->func.returnTag->type == TINY_SYM_TAG_VOID) {
-                ReportError(state,
-                            "Attempted to return value from function which is "
-                            "supposed to return nothing (void).");
+                ReportErrorSL(state,
+                              "Attempted to return value from function which is "
+                              "supposed to return nothing (void).");
             }
 
             exp->retExpr = ParseExpr(state);
@@ -2239,13 +2255,13 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
 
         case TINY_TOK_USE: {
             if (state->currFunc || state->currScope != 0) {
-                ReportError(state,
-                            "'use' statements are only valid at the top-level of a Tiny file.");
+                ReportErrorSL(state,
+                              "'use' statements are only valid at the top-level of a Tiny file.");
             }
 
             Tiny_Expr *exp = Expr_create(TINY_EXP_USE, state);
 
-            GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'use'");
+            GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after 'use'");
 
             exp->use.moduleName = CreateExprStringNode(state, state->l.lexeme);
 
@@ -2254,12 +2270,13 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
 
             exp->use.asName = NULL;
 
-            GetExpectToken(state, TINY_TOK_OPENPAREN, "Expected '(' after 'use' module name");
+            GetExpectTokenSL(state, TINY_TOK_OPENPAREN, "Expected '(' after 'use' module name");
 
             GetNextToken(state);
 
-            while (CurTok != TINY_TOK_CLOSEPAREN) {
-                ExpectToken(state, TINY_TOK_STRING, "Expected string as arg to 'use' module name");
+            while (state->l.lastTok != TINY_TOK_CLOSEPAREN) {
+                ExpectTokenSL(state, TINY_TOK_STRING,
+                              "Expected string as arg to 'use' module name");
 
                 Tiny_StringNode *arg = CreateExprStringNode(state, state->l.lexeme);
 
@@ -2269,7 +2286,7 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
 
                 // TODO(Apaar): Technically this means the commas are optional.
                 // Should we enforce them?
-                if (CurTok == TINY_TOK_COMMA) {
+                if (state->l.lastTok == TINY_TOK_COMMA) {
                     GetNextToken(state);
                 }
             }
@@ -2278,8 +2295,8 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
 
             // NOTE(Apaar): We do not make `as` an official keyword, we only make a special case
             // for it in this context. It's too general to be reserved IMO.
-            if (CurTok == TINY_TOK_IDENT && strcmp(state->l.lexeme, "as") == 0) {
-                GetExpectToken(state, TINY_TOK_IDENT, "Expected identifier after 'as'");
+            if (state->l.lastTok == TINY_TOK_IDENT && strcmp(state->l.lexeme, "as") == 0) {
+                GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after 'as'");
 
                 exp->use.asName = CreateExprStringNode(state, state->l.lexeme);
 
@@ -2297,14 +2314,14 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
                 return lhs;
             }
 
-            int op = CurTok;
+            int op = state->l.lastTok;
 
             int lineNumber = state->l.lineNumber;
             Tiny_TokenPos pos = state->l.pos;
 
-            if (CurTok == TINY_TOK_DECLARE || CurTok == TINY_TOK_COLON) {
+            if (state->l.lastTok == TINY_TOK_DECLARE || state->l.lastTok == TINY_TOK_COLON) {
                 if (lhs->type != TINY_EXP_ID) {
-                    ReportError(state, "Left hand side of declaration must be identifier.");
+                    ReportErrorSL(state, "Left hand side of declaration must be identifier.");
                 }
 
                 if (state->currFunc) {
@@ -2313,11 +2330,11 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
                     lhs->id.sym = DeclareGlobalVar(state, lhs->id.name->value);
                 }
 
-                if (CurTok == TINY_TOK_COLON) {
+                if (state->l.lastTok == TINY_TOK_COLON) {
                     GetNextToken(state);
                     lhs->id.sym->var.tag = ParseType(state);
 
-                    ExpectToken(state, TINY_TOK_EQUAL, "Expected '=' after typename.");
+                    ExpectTokenSL(state, TINY_TOK_EQUAL, "Expected '=' after typename.");
 
                     op = TINY_TOK_EQUAL;
                 }
@@ -2325,7 +2342,7 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
 
             // If the precedence is >= 0 then it's an expression operator
             if (GetTokenPrec(op) >= 0) {
-                ReportError(state, "Expected assignment statement.");
+                ReportErrorSL(state, "Expected assignment statement.");
             }
 
             GetNextToken(state);
@@ -2334,7 +2351,7 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
 
             if (op == TINY_TOK_DECLARECONST) {
                 if (lhs->type != TINY_EXP_ID) {
-                    ReportError(state, "Left hand side of declaration must be identifier.");
+                    ReportErrorSL(state, "Left hand side of declaration must be identifier.");
                 }
 
                 if (rhs->type == TINY_EXP_BOOL) {
@@ -2353,8 +2370,8 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
                     DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_STR))
                         ->constant.sIndex = rhs->sIndex;
                 } else {
-                    ReportError(state, "Expected number or string to be bound to constant '%s'.",
-                                lhs->id.name->value);
+                    ReportErrorSL(state, "Expected number or string to be bound to constant '%s'.",
+                                  lhs->id.name->value);
                 }
             }
 
@@ -2371,22 +2388,22 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
         } break;
     }
 
-    ReportError(state, "Unexpected token '%s'.", state->l.lexeme);
+    ReportErrorSL(state, "Unexpected token '%s'.", state->l.lexeme);
     return NULL;
 }
 
 static Tiny_Expr *ParseProgram(Tiny_State *state) {
     GetNextToken(state);
 
-    if (CurTok == TINY_TOK_EOF) {
+    if (state->l.lastTok == TINY_TOK_EOF) {
         return NULL;
     }
 
     Tiny_Expr *head = NULL;
     Tiny_Expr *tail = NULL;
 
-    while (CurTok != TINY_TOK_EOF) {
-        if (CurTok == TINY_TOK_STRUCT) {
+    while (state->l.lastTok != TINY_TOK_EOF) {
+        if (state->l.lastTok == TINY_TOK_STRUCT) {
             ParseStruct(state);
         } else {
             TINY_LL_APPEND(head, tail, ParseStatement(state));
@@ -3819,8 +3836,6 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
 
     Tiny_InitLexer(&state->l, name, string, state->ctx);
     Tiny_InitArena(&state->parserArena, state->ctx);
-
-    CurTok = 0;
 
     int firstSymIndex = sb_count(state->globalSymbols);
 

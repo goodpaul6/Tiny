@@ -18,6 +18,8 @@ typedef struct {
     int last;
     char *lexeme;  // array
 
+    Tiny_TokenKind lastTok;
+
     union {
         bool bValue;
         int iValue;
