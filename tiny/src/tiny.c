@@ -39,14 +39,34 @@ static void *DefaultAlloc(void *ptr, size_t size, void *userdata) {
 
 Tiny_Context Tiny_DefaultContext = {DefaultAlloc, NULL};
 
+static void ReportErrorL(Tiny_State *state, Tiny_Lexer *l, const char *s, ...) {
+    va_list args;
+    va_start(args, s);
+
+    state->compileErrorResult.type = TINY_COMPILE_ERROR;
+
+    Tiny_FormatErrorV(state->compileErrorResult.error.msg,
+                      sizeof(state->compileErrorResult.error.msg), l->fileName, l->src, l->pos, s,
+                      args);
+
+    va_end(args);
+
+    longjmp(state->compileErrorJmpBuf, 1);
+}
+
 static void ReportErrorSL(Tiny_State *state, const char *s, ...) {
     va_list args;
     va_start(args, s);
 
-    Tiny_ReportErrorV(state->l.fileName, state->l.src, state->l.pos, s, args);
+    state->compileErrorResult.type = TINY_COMPILE_ERROR;
+
+    Tiny_FormatErrorV(state->compileErrorResult.error.msg,
+                      sizeof(state->compileErrorResult.error.msg), state->l.fileName, state->l.src,
+                      state->l.pos, s, args);
 
     va_end(args);
-    exit(1);
+
+    longjmp(state->compileErrorJmpBuf, 1);
 }
 
 static char *CloneString(Tiny_Context *ctx, const char *str) {
@@ -416,6 +436,8 @@ static Tiny_Value Lib_ToFloat(Tiny_StateThread *thread, const Tiny_Value *args, 
 
 Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx) {
     Tiny_State *state = TMalloc(&ctx, sizeof(Tiny_State));
+
+    state->l = (Tiny_Lexer){0};
 
     state->ctx = ctx;
 
@@ -973,20 +995,22 @@ void Tiny_RegisterType(Tiny_State *state, const char *name) {
     sb_push(&state->ctx, state->globalSymbols, s);
 }
 
+static Tiny_Symbol *ParseTypeL(Tiny_State *state, Tiny_Lexer *l);
+
 void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction func) {
     Tiny_Lexer l;
 
     Tiny_InitLexer(&l, "(bind signature)", sig, state->ctx);
 
-    Tiny_TokenKind tok = Tiny_GetToken(&l);
+    Tiny_GetToken(&l);
 
-    assert(tok == TINY_TOK_IDENT);
+    assert(l.lastTok == TINY_TOK_IDENT);
 
     char *name = CloneString(&state->ctx, l.lexeme);
 
-    tok = Tiny_GetToken(&l);
+    Tiny_GetToken(&l);
 
-    if (tok != TINY_TOK_OPENPAREN) {
+    if (l.lastTok != TINY_TOK_OPENPAREN) {
         // Just the name
         BindFunction(state, name, NULL, true, GetPrimTag(TINY_SYM_TAG_ANY), func);
         Tiny_DestroyLexer(&l);
@@ -996,26 +1020,25 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
         return;
     }
 
+    Tiny_GetToken(&l);
+
     Tiny_Symbol **argTags = NULL;
     bool varargs = false;
 
-    tok = Tiny_GetToken(&l);
-
     for (;;) {
-        if (tok == TINY_TOK_CLOSEPAREN) {
+        if (l.lastTok == TINY_TOK_CLOSEPAREN) {
             break;
         }
 
-        if (tok == TINY_TOK_COMMA) {
-            tok = Tiny_GetToken(&l);
-        }
-
-        if (tok == TINY_TOK_ELLIPSIS) {
+        if (l.lastTok == TINY_TOK_COMMA) {
+            Tiny_GetToken(&l);
+        } else if (l.lastTok == TINY_TOK_ELLIPSIS) {
             varargs = true;
+            Tiny_GetToken(&l);
         } else {
-            assert(tok == TINY_TOK_IDENT);
+            assert(l.lastTok == TINY_TOK_IDENT);
 
-            Tiny_Symbol *s = GetTagFromName(state, l.lexeme, false);
+            Tiny_Symbol *s = ParseTypeL(state, &l);
 
             assert(s);
 
@@ -1023,18 +1046,18 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
         }
     }
 
-    assert(tok == TINY_TOK_CLOSEPAREN);
+    assert(l.lastTok == TINY_TOK_CLOSEPAREN);
 
-    tok = Tiny_GetToken(&l);
+    Tiny_GetToken(&l);
 
     Tiny_Symbol *returnTag = GetPrimTag(TINY_SYM_TAG_ANY);
 
-    if (tok == TINY_TOK_COLON) {
-        tok = Tiny_GetToken(&l);
+    if (l.lastTok == TINY_TOK_COLON) {
+        Tiny_GetToken(&l);
 
-        assert(tok == TINY_TOK_IDENT);
+        assert(l.lastTok == TINY_TOK_IDENT);
 
-        returnTag = GetTagFromName(state, l.lexeme, false);
+        returnTag = ParseTypeL(state, &l);
         assert(returnTag);
     }
 
@@ -1472,55 +1495,51 @@ static Tiny_Expr *Expr_create(Tiny_ExprType type, Tiny_State *state) {
 
 static Tiny_Expr *ParseExpr(Tiny_State *state);
 
-static void ReportErrorL(Tiny_Lexer *l, const char *s, ...) {
-    va_list args;
-    va_start(args, s);
-
-    Tiny_ReportErrorV(l->fileName, l->src, l->pos, s, args);
-
-    va_end(args);
-    exit(1);
-}
-
-static void GetExpectTokenL(Tiny_Lexer *l, Tiny_TokenKind tok, const char *msg) {
-    Tiny_GetToken(l);
-    if (l->lastTok != tok) {
-        ReportErrorL(l, msg);
-    }
-}
-
 static void GetExpectTokenSL(Tiny_State *state, Tiny_TokenKind tok, const char *msg) {
-    GetExpectTokenL(&state->l, tok, msg);
+    Tiny_GetToken(&state->l);
+    if (state->l.lastTok != tok) {
+        ReportErrorSL(state, msg);
+    }
 }
 
 static void ReportErrorE(Tiny_State *state, const Tiny_Expr *exp, const char *s, ...) {
     va_list args;
     va_start(args, s);
 
-    Tiny_ReportErrorV(state->l.fileName, state->l.src, exp->pos, s, args);
+    state->compileErrorResult.type = TINY_COMPILE_ERROR;
+
+    Tiny_FormatErrorV(state->compileErrorResult.error.msg,
+                      sizeof(state->compileErrorResult.error.msg), state->l.fileName, state->l.src,
+                      exp->pos, s, args);
 
     va_end(args);
-    exit(1);
+
+    longjmp(state->compileErrorJmpBuf, 1);
 }
 
 static void ReportErrorS(Tiny_State *state, const Tiny_Symbol *sym, const char *s, ...) {
     va_list args;
     va_start(args, s);
 
-    Tiny_ReportErrorV(state->l.fileName, state->l.src, sym->pos, s, args);
+    state->compileErrorResult.type = TINY_COMPILE_ERROR;
+
+    Tiny_FormatErrorV(state->compileErrorResult.error.msg,
+                      sizeof(state->compileErrorResult.error.msg), state->l.fileName, state->l.src,
+                      sym->pos, s, args);
 
     va_end(args);
-    exit(1);
+
+    longjmp(state->compileErrorJmpBuf, 1);
 }
 
-static void ExpectTokenL(Tiny_Lexer *l, Tiny_TokenKind tok, const char *msg) {
+static void ExpectTokenL(Tiny_State *state, Tiny_Lexer *l, Tiny_TokenKind tok, const char *msg) {
     if (l->lastTok != tok) {
-        ReportErrorL(l, msg);
+        ReportErrorL(state, l, msg);
     }
 }
 
 static void ExpectTokenSL(Tiny_State *state, Tiny_TokenKind tok, const char *msg) {
-    ExpectTokenL(&state->l, tok, msg);
+    ExpectTokenL(state, &state->l, tok, msg);
 }
 
 static Tiny_Symbol *GetStructTag(Tiny_State *state, const char *name) {
@@ -1581,6 +1600,8 @@ static Tiny_Symbol *GetTagFromName(Tiny_State *state, const char *name, bool dec
     return NULL;
 }
 
+static const char *GetTagName(const Tiny_Symbol *tag);
+
 static Tiny_Symbol *GetOrCreateNullable(Tiny_State *state, Tiny_Symbol *inner) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
         Tiny_Symbol *sym = state->globalSymbols[i];
@@ -1590,9 +1611,16 @@ static Tiny_Symbol *GetOrCreateNullable(Tiny_State *state, Tiny_Symbol *inner) {
         }
     }
 
-    Tiny_Symbol *sym = Symbol_create(TINY_SYM_TAG_NULLABLE, NULL, state);
+    // FIXME(Apaar): Allow names longer than 256 chars
+    char nameBuf[256] = {0};
+
+    snprintf(nameBuf, sizeof(nameBuf), "%s?", GetTagName(inner));
+
+    Tiny_Symbol *sym = Symbol_create(TINY_SYM_TAG_NULLABLE, nameBuf, state);
 
     sym->nullableTag = inner;
+
+    sb_push(&state->ctx, state->globalSymbols, sym);
 
     return sym;
 }
@@ -1617,24 +1645,31 @@ static Tiny_Symbol *GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
 
 static Tiny_TokenKind GetNextToken(Tiny_State *state) { return Tiny_GetToken(&state->l); }
 
-static Tiny_Symbol *ParseType(Tiny_State *state, Tiny_Lexer *l) {
-    ExpectTokenL(l, TINY_TOK_IDENT, "Expected identifier for typename.");
+static Tiny_Symbol *ParseTypeL(Tiny_State *state, Tiny_Lexer *l) {
+    ExpectTokenL(state, l, TINY_TOK_IDENT, "Expected identifier for typename.");
 
     Tiny_Symbol *s = GetTagFromName(state, l->lexeme, true);
 
     if (!s) {
-        ReportErrorL(l, "%s doesn't name a type.", l->lexeme);
+        ReportErrorL(state, l, "%s doesn't name a type.", l->lexeme);
     }
 
-    GetNextToken(state);
+    Tiny_GetToken(l);
 
-    if (state->l.lastTok == TINY_TOK_QUESTION) {
+    if (l->lastTok == TINY_TOK_QUESTION) {
+        if (s->type == TINY_SYM_TAG_VOID) {
+            ReportErrorL(state, l,
+                         "Attempted to make a nullable 'void' type which doesn't make any sense.");
+        }
+
         s = GetOrCreateNullable(state, s);
-        GetNextToken(state);
+        Tiny_GetToken(l);
     }
 
     return s;
 }
+
+static Tiny_Symbol *ParseTypeSL(Tiny_State *state) { return ParseTypeL(state, &state->l); }
 
 static Tiny_Expr *ParseStatement(Tiny_State *state);
 
@@ -1721,7 +1756,7 @@ static Tiny_Expr *ParseFunc(Tiny_State *state) {
 
         GetNextToken(state);
 
-        arg.tag = ParseType(state, &state->l);
+        arg.tag = ParseTypeSL(state);
 
         sb_push(&state->ctx, args, arg);
 
@@ -1747,7 +1782,7 @@ static Tiny_Expr *ParseFunc(Tiny_State *state) {
         exp->proc.decl->func.returnTag = GetPrimTag(TINY_SYM_TAG_VOID);
     } else {
         GetNextToken(state);
-        exp->proc.decl->func.returnTag = ParseType(state, &state->l);
+        exp->proc.decl->func.returnTag = ParseTypeSL(state);
     }
 
     OpenScope(state);
@@ -1806,7 +1841,7 @@ static Tiny_Symbol *ParseStruct(Tiny_State *state) {
 
         GetNextToken(state);
 
-        f->fieldTag = ParseType(state, &state->l);
+        f->fieldTag = ParseTypeSL(state);
 
         sb_push(&state->ctx, s->sstruct.fields, f);
     }
@@ -2005,7 +2040,7 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
 
             GetNextToken(state);
 
-            exp->cast.tag = ParseType(state, &state->l);
+            exp->cast.tag = ParseTypeSL(state);
 
             ExpectTokenSL(state, TINY_TOK_CLOSEPAREN,
                           "Expected ')' to match previous '(' after cast.");
@@ -2047,6 +2082,12 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
             exp->ifx.alt = ParseExpr(state);
 
             return exp;
+        } break;
+
+        case TINY_TOK_LEXER_ERROR: {
+            assert(state->l.errorMsg);
+            ReportErrorSL(state, state->l.errorMsg);
+            return NULL;
         } break;
 
         default:
@@ -2353,7 +2394,7 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
 
                 if (state->l.lastTok == TINY_TOK_COLON) {
                     GetNextToken(state);
-                    lhs->id.sym->var.tag = ParseType(state, &state->l);
+                    lhs->id.sym->var.tag = ParseTypeSL(state);
 
                     ExpectTokenSL(state, TINY_TOK_EQUAL, "Expected '=' after typename.");
 
@@ -2439,24 +2480,6 @@ static const char *GetTagName(const Tiny_Symbol *tag) {
     return tag->name;
 }
 
-// Checks if types can be narrowed/widened to be equal
-static bool CompareTags(const Tiny_Symbol *a, const Tiny_Symbol *b) {
-    if (a->type == TINY_SYM_TAG_VOID) {
-        return b->type == TINY_SYM_TAG_VOID;
-    }
-
-    // Can convert *to* any implicitly
-    if (b->type == TINY_SYM_TAG_ANY) {
-        return true;
-    }
-
-    if (a->type == b->type) {
-        return strcmp(a->name, b->name) == 0;
-    }
-
-    return false;
-}
-
 static bool IsTagAssignableTo(const Tiny_Symbol *src, const Tiny_Symbol *dest) {
     if (src->type == TINY_SYM_TAG_VOID) {
         // Can't assign void to anything
@@ -2471,6 +2494,10 @@ static bool IsTagAssignableTo(const Tiny_Symbol *src, const Tiny_Symbol *dest) {
     if (src->type == TINY_SYM_TAG_ANY) {
         // Can only assign any to any
         return dest->type == TINY_SYM_TAG_ANY;
+    }
+
+    if (dest->type == TINY_SYM_TAG_NULLABLE) {
+        return IsTagAssignableTo(src, dest->nullableTag);
     }
 
     if (src->type == dest->type) {
@@ -2584,13 +2611,11 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
-                    bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
+                    bool iLhs = exp->binary.lhs->tag->type == TINY_SYM_TAG_INT;
+                    bool iRhs = exp->binary.rhs->tag->type == TINY_SYM_TAG_INT;
 
-                    bool fLhs =
-                        !iLhs && CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_FLOAT));
-                    bool fRhs =
-                        !iRhs && CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_FLOAT));
+                    bool fLhs = !iLhs && exp->binary.lhs->tag->type == TINY_SYM_TAG_FLOAT;
+                    bool fRhs = !iRhs && exp->binary.rhs->tag->type == TINY_SYM_TAG_FLOAT;
 
                     if ((!iLhs && !fLhs) || (!iRhs && !fRhs)) {
                         ReportErrorE(state, exp,
@@ -2609,8 +2634,8 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
-                    bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
+                    bool iLhs = exp->binary.lhs->tag->type == TINY_SYM_TAG_INT;
+                    bool iRhs = exp->binary.rhs->tag->type == TINY_SYM_TAG_INT;
 
                     if (!(iLhs && iRhs)) {
                         ReportErrorE(
@@ -2627,8 +2652,8 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    if (!CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_BOOL)) ||
-                        !CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
+                    if (exp->binary.lhs->tag->type != TINY_SYM_TAG_BOOL ||
+                        exp->binary.rhs->tag->type != TINY_SYM_TAG_BOOL) {
                         ReportErrorE(state, exp,
                                      "Left and right hand side of binary and/or must be bools, "
                                      "but they're %s and %s",
@@ -2646,13 +2671,11 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    bool iLhs = CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
-                    bool iRhs = CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_INT));
+                    bool iLhs = exp->binary.lhs->tag->type == TINY_SYM_TAG_INT;
+                    bool iRhs = exp->binary.rhs->tag->type == TINY_SYM_TAG_INT;
 
-                    bool fLhs =
-                        !iLhs && CompareTags(exp->binary.lhs->tag, GetPrimTag(TINY_SYM_TAG_FLOAT));
-                    bool fRhs =
-                        !iRhs && CompareTags(exp->binary.rhs->tag, GetPrimTag(TINY_SYM_TAG_FLOAT));
+                    bool fLhs = !iLhs && exp->binary.lhs->tag->type == TINY_SYM_TAG_FLOAT;
+                    bool fRhs = !iRhs && exp->binary.rhs->tag->type == TINY_SYM_TAG_FLOAT;
 
                     if ((!iLhs && !fLhs) || (!iRhs && !fRhs)) {
                         ReportErrorE(state, exp,
@@ -2710,9 +2733,9 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     ResolveTypes(state, exp->binary.rhs);
 
                     if (!IsTagAssignableTo(exp->binary.rhs->tag, exp->binary.lhs->tag)) {
-                        ReportErrorE(state, exp, "Attempted to assign a %s to a %s. Can't do that.",
-                                     GetTagName(exp->binary.rhs->tag),
-                                     GetTagName(exp->binary.lhs->tag));
+                        ReportErrorE(
+                            state, exp, "Attempted to assign a '%s' to a '%s'. Can't do that.",
+                            GetTagName(exp->binary.rhs->tag), GetTagName(exp->binary.lhs->tag));
                     }
 
                     exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
@@ -2730,8 +2753,8 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
             switch (exp->unary.op) {
                 case TINY_TOK_MINUS: {
-                    bool i = CompareTags(exp->unary.exp->tag, GetPrimTag(TINY_SYM_TAG_INT));
-                    bool f = !i && CompareTags(exp->unary.exp->tag, GetPrimTag(TINY_SYM_TAG_FLOAT));
+                    bool i = exp->unary.exp->tag->type == TINY_SYM_TAG_INT;
+                    bool f = !i && exp->unary.exp->tag->type == TINY_SYM_TAG_FLOAT;
 
                     if (!(i || f)) {
                         ReportErrorE(state, exp, "Attempted to apply unary '-' to a %s.",
@@ -2742,7 +2765,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                 } break;
 
                 case TINY_TOK_BANG: {
-                    if (!CompareTags(exp->unary.exp->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
+                    if (exp->unary.exp->tag->type != TINY_SYM_TAG_BOOL) {
                         ReportErrorE(state, exp, "Attempted to apply unary 'not' to a %s.",
                                      GetTagName(exp->unary.exp->tag));
                     }
@@ -2778,7 +2801,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
         case TINY_EXP_IF: {
             ResolveTypes(state, exp->ifx.cond);
 
-            if (!CompareTags(exp->ifx.cond->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
+            if (exp->ifx.cond->tag->type != TINY_SYM_TAG_BOOL) {
                 ReportErrorE(state, exp, "If condition is supposed to be a bool but its a %s",
                              GetTagName(exp->ifx.cond->tag));
             }
@@ -2818,7 +2841,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
         case TINY_EXP_WHILE: {
             ResolveTypes(state, exp->whilex.cond);
 
-            if (!CompareTags(exp->whilex.cond->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
+            if (exp->whilex.cond->tag->type != TINY_SYM_TAG_BOOL) {
                 ReportErrorE(state, exp, "While condition is supposed to be a bool but its a %s",
                              GetTagName(exp->whilex.cond->tag));
             }
@@ -2832,7 +2855,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             ResolveTypes(state, exp->forx.init);
             ResolveTypes(state, exp->forx.cond);
 
-            if (!CompareTags(exp->forx.cond->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
+            if (exp->forx.cond->tag->type != TINY_SYM_TAG_BOOL) {
                 ReportErrorE(state, exp, "For condition is supposed to be a bool but its a %s",
                              GetTagName(exp->forx.cond->tag));
             }
@@ -2854,7 +2877,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
             if (!exp->tag) {
                 ReportErrorE(state, exp, "Struct %s doesn't have a field named %s",
-                             exp->dot.lhs->tag->name, exp->dot.field->value);
+                             GetTagName(exp->dot.lhs->tag), exp->dot.field->value);
             }
         } break;
 
@@ -2961,7 +2984,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
             ResolveTypes(state, exp->ifx.cond);
 
-            if (!CompareTags(exp->ifx.cond->tag, GetPrimTag(TINY_SYM_TAG_BOOL))) {
+            if (exp->ifx.cond->tag->type != TINY_SYM_TAG_BOOL) {
                 ReportErrorE(state, exp,
                              "Ternary if condition is supposed to be a bool but its a %s",
                              GetTagName(exp->ifx.cond->tag));
@@ -2970,7 +2993,8 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             ResolveTypes(state, exp->ifx.body);
             ResolveTypes(state, exp->ifx.alt);
 
-            if (!CompareTags(exp->ifx.body->tag, exp->ifx.alt->tag)) {
+            // TODO(Apaar): We assume symbols are interned here
+            if (exp->ifx.body->tag != exp->ifx.alt->tag) {
                 ReportErrorE(
                     state, exp,
                     "Ternary if 'true' value type '%s' is different from the false value type '%s'",
@@ -3850,7 +3874,7 @@ static void CompileState(Tiny_State *state, Tiny_Expr *progHead) {
     GenerateCode(state, TINY_OP_HALT);
 }
 
-void Tiny_CompileString(Tiny_State *state, const char *name, const char *string) {
+Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const char *string) {
     // In order to make this function re-entrant, we save the lexer/parser arena on the stack
     Tiny_Lexer prevLexer = state->l;
     Tiny_Arena prevParserArena = state->parserArena;
@@ -3859,6 +3883,34 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
     Tiny_InitArena(&state->parserArena, state->ctx);
 
     int firstSymIndex = sb_count(state->globalSymbols);
+    int startCodeLen = sb_count(state->program);
+
+    int jmpCode = setjmp(state->compileErrorJmpBuf);
+
+    if (jmpCode) {
+        // Free all stuff allocated since the start of compilation
+        for (int i = firstSymIndex; i < sb_count(state->globalSymbols); ++i) {
+            Symbol_destroy(state->globalSymbols[i], &state->ctx);
+        }
+
+        if (state->globalSymbols) {
+            stb__sbn(state->globalSymbols) = firstSymIndex;
+        }
+
+        // TOOD(Apaar): Can we just goto below?
+        Tiny_DestroyLexer(&state->l);
+        Tiny_DestroyArena(&state->parserArena);
+
+        if (state->program) {
+            // TODO(Apaar): Should we realloc and shrink?
+            stb__sbn(state->program) = startCodeLen;
+        }
+
+        state->l = prevLexer;
+        state->parserArena = prevParserArena;
+
+        return state->compileErrorResult;
+    }
 
     Tiny_Expr *progHead = ParseProgram(state);
 
@@ -3931,14 +3983,21 @@ void Tiny_CompileString(Tiny_State *state, const char *name, const char *string)
 
     state->l = prevLexer;
     state->parserArena = prevParserArena;
+
+    return (Tiny_CompileResult){.type = TINY_COMPILE_SUCCESS};
 }
 
-void Tiny_CompileFile(Tiny_State *state, const char *filename) {
+Tiny_CompileResult Tiny_CompileFile(Tiny_State *state, const char *filename) {
     FILE *file = fopen(filename, "rb");
 
     if (!file) {
-        fprintf(stderr, "Error: Unable to open file '%s' for reading\n", filename);
-        exit(1);
+        Tiny_CompileResult result = {
+            .type = TINY_COMPILE_ERROR,
+        };
+
+        snprintf(result.error.msg, sizeof(result.error.msg),
+                 "Error: Unable to open file '%s' for reading\n", filename);
+        return result;
     }
 
     fseek(file, 0, SEEK_END);

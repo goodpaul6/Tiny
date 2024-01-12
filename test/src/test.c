@@ -714,6 +714,8 @@ static void test_HexLiteral() {
 
     lequal(x, 0xffffffff);
 
+    Tiny_DestroyThread(&thread);
+
     Tiny_DeleteState(state);
 }
 
@@ -742,6 +744,8 @@ static void test_Break() {
     int x = Tiny_ToInt(Tiny_GetGlobal(&thread, idx));
 
     lequal(x, 1);
+
+    Tiny_DestroyThread(&thread);
 
     Tiny_DeleteState(state);
 }
@@ -775,6 +779,66 @@ static void test_Continue() {
 
     lequal(x, 11);
 
+    Tiny_DestroyThread(&thread);
+
+    Tiny_DeleteState(state);
+}
+
+static void test_ParseNullable() {
+    Tiny_State *state = CreateState();
+
+    const char *code =
+        "x : int? = 10\n"
+        "func f(): int?\n"
+        "{ return 10 }\n";
+
+    Tiny_CompileString(state, "(parse opt test)", code);
+
+    lok(true);
+
+    Tiny_DeleteState(state);
+}
+
+static void test_BindNullable() {
+    Tiny_State *state = CreateState();
+
+    Tiny_RegisterType(state, "Point");
+
+    Tiny_BindFunction(state, "f(Point?, int?): int?", Lib_Print);
+
+    lok(true);
+
+    Tiny_DeleteState(state);
+}
+
+static void test_CannotUseNullable() {
+    Tiny_State *state = CreateState();
+
+    const char *code =
+        "x : int? = 10\n"
+        "func f(x: int) {}\n"
+        "f(x)\n";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(cannot use nullable test)", code);
+
+    lequal(result.type, TINY_COMPILE_ERROR);
+
+    Tiny_DeleteState(state);
+}
+
+static void test_ParseFailureIsOkay() {
+    Tiny_State *state = CreateState();
+
+    const char *code =
+        "x : int? = 10\n"
+        "func fx: int) {}\n"
+        "f(x)\n";
+
+    Tiny_CompileResult result =
+        Tiny_CompileString(state, "(parse errors do not crash program)", code);
+
+    lequal(result.type, TINY_COMPILE_ERROR);
+
     Tiny_DeleteState(state);
 }
 
@@ -795,6 +859,10 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Hex Literal", test_HexLiteral);
     lrun("Tiny Break Statement", test_Break);
     lrun("Tiny Continue Statement", test_Continue);
+    lrun("Tiny Parse Nullable Types", test_ParseNullable);
+    lrun("Tiny Bind Nullable Types in Fn", test_BindNullable);
+    lrun("Tiny Check Cannot Use Nullable", test_CannotUseNullable);
+    lrun("Tiny Parse Failure is Ok", test_ParseFailureIsOkay);
 
     lresults();
 

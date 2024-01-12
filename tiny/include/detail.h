@@ -1,8 +1,10 @@
 #pragma once
 
+#include <setjmp.h>
+
+#include "arena.h"
 #include "lexer.h"
 #include "tiny.h"
-#include "arena.h"
 
 #define MAX_NUMBERS 512
 #define MAX_STRINGS 1024
@@ -65,6 +67,8 @@ typedef struct Tiny_State {
     int currScope;
     Tiny_Symbol *currFunc;
 
+    // TODO(Apaar): Make an arena for symbol table
+
     Tiny_Symbol **globalSymbols;  // array
 
     // We keep information about what file and line number
@@ -77,4 +81,12 @@ typedef struct Tiny_State {
     // Ephemeral arena for the parser. Storing it on state so we
     // don't have to drill it into every parser function.
     Tiny_Arena parserArena;
+
+    // If there's an error while compiling a string or a file, we reset
+    // back to this jump buffer
+    jmp_buf compileErrorJmpBuf;
+
+    // In case there was a compile error, it gets put in
+    // here.
+    Tiny_CompileResult compileErrorResult;
 } Tiny_State;

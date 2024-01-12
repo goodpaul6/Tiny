@@ -25,6 +25,8 @@ typedef struct {
         int iValue;
         float fValue;
     };
+
+    const char *errorMsg;
 } Tiny_Lexer;
 
 void Tiny_InitLexer(Tiny_Lexer *l, const char *fileName, const char *src, Tiny_Context ctx);

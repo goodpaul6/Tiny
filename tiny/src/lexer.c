@@ -26,16 +26,6 @@ inline static int Peek2(Tiny_Lexer *l) {
     return l->src[l->pos + 1];
 }
 
-static void ReportError(Tiny_Lexer *l, const char *s, ...) {
-    va_list args;
-
-    va_start(args, s);
-    Tiny_ReportErrorV(l->fileName, l->src, l->pos, s, args);
-    va_end(args);
-
-    exit(1);
-}
-
 void Tiny_InitLexer(Tiny_Lexer *l, const char *fileName, const char *src, Tiny_Context ctx) {
     l->ctx = ctx;
 
@@ -259,7 +249,8 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
         l->last = GetChar(l);
 
         if (l->last != '\'') {
-            ReportError(l, "Expected ' to close previous '.");
+            l->errorMsg = "Expected ' to close previous '.";
+            return TINY_TOK_LEXER_ERROR;
         }
 
         l->last = GetChar(l);
@@ -286,8 +277,8 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
         return TINY_TOK_STRING;
     }
 
-    ReportError(l, "Unexpected character '%c'.", l->last);
-    return -1;
+    l->errorMsg = "Unexpected character.";
+    return TINY_TOK_LEXER_ERROR;
 }
 
 Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) { return l->lastTok = GetToken(l); }

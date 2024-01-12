@@ -69,4 +69,7 @@ typedef enum {
     TINY_TOK_QUESTION,
 
     TINY_TOK_EOF,
+
+    // HACK(Apaar): Not an actual token
+    TINY_TOK_LEXER_ERROR,
 } Tiny_TokenKind;

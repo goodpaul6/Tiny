@@ -7,14 +7,14 @@
 
 // Append to intrusive linked list
 #define TINY_LL_APPEND(head, tail, node) \
-    do { \
-        if(!(head) && !(tail)) { \
-            head = tail = (node); \
-        } else { \
-            (tail)->next = (node); \
-            tail = (tail)->next; \
-        } \
-    } while(0)
+    do {                                 \
+        if (!(head) && !(tail)) {        \
+            head = tail = (node);        \
+        } else {                         \
+            (tail)->next = (node);       \
+            tail = (tail)->next;         \
+        }                                \
+    } while (0)
 
 typedef struct Tiny_Context Tiny_Context;
 
@@ -24,5 +24,5 @@ void TFree(Tiny_Context *ctx, void *ptr);
 
 int Tiny_TranslatePosToLineNumber(const char *src, Tiny_TokenPos pos);
 
-void Tiny_ReportErrorV(const char *fileName, const char *src, Tiny_TokenPos pos, const char *s,
-                       va_list args);
+void Tiny_FormatErrorV(char *buf, size_t bufsize, const char *fileName, const char *src,
+                       Tiny_TokenPos pos, const char *s, va_list args);

@@ -14,6 +14,10 @@
 #define TINY_THREAD_MAX_CALL_DEPTH 64
 #endif
 
+#ifndef TINY_MAX_COMPILE_ERR_MSG_SZ
+#define TINY_MAX_COMPILE_ERR_MSG_SZ 1024
+#endif
+
 // This function should be able to handle all of `malloc`,
 // `realloc`, and `free`:
 //
@@ -35,6 +39,23 @@ typedef struct Tiny_Context {
 
     void *userdata;
 } Tiny_Context;
+
+typedef int Tiny_TokenPos;
+
+typedef enum Tiny_CompileResultType {
+    TINY_COMPILE_SUCCESS,
+    // TODO(Apaar): Break into TINY_COMPILE_SYNTAX_ERROR and TINY_COMPILE_TYPE_ERROR
+    TINY_COMPILE_ERROR,
+} Tiny_CompileResultType;
+
+typedef struct Tiny_CompileResult {
+    Tiny_CompileResultType type;
+
+    struct {
+        Tiny_TokenPos pos;
+        char msg[TINY_MAX_COMPILE_ERR_MSG_SZ];
+    } error;
+} Tiny_CompileResult;
 
 typedef struct Tiny_Object Tiny_Object;
 typedef struct Tiny_State Tiny_State;
@@ -253,8 +274,8 @@ void Tiny_BindConstInt(Tiny_State *state, const char *name, int i);
 void Tiny_BindConstFloat(Tiny_State *state, const char *name, float f);
 void Tiny_BindConstString(Tiny_State *state, const char *name, const char *value);
 
-void Tiny_CompileString(Tiny_State *state, const char *name, const char *string);
-void Tiny_CompileFile(Tiny_State *state, const char *filename);
+Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const char *string);
+Tiny_CompileResult Tiny_CompileFile(Tiny_State *state, const char *filename);
 
 void Tiny_DeleteState(Tiny_State *state);
 
@@ -418,8 +439,6 @@ typedef enum {
     TINY_SYM_TAG_STRUCT,
     TINY_SYM_TAG_NULLABLE,
 } Tiny_SymbolType;
-
-typedef int Tiny_TokenPos;
 
 // For all the fields marked with `// array` below, you can use
 // the Tiny_SymbolArrayCount() function to get the length of the arrays.

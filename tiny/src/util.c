@@ -2,7 +2,6 @@
 
 #include <assert.h>
 #include <math.h>
-#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -33,9 +32,32 @@ int Tiny_TranslatePosToLineNumber(const char *src, Tiny_TokenPos pos) {
     return lineNumber;
 }
 
-void Tiny_ReportErrorV(const char *fileName, const char *src, Tiny_TokenPos pos, const char *s,
-                       va_list args) {
-    fputc('\n', stderr);
+void Tiny_FormatErrorV(char *buf, size_t bufsize, const char *fileName, const char *src,
+
+                       Tiny_TokenPos pos, const char *s, va_list args) {
+    assert(buf);
+
+    size_t used = 0;
+
+#define APPEND(s, ...)                                              \
+    do {                                                            \
+        int64_t rembufsize = (int64_t)bufsize - used;               \
+        if (rembufsize < 0) {                                       \
+            rembufsize = 0;                                         \
+        }                                                           \
+        used += snprintf(buf + used, rembufsize, s, ##__VA_ARGS__); \
+    } while (0)
+
+#define APPEND_V(s, vargs)                                   \
+    do {                                                     \
+        int64_t rembufsize = (int64_t)bufsize - used;        \
+        if (rembufsize < 0) {                                \
+            rembufsize = 0;                                  \
+        }                                                    \
+        used += vsnprintf(buf + used, rembufsize, s, vargs); \
+    } while (0)
+
+    APPEND("\n");
 
     if (src) {
         int lineNumber = Tiny_TranslatePosToLineNumber(src, pos);
@@ -45,19 +67,19 @@ void Tiny_ReportErrorV(const char *fileName, const char *src, Tiny_TokenPos pos,
         while (*src) {
             if (abs(lineNumber - curLine) <= 3) {
                 if (curLine == lineNumber) {
-                    fprintf(stderr, "%d ->\t", curLine);
+                    APPEND("%d ->\t", curLine);
                 } else {
-                    fprintf(stderr, "%d\t", curLine);
+                    APPEND("%d\t", curLine);
                 }
 
                 while (*src && *src != '\n') {
-                    fputc(*src, stderr);
+                    APPEND("%c", *src);
                     src += 1;
                 }
 
                 if (*src == '\n') {
                     src += 1;
-                    fputc('\n', stderr);
+                    APPEND("\n");
                 }
 
                 curLine += 1;
@@ -69,14 +91,14 @@ void Tiny_ReportErrorV(const char *fileName, const char *src, Tiny_TokenPos pos,
             }
         }
 
-        fputc('\n', stderr);
+        APPEND("\n");
 
-        fprintf(stderr, "ERROR %s(%d): ", fileName, lineNumber);
-        vfprintf(stderr, s, args);
-        fputc('\n', stderr);
+        APPEND("ERROR %s(%d): ", fileName, lineNumber);
+        APPEND_V(s, args);
+        APPEND("\n");
     } else {
-        fprintf(stderr, "ERROR: ");
-        vfprintf(stderr, s, args);
-        fputc('\n', stderr);
+        APPEND("ERROR: ");
+        APPEND_V(s, args);
+        APPEND("\n");
     }
 }

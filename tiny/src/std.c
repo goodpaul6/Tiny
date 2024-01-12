@@ -296,7 +296,11 @@ static void DictProtectFromGC(void *p) {
     }
 }
 
-static void DictFree(Tiny_Context *ctx, void *d) { DestroyDict(d); }
+static void DictFree(Tiny_Context *ctx, void *d) {
+    DestroyDict(d);
+    // Free the pointer itself
+    Tiny_AllocUsingContext(*ctx, d, 0);
+}
 
 const Tiny_NativeProp DictProp = {
     "dict",
@@ -440,7 +444,7 @@ static Tiny_Value Lib_Ston(Tiny_StateThread *thread, const Tiny_Value *args, int
 
 static Tiny_Value Lib_Stoi(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     const char *str = Tiny_ToString(args[0]);
-    int base = Tiny_ToInt(args[1]);
+    int base = count > 1 ? Tiny_ToInt(args[1]) : 10;
 
     long value = strtol(str, NULL, base);
 
