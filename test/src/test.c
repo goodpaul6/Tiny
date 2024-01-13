@@ -469,6 +469,8 @@ static Tiny_Value CallFunc(Tiny_StateThread *thread, const Tiny_Value *args, int
 
     lok(ret.type == TINY_VAL_INT);
     lequal(ret.i, 120);
+
+    return ret;
 }
 
 static void test_TinyStateCallMidRun(void) {
