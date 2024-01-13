@@ -3003,6 +3003,12 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
             exp->tag = exp->ifx.body->tag;
         } break;
+
+        case TINY_EXP_BREAK:
+        case TINY_EXP_CONTINUE:
+        case TINY_EXP_USE:
+        case TINY_EXP_INDEX:
+        	break;
     }
 }
 
