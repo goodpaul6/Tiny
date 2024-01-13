@@ -1,3 +1,7 @@
+#include "compile_options.h"
+
+#ifdef TINY_COMPILER
+
 #include "pos.h"
 
 #include <assert.h>
@@ -36,3 +40,5 @@ Tiny_FriendlyPos Tiny_PosToFriendlyPos(Tiny_Pos pos, const char* src, uint32_t s
 
     return friendlyPos;
 }
+
+#endif

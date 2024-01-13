@@ -144,90 +144,6 @@ extern const Tiny_Value Tiny_Null;
 
 extern Tiny_Context Tiny_DefaultContext;
 
-void Tiny_ProtectFromGC(Tiny_Value value);
-
-Tiny_Value Tiny_NewBool(bool value);
-Tiny_Value Tiny_NewInt(int i);
-Tiny_Value Tiny_NewFloat(float f);
-Tiny_Value Tiny_NewConstString(const char *string);
-Tiny_Value Tiny_NewLightNative(void *ptr);
-
-// This assumes the given char* was allocated using Tiny_AllocUsingContext or equivalent.
-// It takes ownership of the char*, avoiding any intermediate copies.
-//
-// Note that this does not null terminate the provided string, so if you have C functions
-// which rely on null-terminated strings, ensure that you null terminate these yourself.
-Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *str, size_t len);
-
-// This is equivalent to Tiny_NewStringAssumeNullTerminated but it figures out the length assuming
-// the given pointer is null-terminated.
-Tiny_Value Tiny_NewStringNullTerminated(Tiny_StateThread *thread, char *str);
-
-// Same as Tiny_NewString but it allocates memory for and copies the given string.
-//
-// Note that this is internally optimized to ensure there is only one allocation for
-// both the Tiny object "metadata" and the string itself. If you haven't already
-// allocated memory for your string and are ready to hand it off, I highly recommend
-// using this instead of Tiny_NewString.
-Tiny_Value Tiny_NewStringCopy(Tiny_StateThread *thread, const char *src, size_t len);
-
-// Same as Tiny_NewStringCopy but assumes the given string is null terminated.
-Tiny_Value Tiny_NewStringCopyNullTerminated(Tiny_StateThread *thread, const char *src);
-
-Tiny_Value Tiny_NewNative(Tiny_StateThread *thread, void *ptr, const Tiny_NativeProp *prop);
-
-static inline bool Tiny_IsNull(const Tiny_Value value) { return value.type == TINY_VAL_NULL; }
-
-static inline bool Tiny_ToBool(const Tiny_Value value) {
-    if (value.type != TINY_VAL_BOOL) return false;
-    return value.boolean;
-}
-
-static inline int Tiny_ToInt(const Tiny_Value value) {
-    if (value.type != TINY_VAL_INT) return 0;
-    return value.i;
-}
-
-static inline float Tiny_ToFloat(const Tiny_Value value) {
-    if (value.type != TINY_VAL_FLOAT) return 0;
-    return value.f;
-}
-
-static inline float Tiny_ToNumber(const Tiny_Value value) {
-    if (value.type == TINY_VAL_FLOAT) return value.f;
-    if (value.type != TINY_VAL_INT) return 0;
-
-    return (float)value.i;
-}
-
-// Returns NULL if the value isn't a string/const string
-const char *Tiny_ToString(const Tiny_Value value);
-
-// Returns 0 if the value isn't a string/const string
-size_t Tiny_StringLen(const Tiny_Value value);
-
-// Returns value.addr if its a LIGHT_NATIVE
-// Returns the normal native address otherwise
-void *Tiny_ToAddr(const Tiny_Value value);
-
-// This returns NULL if the value is a LIGHT_NATIVE instead of a NATIVE
-// It would also return NULL if the NativeProp supplied when the object was
-// created was NULL, either way, you have no information, so deal with it.
-const Tiny_NativeProp *Tiny_GetProp(const Tiny_Value value);
-
-// Returns Tiny_Null if value isn't a struct.
-// Asserts if index is out of bounds
-Tiny_Value Tiny_GetField(const Tiny_Value value, int index);
-
-// Checks if two values are equal. Note that for structs/native/light natives this is just
-// comparing their pointers.
-bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b);
-
-Tiny_State *Tiny_CreateState(void);
-
-// Note how the Context is copied.
-Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx);
-
 // Exposes an opaque type of the given name.
 // The same typename can be registered multiple times, but it will only be
 // defined once.
@@ -279,16 +195,6 @@ Tiny_CompileResult Tiny_CompileFile(Tiny_State *state, const char *filename);
 
 void Tiny_DeleteState(Tiny_State *state);
 
-void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state);
-void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *state,
-                                Tiny_Context ctx);
-
-// Sets the PC of the thread to the entry point of the program
-// and allocates space for global variables if they're not already
-// allocated
-// Requires that state is compiled
-void Tiny_StartThread(Tiny_StateThread *thread);
-
 // Returns -1 if the global doesn't exist
 // Do note that this will return -1 for global constants as well (those are
 // inlined wherever they are used, so they don't really exist)
@@ -320,18 +226,6 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const 
                              int count);
 
 static inline bool Tiny_IsThreadDone(const Tiny_StateThread *thread) { return thread->pc < 0; }
-
-// Run a single cycle of the thread.
-// Could potentially trigger garbage collection
-// at the end of the cycle.
-// Returns whether the cycle was executed or not.
-bool Tiny_ExecuteCycle(Tiny_StateThread *thread);
-
-// Run the compiled code sequentially until no more cycles can be
-// executed. Note that this may be faster than calling ExecuteCycle
-// in a loop yourself since ExecuteCycle may be inlined into
-// Tiny_Run.
-void Tiny_Run(Tiny_StateThread *thread);
 
 // This will write the filename and line number of the currently executing
 // piece of Tiny code to `fileName` and `line` respectively. You can provide
@@ -516,4 +410,114 @@ const Tiny_Symbol *Tiny_FindFuncSymbol(Tiny_State *state, const char *name);
 
 // TODO(Apaar): Tiny_FindFuncSymbol, Tiny_FindConstSymbol, etc
 
+//////////////////////////// VM UTILS FUNCTIONS ////////////////////////////
+
+void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state);
+void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *state,
+                                Tiny_Context ctx);
+
+// Sets the PC of the thread to the entry point of the program
+// and allocates space for global variables if they're not already
+// allocated
+// Requires that state is compiled
+void Tiny_StartThread(Tiny_StateThread *thread);
+
+// Run a single cycle of the thread.
+// Could potentially trigger garbage collection
+// at the end of the cycle.
+// Returns whether the cycle was executed or not.
+bool Tiny_ExecuteCycle(Tiny_StateThread *thread);
+
+// Run the compiled code sequentially until no more cycles can be
+// executed. Note that this may be faster than calling ExecuteCycle
+// in a loop yourself since ExecuteCycle may be inlined into
+// Tiny_Run.
+void Tiny_Run(Tiny_StateThread *thread);
+
+static inline bool Tiny_IsNull(const Tiny_Value value) { return value.type == TINY_VAL_NULL; }
+
+static inline bool Tiny_ToBool(const Tiny_Value value) {
+    if (value.type != TINY_VAL_BOOL) return false;
+    return value.boolean;
+}
+
+static inline int Tiny_ToInt(const Tiny_Value value) {
+    if (value.type != TINY_VAL_INT) return 0;
+    return value.i;
+}
+
+static inline float Tiny_ToFloat(const Tiny_Value value) {
+    if (value.type != TINY_VAL_FLOAT) return 0;
+    return value.f;
+}
+
+static inline float Tiny_ToNumber(const Tiny_Value value) {
+    if (value.type == TINY_VAL_FLOAT) return value.f;
+    if (value.type != TINY_VAL_INT) return 0;
+
+    return (float)value.i;
+}
+
+// Returns NULL if the value isn't a string/const string
+const char *Tiny_ToString(const Tiny_Value value);
+
+// Returns 0 if the value isn't a string/const string
+size_t Tiny_StringLen(const Tiny_Value value);
+
+// Returns value.addr if its a LIGHT_NATIVE
+// Returns the normal native address otherwise
+void *Tiny_ToAddr(const Tiny_Value value);
+
+// This returns NULL if the value is a LIGHT_NATIVE instead of a NATIVE
+// It would also return NULL if the NativeProp supplied when the object was
+// created was NULL, either way, you have no information, so deal with it.
+const Tiny_NativeProp *Tiny_GetProp(const Tiny_Value value);
+
+// Returns Tiny_Null if value isn't a struct.
+// Asserts if index is out of bounds
+Tiny_Value Tiny_GetField(const Tiny_Value value, int index);
+
+// Checks if two values are equal. Note that for structs/native/light natives this is just
+// comparing their pointers.
+bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b);
+
+Tiny_State *Tiny_CreateState(void);
+
+// Note how the Context is copied.
+Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx);
+
 #endif
+
+/////////////////// VM ///////////////////
+
+void Tiny_ProtectFromGC(Tiny_Value value);
+
+Tiny_Value Tiny_NewBool(bool value);
+Tiny_Value Tiny_NewInt(int i);
+Tiny_Value Tiny_NewFloat(float f);
+Tiny_Value Tiny_NewConstString(const char *string);
+Tiny_Value Tiny_NewLightNative(void *ptr);
+
+// This assumes the given char* was allocated using Tiny_AllocUsingContext or equivalent.
+// It takes ownership of the char*, avoiding any intermediate copies.
+//
+// Note that this does not null terminate the provided string, so if you have C functions
+// which rely on null-terminated strings, ensure that you null terminate these yourself.
+Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *str, size_t len);
+
+// This is equivalent to Tiny_NewStringAssumeNullTerminated but it figures out the length assuming
+// the given pointer is null-terminated.
+Tiny_Value Tiny_NewStringNullTerminated(Tiny_StateThread *thread, char *str);
+
+// Same as Tiny_NewString but it allocates memory for and copies the given string.
+//
+// Note that this is internally optimized to ensure there is only one allocation for
+// both the Tiny object "metadata" and the string itself. If you haven't already
+// allocated memory for your string and are ready to hand it off, I highly recommend
+// using this instead of Tiny_NewString.
+Tiny_Value Tiny_NewStringCopy(Tiny_StateThread *thread, const char *src, size_t len);
+
+// Same as Tiny_NewStringCopy but assumes the given string is null terminated.
+Tiny_Value Tiny_NewStringCopyNullTerminated(Tiny_StateThread *thread, const char *src);
+
+Tiny_Value Tiny_NewNative(Tiny_StateThread *thread, void *ptr, const Tiny_NativeProp *prop);

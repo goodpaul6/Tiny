@@ -9,16 +9,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "compile_options.h"
 #include "detail.h"
 #include "expr.h"
 #include "lexer.h"
 #include "opcodes.h"
 #include "stretchy_buffer.h"
 #include "util.h"
-
-#ifndef UCHAR_MAX
-#define UCHAR_MAX 255
-#endif
 
 // TODO(Apaar): Make a cstr type (for ConstStrings)
 // all str's can be used where a cstr is expected, but
@@ -28,16 +25,16 @@
 
 const Tiny_Value Tiny_Null = {TINY_VAL_NULL};
 
-static void *DefaultAlloc(void *ptr, size_t size, void *userdata) {
-    if (size == 0) {
-        free(ptr);
-        return NULL;
-    }
+#ifdef TINY_COMPILER
 
-    return realloc(ptr, size);
-}
+#ifndef UCHAR_MAX
+#define UCHAR_MAX 255
+#endif
 
-Tiny_Context Tiny_DefaultContext = {DefaultAlloc, NULL};
+inline static int ReadIntegerAt(const Tiny_State *state, int *pc);
+inline static float ReadFloatAt(const Tiny_State *state, int *pc);
+static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj);
+static void AllocGlobals(Tiny_StateThread *thread);
 
 static void ReportErrorL(Tiny_State *state, Tiny_Lexer *l, const char *s, ...) {
     va_list args;
@@ -94,89 +91,6 @@ static Tiny_StringNode *CreateExprStringNode(Tiny_State *state, const char *str)
     return node;
 }
 
-static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj) {
-    if (obj->type == TINY_VAL_STRING) {
-        char *internalStr = (char *)obj + sizeof(Tiny_Object);
-
-        if (obj->string.ptr == internalStr) {
-            // FIXME(Apaar): Is it possible for there to be a string which just happens to be
-            // allocated after the object pointer?
-
-            // If the string pointer is directly after the object then it is part of the object
-            // allocation and does not need to be freed separately
-        } else {
-            TFree(ctx, obj->string.ptr);
-        }
-    } else if (obj->type == TINY_VAL_NATIVE) {
-        if (obj->nat.prop && obj->nat.prop->finalize) {
-            obj->nat.prop->finalize(ctx, obj->nat.addr);
-        }
-    }
-
-    TFree(ctx, obj);
-}
-
-static inline bool IsObject(Tiny_Value val) {
-    return val.type == TINY_VAL_STRING || val.type == TINY_VAL_NATIVE ||
-           val.type == TINY_VAL_STRUCT;
-}
-
-void Tiny_ProtectFromGC(Tiny_Value value) {
-    if (!IsObject(value)) return;
-
-    Tiny_Object *obj = value.obj;
-
-    assert(obj);
-
-    if (obj->marked) return;
-
-    if (obj->type == TINY_VAL_NATIVE) {
-        if (obj->nat.prop && obj->nat.prop->protectFromGC)
-            obj->nat.prop->protectFromGC(obj->nat.addr);
-    } else if (obj->type == TINY_VAL_STRUCT) {
-        for (int i = 0; i < obj->ostruct.n; ++i) Tiny_ProtectFromGC(obj->ostruct.fields[i]);
-    }
-
-    obj->marked = 1;
-}
-
-static void MarkAll(Tiny_StateThread *thread);
-
-static void Sweep(Tiny_StateThread *thread) {
-    Tiny_Object **object = &thread->gcHead;
-    while (*object) {
-        if (!(*object)->marked) {
-            Tiny_Object *unreached = *object;
-            --thread->numObjects;
-            *object = unreached->next;
-            DeleteObject(&thread->ctx, unreached);
-        } else {
-            (*object)->marked = 0;
-            object = &(*object)->next;
-        }
-    }
-}
-
-static void GarbageCollect(Tiny_StateThread *thread) {
-    MarkAll(thread);
-    Sweep(thread);
-    thread->maxNumObjects = thread->numObjects * 2;
-}
-
-const char *Tiny_ToString(const Tiny_Value value) {
-    if (value.type == TINY_VAL_CONST_STRING) return value.cstr;
-    if (value.type != TINY_VAL_STRING) return NULL;
-
-    return value.obj->string.ptr;
-}
-
-size_t Tiny_StringLen(const Tiny_Value value) {
-    if (value.type == TINY_VAL_CONST_STRING) return strlen(value.cstr);
-    if (value.type != TINY_VAL_STRING) return 0;
-
-    return value.obj->string.len;
-}
-
 void *Tiny_ToAddr(const Tiny_Value value) {
     if (value.type == TINY_VAL_LIGHT_NATIVE) return value.addr;
     if (value.type != TINY_VAL_NATIVE) return NULL;
@@ -194,71 +108,6 @@ Tiny_Value Tiny_GetField(const Tiny_Value value, int index) {
     assert(index >= 0 && index < value.obj->ostruct.n);
 
     return value.obj->ostruct.fields[index];
-}
-
-bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b) {
-    bool bothStrings = ((a.type == TINY_VAL_CONST_STRING && b.type == TINY_VAL_STRING) ||
-                        (a.type == TINY_VAL_STRING && b.type == TINY_VAL_CONST_STRING));
-
-    if (a.type != b.type && !bothStrings) {
-        return false;
-    }
-
-    if (a.type == TINY_VAL_NULL) {
-        return true;
-    }
-
-    if (a.type == TINY_VAL_BOOL) {
-        return a.boolean == b.boolean;
-    }
-
-    if (a.type == TINY_VAL_INT) {
-        return a.i == b.i;
-    }
-
-    if (a.type == TINY_VAL_FLOAT) {
-        return a.f == b.f;
-    }
-
-    if (a.type == TINY_VAL_STRING) {
-        size_t aLen = Tiny_StringLen(a);
-        size_t bLen = Tiny_StringLen(b);
-
-        if (aLen != bLen) {
-            return false;
-        }
-
-        return strncmp(a.obj->string.ptr, Tiny_ToString(b), aLen) == 0;
-    }
-
-    if (a.type == TINY_VAL_CONST_STRING) {
-        if (b.type == TINY_VAL_CONST_STRING && a.cstr == b.cstr) {
-            return true;
-        }
-
-        size_t aLen = Tiny_StringLen(a);
-        size_t bLen = Tiny_StringLen(b);
-
-        if (aLen != bLen) {
-            return false;
-        }
-
-        return strncmp(a.cstr, Tiny_ToString(b), aLen) == 0;
-    }
-
-    if (a.type == TINY_VAL_NATIVE) {
-        return a.obj->nat.addr == b.obj->nat.addr;
-    }
-
-    if (a.type == TINY_VAL_LIGHT_NATIVE) {
-        return a.addr == b.addr;
-    }
-
-    if (a.type == TINY_VAL_STRUCT) {
-        return a.obj == b.obj;
-    }
-
-    return false;
 }
 
 static Tiny_Object *NewObject(Tiny_StateThread *thread, Tiny_ValueType type) {
@@ -299,22 +148,6 @@ static Tiny_Object *NewStringObjectEmbedString(Tiny_StateThread *thread, const c
     return obj;
 }
 
-static Tiny_Object *NewStructObject(Tiny_StateThread *thread, Word n) {
-    assert(n >= 0);
-    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + sizeof(Tiny_Value) * n);
-
-    obj->type = TINY_VAL_STRUCT;
-    obj->next = thread->gcHead;
-    thread->gcHead = obj;
-    obj->marked = 0;
-
-    obj->ostruct.n = n;
-
-    thread->numObjects++;
-
-    return obj;
-}
-
 Tiny_Value Tiny_NewLightNative(void *ptr) {
     Tiny_Value val;
 
@@ -339,44 +172,6 @@ Tiny_Value Tiny_NewNative(Tiny_StateThread *thread, void *ptr, const Tiny_Native
 
     val.type = TINY_VAL_NATIVE;
     val.obj = obj;
-
-    return val;
-}
-
-Tiny_Value Tiny_NewBool(bool value) {
-    Tiny_Value val;
-
-    val.type = TINY_VAL_BOOL;
-    val.boolean = value;
-
-    return val;
-}
-
-Tiny_Value Tiny_NewInt(int i) {
-    Tiny_Value val;
-
-    val.type = TINY_VAL_INT;
-    val.i = i;
-
-    return val;
-}
-
-Tiny_Value Tiny_NewFloat(float f) {
-    Tiny_Value val;
-
-    val.type = TINY_VAL_FLOAT;
-    val.f = f;
-
-    return val;
-}
-
-Tiny_Value Tiny_NewConstString(const char *str) {
-    assert(str);
-
-    Tiny_Value val;
-
-    val.type = TINY_VAL_CONST_STRING;
-    val.cstr = str;
 
     return val;
 }
@@ -490,50 +285,6 @@ void Tiny_DeleteState(Tiny_State *state) {
     TFree(&state->ctx, state);
 }
 
-void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *state,
-                                Tiny_Context ctx) {
-    thread->ctx = ctx;
-
-    thread->state = state;
-
-    thread->gcHead = NULL;
-    thread->numObjects = 0;
-    // TODO: Use INIT_GC_THRESH definition
-    thread->maxNumObjects = 8;
-
-    thread->globalVars = NULL;
-
-    thread->pc = -1;
-    thread->fp = thread->sp = 0;
-
-    thread->retVal = Tiny_Null;
-
-    thread->fc = 0;
-
-    thread->userdata = NULL;
-}
-
-void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state) {
-    Tiny_InitThreadWithContext(thread, state, Tiny_DefaultContext);
-}
-
-static void AllocGlobals(Tiny_StateThread *thread) {
-    // If the global variables haven't been allocated yet,
-    // do that
-    if (!thread->globalVars) {
-        thread->globalVars =
-            TMalloc(&thread->ctx, sizeof(Tiny_Value) * thread->state->numGlobalVars);
-        memset(thread->globalVars, 0, sizeof(Tiny_Value) * thread->state->numGlobalVars);
-    }
-}
-
-void Tiny_StartThread(Tiny_StateThread *thread) {
-    AllocGlobals(thread);
-
-    // TODO: Eventually move to an actual entry point
-    thread->pc = 0;
-}
-
 inline static bool ExecuteCycle(Tiny_StateThread *thread);
 
 int Tiny_GetGlobalIndex(const Tiny_State *state, const char *name) {
@@ -615,13 +366,6 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const 
     return newRetVal;
 }
 
-bool Tiny_ExecuteCycle(Tiny_StateThread *thread) { return ExecuteCycle(thread); }
-
-void Tiny_Run(Tiny_StateThread *thread) {
-    while (ExecuteCycle(thread))
-        ;
-}
-
 void Tiny_DestroyThread(Tiny_StateThread *thread) {
     thread->pc = -1;
 
@@ -634,17 +378,6 @@ void Tiny_DestroyThread(Tiny_StateThread *thread) {
 
     // Free all global variables
     TFree(&thread->ctx, thread->globalVars);
-}
-
-static void MarkAll(Tiny_StateThread *thread) {
-    assert(thread->state);
-
-    Tiny_ProtectFromGC(thread->retVal);
-
-    for (int i = 0; i < thread->sp; ++i) Tiny_ProtectFromGC(thread->stack[i]);
-
-    for (int i = 0; i < thread->state->numGlobalVars; ++i)
-        Tiny_ProtectFromGC(thread->globalVars[i]);
 }
 
 static void GenerateCode(Tiny_State *state, Word inst) {
@@ -1083,401 +816,6 @@ void Tiny_BindConstFloat(Tiny_State *state, const char *name, float f) {
 void Tiny_BindConstString(Tiny_State *state, const char *name, const char *string) {
     DeclareConst(state, name, GetPrimTag(TINY_SYM_TAG_STR))->constant.sIndex =
         RegisterString(state, string);
-}
-
-inline static int ReadIntegerAt(const Tiny_State *state, int *pc) {
-    // Move PC up to the next 4 aligned thing
-    *pc = (*pc + 3) & ~3;
-
-    int val = *(int *)(&state->program[*pc]);
-    *pc += sizeof(int) / sizeof(Word);
-
-    return val;
-}
-
-static int ReadInteger(Tiny_StateThread *thread) {
-    return ReadIntegerAt(thread->state, &thread->pc);
-}
-
-inline static float ReadFloatAt(const Tiny_State *state, int *pc) {
-    // Move PC up to the next 4 aligned thing
-    *pc = (*pc + 3) & ~3;
-
-    float val = *(float *)(&state->program[*pc]);
-    *pc += sizeof(float) / sizeof(Word);
-
-    return val;
-}
-
-static float ReadFloat(Tiny_StateThread *thread) { return ReadFloatAt(thread->state, &thread->pc); }
-
-static void DoPush(Tiny_StateThread *thread, Tiny_Value value) {
-    thread->stack[thread->sp++] = value;
-}
-
-static inline Tiny_Value DoPop(Tiny_StateThread *thread) { return thread->stack[--thread->sp]; }
-
-static void DoPushIndir(Tiny_StateThread *thread, uint8_t nargs) {
-    assert(thread->fc < TINY_THREAD_MAX_CALL_DEPTH);
-
-    thread->frames[thread->fc++] = (Tiny_Frame){thread->pc, thread->fp, nargs};
-    thread->fp = thread->sp;
-}
-
-static void DoPopIndir(Tiny_StateThread *thread) {
-    assert(thread->fc > 0);
-
-    thread->sp = thread->fp;
-
-    Tiny_Frame frame = thread->frames[--thread->fc];
-
-    thread->sp -= frame.nargs;
-    thread->fp = frame.fp;
-    thread->pc = frame.pc;
-}
-
-inline static bool ExpectBool(const Tiny_Value value) {
-    assert(value.type == TINY_VAL_BOOL);
-    return value.boolean;
-}
-
-inline static bool ExecuteCycle(Tiny_StateThread *thread) {
-    assert(thread && thread->state);
-
-    if (thread->pc < 0) return false;
-
-    const Tiny_State *state = thread->state;
-
-    switch (state->program[thread->pc]) {
-        case TINY_OP_PUSH_NULL: {
-            ++thread->pc;
-            DoPush(thread, Tiny_Null);
-        } break;
-
-        case TINY_OP_PUSH_NULL_N: {
-            ++thread->pc;
-
-            Word n = thread->state->program[thread->pc++];
-
-            memset(&thread->stack[thread->sp], 0, sizeof(Tiny_Value) * n);
-            thread->sp += n;
-        } break;
-
-        case TINY_OP_PUSH_TRUE: {
-            ++thread->pc;
-            DoPush(thread, Tiny_NewBool(true));
-        } break;
-
-        case TINY_OP_PUSH_FALSE: {
-            ++thread->pc;
-            DoPush(thread, Tiny_NewBool(false));
-        } break;
-
-        case TINY_OP_PUSH_INT: {
-            ++thread->pc;
-
-            thread->stack[thread->sp].type = TINY_VAL_INT;
-            thread->stack[thread->sp].i = ReadInteger(thread);
-            thread->sp += 1;
-        } break;
-
-        case TINY_OP_PUSH_0: {
-            ++thread->pc;
-
-            thread->stack[thread->sp].type = TINY_VAL_INT;
-            thread->stack[thread->sp].i = 0;
-            thread->sp += 1;
-        } break;
-
-        case TINY_OP_PUSH_1: {
-            ++thread->pc;
-
-            thread->stack[thread->sp].type = TINY_VAL_INT;
-            thread->stack[thread->sp].i = 1;
-            thread->sp += 1;
-        } break;
-
-        case TINY_OP_PUSH_CHAR: {
-            ++thread->pc;
-
-            thread->stack[thread->sp].type = TINY_VAL_INT;
-            thread->stack[thread->sp].i = thread->state->program[thread->pc];
-            thread->sp += 1;
-            thread->pc += 1;
-        } break;
-
-        case TINY_OP_PUSH_FLOAT: {
-            ++thread->pc;
-
-            DoPush(thread, Tiny_NewFloat(ReadFloat(thread)));
-        } break;
-
-        case TINY_OP_PUSH_STRING: {
-            ++thread->pc;
-
-            int stringIndex = ReadInteger(thread);
-
-            DoPush(thread, Tiny_NewConstString(thread->state->strings[stringIndex]));
-        } break;
-
-        case TINY_OP_PUSH_STRING_FF: {
-            ++thread->pc;
-
-            Word sIndex = thread->state->program[thread->pc++];
-            DoPush(thread, Tiny_NewConstString(thread->state->strings[sIndex]));
-        } break;
-
-        case TINY_OP_PUSH_STRUCT: {
-            ++thread->pc;
-
-            Word nFields = thread->state->program[thread->pc++];
-            assert(nFields > 0);
-
-            Tiny_Object *obj = NewStructObject(thread, nFields);
-
-            memcpy(obj->ostruct.fields, &thread->stack[thread->sp - nFields],
-                   sizeof(Tiny_Value) * nFields);
-            thread->sp -= nFields;
-
-            thread->stack[thread->sp].type = TINY_VAL_STRUCT;
-            thread->stack[thread->sp].obj = obj;
-
-            thread->sp += 1;
-        } break;
-
-        case TINY_OP_STRUCT_GET: {
-            ++thread->pc;
-
-            Word i = thread->state->program[thread->pc++];
-
-            assert(i >= 0 && i < thread->stack[thread->sp - 1].obj->ostruct.n);
-
-            Tiny_Value val = thread->stack[thread->sp - 1].obj->ostruct.fields[i];
-            thread->stack[thread->sp - 1] = val;
-        } break;
-
-        case TINY_OP_STRUCT_SET: {
-            ++thread->pc;
-
-            Word i = thread->state->program[thread->pc++];
-
-            Tiny_Value vstruct = DoPop(thread);
-            Tiny_Value val = DoPop(thread);
-
-            assert(i >= 0 && i < vstruct.obj->ostruct.n);
-
-            vstruct.obj->ostruct.fields[i] = val;
-        } break;
-
-#define BIN_OP(OP, operator)                                                \
-    case TINY_OP_##OP: {                                                    \
-        Tiny_Value *a = &thread->stack[thread->sp - 2];                     \
-        Tiny_Value b = thread->stack[--thread->sp];                         \
-        if (a->type == TINY_VAL_INT && b.type == TINY_VAL_INT) {            \
-            a->i = a->i operator b.i;                                       \
-        } else if (a->type == TINY_VAL_FLOAT && b.type == TINY_VAL_FLOAT) { \
-            a->f = a->f operator b.f;                                       \
-        } else if (a->type == TINY_VAL_INT) {                               \
-            a->type = TINY_VAL_FLOAT;                                       \
-            a->f = (float)a->i operator b.f;                                \
-        } else {                                                            \
-            a->f = a->f operator(float) b.i;                                \
-        }                                                                   \
-        ++thread->pc;                                                       \
-    } break;
-
-#define BIN_OP_INT(OP, operator)                                       \
-    case TINY_OP_##OP: {                                               \
-        Tiny_Value val2 = DoPop(thread);                               \
-        Tiny_Value val1 = DoPop(thread);                               \
-        DoPush(thread, Tiny_NewInt((int)val1.i operator(int) val2.i)); \
-        ++thread->pc;                                                  \
-    } break;
-
-        case TINY_OP_LTE: {
-            Tiny_Value *a = &thread->stack[thread->sp - 2];
-            const Tiny_Value *b = &thread->stack[--thread->sp];
-            if (a->type == TINY_VAL_FLOAT && b->type == TINY_VAL_FLOAT) {
-                a->type = TINY_VAL_BOOL;
-                a->boolean = a->f <= b->f;
-            } else if (a->type == TINY_VAL_INT && b->type == TINY_VAL_INT) {
-                a->type = TINY_VAL_BOOL;
-                a->boolean = a->i <= b->i;
-            } else if (a->type == TINY_VAL_INT) {
-                a->type = TINY_VAL_BOOL;
-                a->boolean = (float)a->i <= b->f;
-            } else {
-                a->type = TINY_VAL_BOOL;
-                a->boolean = a->f <= (float)b->i;
-            }
-            ++thread->pc;
-        } break;
-
-#define REL_OP(OP, operator)                                            \
-    case TINY_OP_##OP: {                                                \
-        Tiny_Value *a = &thread->stack[thread->sp - 2];                 \
-        Tiny_Value b = thread->stack[--thread->sp];                     \
-        if (a->type == TINY_VAL_FLOAT && b.type == TINY_VAL_FLOAT) {    \
-            a->type = TINY_VAL_BOOL;                                    \
-            a->boolean = a->f operator b.f;                             \
-        } else if (a->type == TINY_VAL_INT && b.type == TINY_VAL_INT) { \
-            a->type = TINY_VAL_BOOL;                                    \
-            a->boolean = a->i operator b.i;                             \
-        } else if (a->type == TINY_VAL_INT) {                           \
-            a->type = TINY_VAL_BOOL;                                    \
-            a->boolean = (float)a->i operator b.f;                      \
-        } else {                                                        \
-            a->type = TINY_VAL_BOOL;                                    \
-            a->boolean = a->f operator(float) b.i;                      \
-        }                                                               \
-        ++thread->pc;                                                   \
-    } break;
-
-            BIN_OP(ADD, +)
-            BIN_OP(SUB, -)
-            BIN_OP(MUL, *)
-            BIN_OP(DIV, /)
-            BIN_OP_INT(MOD, %)
-            BIN_OP_INT(OR, |)
-            BIN_OP_INT(AND, &)
-
-            REL_OP(LT, <)
-            REL_OP(GT, >)
-            REL_OP(GTE, >=)
-
-#undef BIN_OP
-#undef BIN_OP_INT
-#undef REL_OP
-
-        case TINY_OP_ADD1: {
-            ++thread->pc;
-            thread->stack[thread->sp - 1].i += 1;
-        } break;
-
-        case TINY_OP_SUB1: {
-            ++thread->pc;
-            thread->stack[thread->sp - 1].i -= 1;
-        } break;
-
-        case TINY_OP_EQU: {
-            ++thread->pc;
-            Tiny_Value b = DoPop(thread);
-            Tiny_Value a = DoPop(thread);
-
-            DoPush(thread, Tiny_NewBool(Tiny_AreValuesEqual(a, b)));
-        } break;
-
-        case TINY_OP_LOG_NOT: {
-            ++thread->pc;
-            Tiny_Value a = DoPop(thread);
-
-            DoPush(thread, Tiny_NewBool(!ExpectBool(a)));
-        } break;
-
-        case TINY_OP_SET: {
-            ++thread->pc;
-            int varIdx = ReadInteger(thread);
-            thread->globalVars[varIdx] = DoPop(thread);
-        } break;
-
-        case TINY_OP_GET: {
-            ++thread->pc;
-            int varIdx = ReadInteger(thread);
-            DoPush(thread, thread->globalVars[varIdx]);
-        } break;
-
-        case TINY_OP_GOTO: {
-            ++thread->pc;
-            int newPc = ReadInteger(thread);
-            thread->pc = newPc;
-        } break;
-
-        case TINY_OP_GOTOZ: {
-            ++thread->pc;
-            int newPc = ReadInteger(thread);
-
-            Tiny_Value val = DoPop(thread);
-
-            if (!ExpectBool(val)) thread->pc = newPc;
-        } break;
-
-        case TINY_OP_CALL: {
-            ++thread->pc;
-            Word nargs = thread->state->program[thread->pc++];
-            int pcIdx = ReadInteger(thread);
-
-            DoPushIndir(thread, nargs);
-            thread->pc = state->functionPcs[pcIdx];
-        } break;
-
-        case TINY_OP_RETURN: {
-            thread->retVal = Tiny_Null;
-
-            DoPopIndir(thread);
-        } break;
-
-        case TINY_OP_RETURN_VALUE: {
-            thread->retVal = DoPop(thread);
-            DoPopIndir(thread);
-        } break;
-
-        case TINY_OP_CALLF: {
-            ++thread->pc;
-
-            Word nargs = thread->state->program[thread->pc++];
-            int fIdx = ReadInteger(thread);
-
-            // the state of the stack prior to the function arguments being pushed
-            int prevSize = thread->sp - nargs;
-
-            thread->retVal = state->foreignFunctions[fIdx](thread, &thread->stack[prevSize], nargs);
-
-            // Resize the stack so that it has the arguments removed
-            thread->sp = prevSize;
-        } break;
-
-        case TINY_OP_GETLOCAL: {
-            ++thread->pc;
-            int localIdx = ReadInteger(thread);
-            DoPush(thread, thread->stack[thread->fp + localIdx]);
-        } break;
-
-        case TINY_OP_GETLOCAL_W: {
-            ++thread->pc;
-            Word localIdx = thread->state->program[thread->pc++];
-            DoPush(thread, thread->stack[thread->fp + localIdx]);
-        } break;
-
-        case TINY_OP_SETLOCAL: {
-            ++thread->pc;
-            int localIdx = ReadInteger(thread);
-            Tiny_Value val = DoPop(thread);
-            thread->stack[thread->fp + localIdx] = val;
-        } break;
-
-        case TINY_OP_GET_RETVAL: {
-            ++thread->pc;
-            DoPush(thread, thread->retVal);
-        } break;
-
-        case TINY_OP_HALT: {
-            thread->pc = -1;
-        } break;
-
-        case TINY_OP_MISALIGNED_INSTRUCTION: {
-            // TODO(Apaar): Proper runtime error
-            assert(false);
-        } break;
-
-        default: {
-            assert(false);
-        } break;
-    }
-
-    // Only collect garbage in between iterations
-    if (thread->numObjects >= thread->maxNumObjects) GarbageCollect(thread);
-
-    return true;
 }
 
 static Tiny_Expr *Expr_create(Tiny_ExprType type, Tiny_State *state) {
@@ -4287,4 +3625,684 @@ const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name) {
 
 const Tiny_Symbol *Tiny_FindFuncSymbol(Tiny_State *state, const char *name) {
     return ReferenceFunction(state, name);
+}
+
+#endif
+
+//////////////////////////// VM UTILS FUNCTIONS ////////////////////////////
+
+#ifdef TINY_VM_UTILS
+
+static void AllocGlobals(Tiny_StateThread *thread) {
+    // If the global variables haven't been allocated yet,
+    // do that
+    if (!thread->globalVars) {
+        thread->globalVars =
+            TMalloc(&thread->ctx, sizeof(Tiny_Value) * thread->state->numGlobalVars);
+        memset(thread->globalVars, 0, sizeof(Tiny_Value) * thread->state->numGlobalVars);
+    }
+}
+
+static void *DefaultAlloc(void *ptr, size_t size, void *userdata) {
+    if (size == 0) {
+        free(ptr);
+        return NULL;
+    }
+
+    return realloc(ptr, size);
+}
+
+size_t Tiny_StringLen(const Tiny_Value value) {
+    if (value.type == TINY_VAL_CONST_STRING) return strlen(value.cstr);
+    if (value.type != TINY_VAL_STRING) return 0;
+
+    return value.obj->string.len;
+}
+
+const char *Tiny_ToString(const Tiny_Value value) {
+    if (value.type == TINY_VAL_CONST_STRING) return value.cstr;
+    if (value.type != TINY_VAL_STRING) return NULL;
+
+    return value.obj->string.ptr;
+}
+
+bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b) {
+    bool bothStrings = ((a.type == TINY_VAL_CONST_STRING && b.type == TINY_VAL_STRING) ||
+                        (a.type == TINY_VAL_STRING && b.type == TINY_VAL_CONST_STRING));
+
+    if (a.type != b.type && !bothStrings) {
+        return false;
+    }
+
+    if (a.type == TINY_VAL_NULL) {
+        return true;
+    }
+
+    if (a.type == TINY_VAL_BOOL) {
+        return a.boolean == b.boolean;
+    }
+
+    if (a.type == TINY_VAL_INT) {
+        return a.i == b.i;
+    }
+
+    if (a.type == TINY_VAL_FLOAT) {
+        return a.f == b.f;
+    }
+
+    if (a.type == TINY_VAL_STRING) {
+        size_t aLen = Tiny_StringLen(a);
+        size_t bLen = Tiny_StringLen(b);
+
+        if (aLen != bLen) {
+            return false;
+        }
+
+        return strncmp(a.obj->string.ptr, Tiny_ToString(b), aLen) == 0;
+    }
+
+    if (a.type == TINY_VAL_CONST_STRING) {
+        if (b.type == TINY_VAL_CONST_STRING && a.cstr == b.cstr) {
+            return true;
+        }
+
+        size_t aLen = Tiny_StringLen(a);
+        size_t bLen = Tiny_StringLen(b);
+
+        if (aLen != bLen) {
+            return false;
+        }
+
+        return strncmp(a.cstr, Tiny_ToString(b), aLen) == 0;
+    }
+
+    if (a.type == TINY_VAL_NATIVE) {
+        return a.obj->nat.addr == b.obj->nat.addr;
+    }
+
+    if (a.type == TINY_VAL_LIGHT_NATIVE) {
+        return a.addr == b.addr;
+    }
+
+    if (a.type == TINY_VAL_STRUCT) {
+        return a.obj == b.obj;
+    }
+
+    return false;
+}
+
+Tiny_Context Tiny_DefaultContext = {DefaultAlloc, NULL};
+
+void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *state,
+                                Tiny_Context ctx) {
+    thread->ctx = ctx;
+
+    thread->state = state;
+
+    thread->gcHead = NULL;
+    thread->numObjects = 0;
+    // TODO: Use INIT_GC_THRESH definition
+    thread->maxNumObjects = 8;
+
+    thread->globalVars = NULL;
+
+    thread->pc = -1;
+    thread->fp = thread->sp = 0;
+
+    thread->retVal = Tiny_Null;
+
+    thread->fc = 0;
+
+    thread->userdata = NULL;
+}
+
+void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state) {
+    Tiny_InitThreadWithContext(thread, state, Tiny_DefaultContext);
+}
+
+void Tiny_StartThread(Tiny_StateThread *thread) {
+    AllocGlobals(thread);
+
+    // TODO: Eventually move to an actual entry point
+    thread->pc = 0;
+}
+
+bool Tiny_ExecuteCycle(Tiny_StateThread *thread) { return ExecuteCycle(thread); }
+
+void Tiny_Run(Tiny_StateThread *thread) {
+    while (ExecuteCycle(thread))
+        ;
+}
+
+#endif
+
+/////////////////// VM ///////////////////
+
+static void DoPush(Tiny_StateThread *thread, Tiny_Value value) {
+    thread->stack[thread->sp++] = value;
+}
+
+static inline Tiny_Value DoPop(Tiny_StateThread *thread) {
+	return thread->stack[--thread->sp];
+}
+
+inline static bool ExpectBool(const Tiny_Value value) {
+    assert(value.type == TINY_VAL_BOOL);
+    return value.boolean;
+}
+
+static void DoPushIndir(Tiny_StateThread *thread, uint8_t nargs) {
+    assert(thread->fc < TINY_THREAD_MAX_CALL_DEPTH);
+
+    thread->frames[thread->fc++] = (Tiny_Frame){thread->pc, thread->fp, nargs};
+    thread->fp = thread->sp;
+}
+
+static void DoPopIndir(Tiny_StateThread *thread) {
+    assert(thread->fc > 0);
+
+    thread->sp = thread->fp;
+
+    Tiny_Frame frame = thread->frames[--thread->fc];
+
+    thread->sp -= frame.nargs;
+    thread->fp = frame.fp;
+    thread->pc = frame.pc;
+}
+
+static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj) {
+    if (obj->type == TINY_VAL_STRING) {
+        char *internalStr = (char *)obj + sizeof(Tiny_Object);
+
+        if (obj->string.ptr == internalStr) {
+            // FIXME(Apaar): Is it possible for there to be a string which just happens to be
+            // allocated after the object pointer?
+
+            // If the string pointer is directly after the object then it is part of the object
+            // allocation and does not need to be freed separately
+        } else {
+            TFree(ctx, obj->string.ptr);
+        }
+    } else if (obj->type == TINY_VAL_NATIVE) {
+        if (obj->nat.prop && obj->nat.prop->finalize) {
+            obj->nat.prop->finalize(ctx, obj->nat.addr);
+        }
+    }
+
+    TFree(ctx, obj);
+}
+
+static inline bool IsObject(Tiny_Value val) {
+    return val.type == TINY_VAL_STRING || val.type == TINY_VAL_NATIVE ||
+           val.type == TINY_VAL_STRUCT;
+}
+
+void Tiny_ProtectFromGC(Tiny_Value value) {
+    if (!IsObject(value)) return;
+
+    Tiny_Object *obj = value.obj;
+
+    assert(obj);
+
+    if (obj->marked) return;
+
+    if (obj->type == TINY_VAL_NATIVE) {
+        if (obj->nat.prop && obj->nat.prop->protectFromGC)
+            obj->nat.prop->protectFromGC(obj->nat.addr);
+    } else if (obj->type == TINY_VAL_STRUCT) {
+        for (int i = 0; i < obj->ostruct.n; ++i) Tiny_ProtectFromGC(obj->ostruct.fields[i]);
+    }
+
+    obj->marked = 1;
+}
+
+static void MarkAll(Tiny_StateThread *thread) {
+    assert(thread->state);
+
+    Tiny_ProtectFromGC(thread->retVal);
+
+    for (int i = 0; i < thread->sp; ++i) Tiny_ProtectFromGC(thread->stack[i]);
+
+    for (int i = 0; i < thread->state->numGlobalVars; ++i)
+        Tiny_ProtectFromGC(thread->globalVars[i]);
+}
+
+static void Sweep(Tiny_StateThread *thread) {
+    Tiny_Object **object = &thread->gcHead;
+    while (*object) {
+        if (!(*object)->marked) {
+            Tiny_Object *unreached = *object;
+            --thread->numObjects;
+            *object = unreached->next;
+            DeleteObject(&thread->ctx, unreached);
+        } else {
+            (*object)->marked = 0;
+            object = &(*object)->next;
+        }
+    }
+}
+
+static void GarbageCollect(Tiny_StateThread *thread) {
+    MarkAll(thread);
+    Sweep(thread);
+    thread->maxNumObjects = thread->numObjects * 2;
+}
+
+Tiny_Value Tiny_NewBool(bool value) {
+    Tiny_Value val;
+
+    val.type = TINY_VAL_BOOL;
+    val.boolean = value;
+
+    return val;
+}
+
+Tiny_Value Tiny_NewInt(int i) {
+    Tiny_Value val;
+
+    val.type = TINY_VAL_INT;
+    val.i = i;
+
+    return val;
+}
+
+Tiny_Value Tiny_NewFloat(float f) {
+    Tiny_Value val;
+
+    val.type = TINY_VAL_FLOAT;
+    val.f = f;
+
+    return val;
+}
+
+Tiny_Value Tiny_NewConstString(const char *str) {
+    assert(str);
+
+    Tiny_Value val;
+
+    val.type = TINY_VAL_CONST_STRING;
+    val.cstr = str;
+
+    return val;
+}
+
+static Tiny_Object *NewStructObject(Tiny_StateThread *thread, Word n) {
+    assert(n >= 0);
+    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + sizeof(Tiny_Value) * n);
+
+    obj->type = TINY_VAL_STRUCT;
+    obj->next = thread->gcHead;
+    thread->gcHead = obj;
+    obj->marked = 0;
+
+    obj->ostruct.n = n;
+
+    thread->numObjects++;
+
+    return obj;
+}
+
+inline static int ReadIntegerAt(const Tiny_State *state, int *pc) {
+    // Move PC up to the next 4 aligned thing
+    *pc = (*pc + 3) & ~3;
+
+    int val = *(int *)(&state->program[*pc]);
+    *pc += sizeof(int) / sizeof(Word);
+
+    return val;
+}
+
+static int ReadInteger(Tiny_StateThread *thread) {
+    return ReadIntegerAt(thread->state, &thread->pc);
+}
+
+inline static float ReadFloatAt(const Tiny_State *state, int *pc) {
+    // Move PC up to the next 4 aligned thing
+    *pc = (*pc + 3) & ~3;
+
+    float val = *(float *)(&state->program[*pc]);
+    *pc += sizeof(float) / sizeof(Word);
+
+    return val;
+}
+
+static float ReadFloat(Tiny_StateThread *thread) { return ReadFloatAt(thread->state, &thread->pc); }
+
+inline static bool ExecuteCycle(Tiny_StateThread *thread) {
+    assert(thread && thread->state);
+
+    if (thread->pc < 0) return false;
+
+    const Tiny_State *state = thread->state;
+
+    switch (state->program[thread->pc]) {
+        case TINY_OP_PUSH_NULL: {
+            ++thread->pc;
+            DoPush(thread, Tiny_Null);
+        } break;
+
+        case TINY_OP_PUSH_NULL_N: {
+            ++thread->pc;
+
+            Word n = thread->state->program[thread->pc++];
+
+            memset(&thread->stack[thread->sp], 0, sizeof(Tiny_Value) * n);
+            thread->sp += n;
+        } break;
+
+        case TINY_OP_PUSH_TRUE: {
+            ++thread->pc;
+            DoPush(thread, Tiny_NewBool(true));
+        } break;
+
+        case TINY_OP_PUSH_FALSE: {
+            ++thread->pc;
+            DoPush(thread, Tiny_NewBool(false));
+        } break;
+
+        case TINY_OP_PUSH_INT: {
+            ++thread->pc;
+
+            thread->stack[thread->sp].type = TINY_VAL_INT;
+            thread->stack[thread->sp].i = ReadInteger(thread);
+            thread->sp += 1;
+        } break;
+
+        case TINY_OP_PUSH_0: {
+            ++thread->pc;
+
+            thread->stack[thread->sp].type = TINY_VAL_INT;
+            thread->stack[thread->sp].i = 0;
+            thread->sp += 1;
+        } break;
+
+        case TINY_OP_PUSH_1: {
+            ++thread->pc;
+
+            thread->stack[thread->sp].type = TINY_VAL_INT;
+            thread->stack[thread->sp].i = 1;
+            thread->sp += 1;
+        } break;
+
+        case TINY_OP_PUSH_CHAR: {
+            ++thread->pc;
+
+            thread->stack[thread->sp].type = TINY_VAL_INT;
+            thread->stack[thread->sp].i = thread->state->program[thread->pc];
+            thread->sp += 1;
+            thread->pc += 1;
+        } break;
+
+        case TINY_OP_PUSH_FLOAT: {
+            ++thread->pc;
+
+            DoPush(thread, Tiny_NewFloat(ReadFloat(thread)));
+        } break;
+
+        case TINY_OP_PUSH_STRING: {
+            ++thread->pc;
+
+            int stringIndex = ReadInteger(thread);
+
+            DoPush(thread, Tiny_NewConstString(thread->state->strings[stringIndex]));
+        } break;
+
+        case TINY_OP_PUSH_STRING_FF: {
+            ++thread->pc;
+
+            Word sIndex = thread->state->program[thread->pc++];
+            DoPush(thread, Tiny_NewConstString(thread->state->strings[sIndex]));
+        } break;
+
+        case TINY_OP_PUSH_STRUCT: {
+            ++thread->pc;
+
+            Word nFields = thread->state->program[thread->pc++];
+            assert(nFields > 0);
+
+            Tiny_Object *obj = NewStructObject(thread, nFields);
+
+            memcpy(obj->ostruct.fields, &thread->stack[thread->sp - nFields],
+                   sizeof(Tiny_Value) * nFields);
+            thread->sp -= nFields;
+
+            thread->stack[thread->sp].type = TINY_VAL_STRUCT;
+            thread->stack[thread->sp].obj = obj;
+
+            thread->sp += 1;
+        } break;
+
+        case TINY_OP_STRUCT_GET: {
+            ++thread->pc;
+
+            Word i = thread->state->program[thread->pc++];
+
+            assert(i >= 0 && i < thread->stack[thread->sp - 1].obj->ostruct.n);
+
+            Tiny_Value val = thread->stack[thread->sp - 1].obj->ostruct.fields[i];
+            thread->stack[thread->sp - 1] = val;
+        } break;
+
+        case TINY_OP_STRUCT_SET: {
+            ++thread->pc;
+
+            Word i = thread->state->program[thread->pc++];
+
+            Tiny_Value vstruct = DoPop(thread);
+            Tiny_Value val = DoPop(thread);
+
+            assert(i >= 0 && i < vstruct.obj->ostruct.n);
+
+            vstruct.obj->ostruct.fields[i] = val;
+        } break;
+
+#define BIN_OP(OP, operator)                                                \
+    case TINY_OP_##OP: {                                                    \
+        Tiny_Value *a = &thread->stack[thread->sp - 2];                     \
+        Tiny_Value b = thread->stack[--thread->sp];                         \
+        if (a->type == TINY_VAL_INT && b.type == TINY_VAL_INT) {            \
+            a->i = a->i operator b.i;                                       \
+        } else if (a->type == TINY_VAL_FLOAT && b.type == TINY_VAL_FLOAT) { \
+            a->f = a->f operator b.f;                                       \
+        } else if (a->type == TINY_VAL_INT) {                               \
+            a->type = TINY_VAL_FLOAT;                                       \
+            a->f = (float)a->i operator b.f;                                \
+        } else {                                                            \
+            a->f = a->f operator(float) b.i;                                \
+        }                                                                   \
+        ++thread->pc;                                                       \
+    } break;
+
+#define BIN_OP_INT(OP, operator)                                       \
+    case TINY_OP_##OP: {                                               \
+        Tiny_Value val2 = DoPop(thread);                               \
+        Tiny_Value val1 = DoPop(thread);                               \
+        DoPush(thread, Tiny_NewInt((int)val1.i operator(int) val2.i)); \
+        ++thread->pc;                                                  \
+    } break;
+
+        case TINY_OP_LTE: {
+            Tiny_Value *a = &thread->stack[thread->sp - 2];
+            const Tiny_Value *b = &thread->stack[--thread->sp];
+            if (a->type == TINY_VAL_FLOAT && b->type == TINY_VAL_FLOAT) {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = a->f <= b->f;
+            } else if (a->type == TINY_VAL_INT && b->type == TINY_VAL_INT) {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = a->i <= b->i;
+            } else if (a->type == TINY_VAL_INT) {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = (float)a->i <= b->f;
+            } else {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = a->f <= (float)b->i;
+            }
+            ++thread->pc;
+        } break;
+
+#define REL_OP(OP, operator)                                            \
+    case TINY_OP_##OP: {                                                \
+        Tiny_Value *a = &thread->stack[thread->sp - 2];                 \
+        Tiny_Value b = thread->stack[--thread->sp];                     \
+        if (a->type == TINY_VAL_FLOAT && b.type == TINY_VAL_FLOAT) {    \
+            a->type = TINY_VAL_BOOL;                                    \
+            a->boolean = a->f operator b.f;                             \
+        } else if (a->type == TINY_VAL_INT && b.type == TINY_VAL_INT) { \
+            a->type = TINY_VAL_BOOL;                                    \
+            a->boolean = a->i operator b.i;                             \
+        } else if (a->type == TINY_VAL_INT) {                           \
+            a->type = TINY_VAL_BOOL;                                    \
+            a->boolean = (float)a->i operator b.f;                      \
+        } else {                                                        \
+            a->type = TINY_VAL_BOOL;                                    \
+            a->boolean = a->f operator(float) b.i;                      \
+        }                                                               \
+        ++thread->pc;                                                   \
+    } break;
+
+            BIN_OP(ADD, +)
+            BIN_OP(SUB, -)
+            BIN_OP(MUL, *)
+            BIN_OP(DIV, /)
+            BIN_OP_INT(MOD, %)
+            BIN_OP_INT(OR, |)
+            BIN_OP_INT(AND, &)
+
+            REL_OP(LT, <)
+            REL_OP(GT, >)
+            REL_OP(GTE, >=)
+
+#undef BIN_OP
+#undef BIN_OP_INT
+#undef REL_OP
+
+        case TINY_OP_ADD1: {
+            ++thread->pc;
+            thread->stack[thread->sp - 1].i += 1;
+        } break;
+
+        case TINY_OP_SUB1: {
+            ++thread->pc;
+            thread->stack[thread->sp - 1].i -= 1;
+        } break;
+
+        case TINY_OP_EQU: {
+            ++thread->pc;
+            Tiny_Value b = DoPop(thread);
+            Tiny_Value a = DoPop(thread);
+
+            DoPush(thread, Tiny_NewBool(Tiny_AreValuesEqual(a, b)));
+        } break;
+
+        case TINY_OP_LOG_NOT: {
+            ++thread->pc;
+            Tiny_Value a = DoPop(thread);
+
+            DoPush(thread, Tiny_NewBool(!ExpectBool(a)));
+        } break;
+
+        case TINY_OP_SET: {
+            ++thread->pc;
+            int varIdx = ReadInteger(thread);
+            thread->globalVars[varIdx] = DoPop(thread);
+        } break;
+
+        case TINY_OP_GET: {
+            ++thread->pc;
+            int varIdx = ReadInteger(thread);
+            DoPush(thread, thread->globalVars[varIdx]);
+        } break;
+
+        case TINY_OP_GOTO: {
+            ++thread->pc;
+            int newPc = ReadInteger(thread);
+            thread->pc = newPc;
+        } break;
+
+        case TINY_OP_GOTOZ: {
+            ++thread->pc;
+            int newPc = ReadInteger(thread);
+
+            Tiny_Value val = DoPop(thread);
+
+            if (!ExpectBool(val)) thread->pc = newPc;
+        } break;
+
+        case TINY_OP_CALL: {
+            ++thread->pc;
+            Word nargs = thread->state->program[thread->pc++];
+            int pcIdx = ReadInteger(thread);
+
+            DoPushIndir(thread, nargs);
+            thread->pc = state->functionPcs[pcIdx];
+        } break;
+
+        case TINY_OP_RETURN: {
+            thread->retVal = Tiny_Null;
+
+            DoPopIndir(thread);
+        } break;
+
+        case TINY_OP_RETURN_VALUE: {
+            thread->retVal = DoPop(thread);
+            DoPopIndir(thread);
+        } break;
+
+        case TINY_OP_CALLF: {
+            ++thread->pc;
+
+            Word nargs = thread->state->program[thread->pc++];
+            int fIdx = ReadInteger(thread);
+
+            // the state of the stack prior to the function arguments being pushed
+            int prevSize = thread->sp - nargs;
+
+            thread->retVal = state->foreignFunctions[fIdx](thread, &thread->stack[prevSize], nargs);
+
+            // Resize the stack so that it has the arguments removed
+            thread->sp = prevSize;
+        } break;
+
+        case TINY_OP_GETLOCAL: {
+            ++thread->pc;
+            int localIdx = ReadInteger(thread);
+            DoPush(thread, thread->stack[thread->fp + localIdx]);
+        } break;
+
+        case TINY_OP_GETLOCAL_W: {
+            ++thread->pc;
+            Word localIdx = thread->state->program[thread->pc++];
+            DoPush(thread, thread->stack[thread->fp + localIdx]);
+        } break;
+
+        case TINY_OP_SETLOCAL: {
+            ++thread->pc;
+            int localIdx = ReadInteger(thread);
+            Tiny_Value val = DoPop(thread);
+            thread->stack[thread->fp + localIdx] = val;
+        } break;
+
+        case TINY_OP_GET_RETVAL: {
+            ++thread->pc;
+            DoPush(thread, thread->retVal);
+        } break;
+
+        case TINY_OP_HALT: {
+            thread->pc = -1;
+        } break;
+
+        case TINY_OP_MISALIGNED_INSTRUCTION: {
+            // TODO(Apaar): Proper runtime error
+            assert(false);
+        } break;
+
+        default: {
+            assert(false);
+        } break;
+    }
+
+    // Only collect garbage in between iterations
+    if (thread->numObjects >= thread->maxNumObjects) GarbageCollect(thread);
+
+    return true;
 }

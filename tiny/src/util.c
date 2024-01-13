@@ -1,3 +1,4 @@
+#include "compile_options.h"
 #include "util.h"
 
 #include <assert.h>
@@ -14,6 +15,8 @@ void *TRealloc(Tiny_Context *ctx, void *ptr, size_t size) {
 }
 
 void TFree(Tiny_Context *ctx, void *ptr) { ctx->alloc(ptr, 0, ctx->userdata); }
+
+#ifdef TINY_COMPILER
 
 int Tiny_TranslatePosToLineNumber(const char *src, Tiny_TokenPos pos) {
     int curPos = 0;
@@ -102,3 +105,5 @@ void Tiny_FormatErrorV(char *buf, size_t bufsize, const char *fileName, const ch
         APPEND("\n");
     }
 }
+
+#endif

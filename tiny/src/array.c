@@ -1,3 +1,7 @@
+#include "compile_options.h"
+
+#ifdef TINY_COMPILER
+
 #include "array.h"
 
 #include <assert.h>
@@ -91,3 +95,5 @@ Tiny_Value *ArrayGet(Array *array, int index) {
 }
 
 void DestroyArray(Array *array) { sb_free(&array->ctx, array->data); }
+
+#endif

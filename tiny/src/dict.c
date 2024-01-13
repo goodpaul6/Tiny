@@ -1,3 +1,6 @@
+#include "compile_options.h"
+#ifdef TINY_COMPILER
+
 #include "dict.h"
 
 #include <assert.h>
@@ -199,3 +202,5 @@ void DictClear(Dict *dict) {
 
     dict->filledCount = 0;
 }
+
+#endif

@@ -1,3 +1,6 @@
+#include "compile_options.h"
+#ifdef TINY_COMPILER
+
 #include <assert.h>
 #include <errno.h>
 #include <limits.h>
@@ -1049,3 +1052,5 @@ void Tiny_BindStandardLib(Tiny_State *state) {
 
     Tiny_BindMacro(state, "json", JsonMacroFunction);
 }
+
+#endif

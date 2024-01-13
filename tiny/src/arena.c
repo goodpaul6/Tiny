@@ -1,3 +1,6 @@
+#include "compile_options.h"
+
+#ifdef TINY_COMPILER
 #include "arena.h"
 
 #include <assert.h>
@@ -82,3 +85,6 @@ void Tiny_DestroyArena(Tiny_Arena* a) {
         TFree(&a->ctx, node);
     }
 }
+
+#endif
+

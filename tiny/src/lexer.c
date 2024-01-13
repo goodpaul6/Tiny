@@ -1,3 +1,7 @@
+#include "compile_options.h"
+
+#ifdef TINY_COMPILER
+
 #include "lexer.h"
 
 #include <ctype.h>
@@ -284,3 +288,5 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
 Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) { return l->lastTok = GetToken(l); }
 
 void Tiny_DestroyLexer(Tiny_Lexer *l) { sb_free(&l->ctx, l->lexeme); }
+
+#endif
