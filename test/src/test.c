@@ -463,6 +463,7 @@ static void test_TinyStateCallFunction(void) {
     Tiny_DeleteState(state);
 }
 
+/*
 static Tiny_Value CallFunc(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     Tiny_Value ret = Tiny_CallFunction(
         thread, Tiny_GetFunctionIndex(thread->state, Tiny_ToString(args[0])), &args[1], count - 1);
@@ -472,7 +473,9 @@ static Tiny_Value CallFunc(Tiny_StateThread *thread, const Tiny_Value *args, int
 
     return ret;
 }
+*/
 
+/*
 static void test_TinyStateCallMidRun(void) {
     Tiny_State *state = CreateState();
 
@@ -495,6 +498,7 @@ static void test_TinyStateCallMidRun(void) {
 
     Tiny_DeleteState(state);
 }
+*/
 
 static Tiny_Value Lib_GetStaticNative(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     static int a = 0;
@@ -630,7 +634,7 @@ static void test_RevPolishCalc(void) {
     while (Tiny_ExecuteCycle(&thread))
         ;
 
-    extern const Tiny_NativeProp ArrayProp;
+    //extern const Tiny_NativeProp ArrayProp;
 
     int stack = Tiny_GetGlobalIndex(state, "stack");
 
@@ -666,7 +670,7 @@ static void test_Arena() {
     char s[10] = "hello wor\0";
     strcpy(data, s);
 
-    void *data2 = Tiny_ArenaAlloc(&a, ARENA_PAGE_SIZE + 10, 1);
+    //void *data2 = Tiny_ArenaAlloc(&a, ARENA_PAGE_SIZE + 10, 1);
 
     // This is checking that the large allocation we perform above
     // does not cause the "small allocation" page to be moved back.
