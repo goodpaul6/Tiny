@@ -13,7 +13,7 @@ void InitDict(Dict *dict, Tiny_Context ctx);
 
 void DictSet(Dict *dict, Tiny_Value key, Tiny_Value value);
 
-const Tiny_Value *DictGet(Dict *dict, Tiny_Value key);
+const Tiny_Value* DictGet(Dict *dict, Tiny_Value key);
 
 void DictRemove(Dict *dict, Tiny_Value key);
 void DictClear(Dict *dict);

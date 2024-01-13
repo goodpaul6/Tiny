@@ -10,20 +10,20 @@
 typedef struct Tiny_ArenaPage {
     size_t used;
     size_t cap;
-    void* data;
+    void *data;
 
-    struct Tiny_ArenaPage* next;
+    struct Tiny_ArenaPage *next;
 } Tiny_ArenaPage;
 
 typedef struct Tiny_Arena {
     Tiny_Context ctx;
-    Tiny_ArenaPage* head;
+    Tiny_ArenaPage *head;
 } Tiny_Arena;
 
-void Tiny_InitArena(Tiny_Arena* a, Tiny_Context ctx);
+void Tiny_InitArena(Tiny_Arena *a, Tiny_Context ctx);
 
-void* Tiny_ArenaAlloc(Tiny_Arena* a, size_t size, size_t align);
+void* Tiny_ArenaAlloc(Tiny_Arena *a, size_t size, size_t align);
 
-void Tiny_DestroyArena(Tiny_Arena* a);
+void Tiny_DestroyArena(Tiny_Arena *a);
 
 #endif

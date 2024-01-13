@@ -76,4 +76,3 @@ typedef enum {
 } Tiny_TokenKind;
 
 #endif
-

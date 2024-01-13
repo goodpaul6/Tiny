@@ -2,26 +2,26 @@
 
 #ifdef TINY_COMPILER
 
-#include "pos.h"
-
 #include <assert.h>
 #include <string.h>
 
-Tiny_FriendlyPos Tiny_PosToFriendlyPos(Tiny_Pos pos, const char* src, uint32_t srcLen) {
+#include "pos.h"
+
+Tiny_FriendlyPos Tiny_PosToFriendlyPos(Tiny_Pos pos, const char *src, uint32_t srcLen) {
     assert(src);
     assert(pos.index < srcLen);
 
-    Tiny_FriendlyPos friendlyPos = {0};
+    Tiny_FriendlyPos friendlyPos = { 0 };
 
-    const char* start = src;
+    const char *start = src;
 
     for (;;) {
-        const char* lineStart = src;
-        const char* newLine = strchr(lineStart, '\n');
+        const char *lineStart = src;
+        const char *newLine = strchr(lineStart, '\n');
 
         // We have crossed the pos
         if (!newLine || newLine - start >= pos.index) {
-            const char* cursor = lineStart;
+            const char *cursor = lineStart;
 
             assert(cursor - start <= pos.index);
 

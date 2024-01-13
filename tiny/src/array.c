@@ -2,12 +2,11 @@
 
 #ifdef TINY_COMPILER
 
-#include "array.h"
-
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "array.h"
 #include "stretchy_buffer.h"
 
 void InitArray(Array *array, Tiny_Context ctx) {
@@ -22,9 +21,12 @@ void InitArrayEx(Array *array, Tiny_Context ctx, int length, const Tiny_Value *i
     memcpy(values, initValues, sizeof(Tiny_Value) * length);
 }
 
-int ArrayLen(Array *array) { return sb_count(array->data); }
+int ArrayLen(Array *array) {
+    return sb_count(array->data);
+}
 
-void ArrayClear(Array *array) { stb__sbn(array->data) = 0; }
+void ArrayClear(Array *array) {
+    stb__sbn(array->data)= 0;}
 
 void ArrayResize(Array *array, int newLen, Tiny_Value newValue) {
     assert(newLen >= 0);
@@ -38,17 +40,19 @@ void ArrayResize(Array *array, int newLen, Tiny_Value newValue) {
             newValues[i] = newValue;
         }
     } else {
-        stb__sbn(array->data) = newLen;
+        stb__sbn(array->data)= newLen;
     }
 }
 
-void ArrayPush(Array *array, Tiny_Value value) { sb_push(&array->ctx, array->data, value); }
+void ArrayPush(Array *array, Tiny_Value value) {
+    sb_push(&array->ctx, array->data, value);
+}
 
 void ArrayPop(Array *array, Tiny_Value *value) {
     assert(sb_count(array->data) > 0);
 
     memcpy(value, &array->data[sb_count(array->data) - 1], sizeof(Tiny_Value));
-    stb__sbn(array->data) -= 1;
+    stb__sbn(array->data)-= 1;
 }
 
 void ArrayShift(Array *array, Tiny_Value *value) {
@@ -59,7 +63,7 @@ void ArrayShift(Array *array, Tiny_Value *value) {
     memcpy(value, &array->data[0], sizeof(Tiny_Value));
 
     memmove(&array->data[0], &array->data[1], (len - 1) * sizeof(Tiny_Value));
-    stb__sbn(array->data) -= 1;
+    stb__sbn(array->data)-= 1;
 }
 
 void ArrayInsert(Array *array, int index, Tiny_Value value) {
@@ -79,7 +83,7 @@ void ArrayRemove(Array *array, int index) {
     assert(index >= 0 && index < len);
 
     memmove(&array->data[index], &array->data[(index + 1)], sizeof(Tiny_Value) * (len - index - 1));
-    stb__sbn(array->data) -= 1;
+    stb__sbn(array->data)-= 1;
 }
 
 void ArraySet(Array *array, int index, Tiny_Value value) {
@@ -88,12 +92,14 @@ void ArraySet(Array *array, int index, Tiny_Value value) {
     memcpy(&array->data[index], &value, sizeof(value));
 }
 
-Tiny_Value *ArrayGet(Array *array, int index) {
+Tiny_Value* ArrayGet(Array *array, int index) {
     assert(index >= 0 && index < sb_count(array->data));
 
     return &array->data[index];
 }
 
-void DestroyArray(Array *array) { sb_free(&array->ctx, array->data); }
+void DestroyArray(Array *array) {
+    sb_free(&array->ctx, array->data);
+}
 
 #endif

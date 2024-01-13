@@ -2,26 +2,29 @@
 
 #ifdef TINY_COMPILER
 
-#include "lexer.h"
-
 #include <ctype.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "lexer.h"
 #include "stretchy_buffer.h"
 #include "util.h"
 
 static void ResetLexeme(Tiny_Lexer *l) {
-    if (l->lexeme) stb__sbn(l->lexeme) = 0;
-}
+    if (l->lexeme)
+        stb__sbn(l->lexeme)= 0;
+    }
 
 static int GetChar(Tiny_Lexer *l) {
-    if (l->src[l->pos]) return l->src[l->pos++];
+    if (l->src[l->pos])
+        return l->src[l->pos++];
     return 0;
 }
 
-inline static int Peek(Tiny_Lexer *l) { return l->src[l->pos]; }
+inline static int Peek(Tiny_Lexer *l) {
+    return l->src[l->pos];
+}
 inline static int Peek2(Tiny_Lexer *l) {
     if (l->src[l->pos] == 0) {
         return 0;
@@ -47,7 +50,8 @@ void Tiny_InitLexer(Tiny_Lexer *l, const char *fileName, const char *src, Tiny_C
 
 static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
     while (isspace(l->last)) {
-        if (l->last == '\n') l->lineNumber++;
+        if (l->last == '\n')
+            l->lineNumber++;
         l->last = GetChar(l);
     }
 
@@ -154,7 +158,8 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
 
         sb_push(&l->ctx, l->lexeme, 0);
 
-        if (strcmp(l->lexeme, "null") == 0) return TINY_TOK_NULL;
+        if (strcmp(l->lexeme, "null") == 0)
+            return TINY_TOK_NULL;
 
         if (strcmp(l->lexeme, "true") == 0) {
             l->bValue = true;
@@ -166,19 +171,32 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
             return TINY_TOK_BOOL;
         }
 
-        if (strcmp(l->lexeme, "if") == 0) return TINY_TOK_IF;
-        if (strcmp(l->lexeme, "func") == 0) return TINY_TOK_FUNC;
-        if (strcmp(l->lexeme, "foreign") == 0) return TINY_TOK_FOREIGN;
-        if (strcmp(l->lexeme, "return") == 0) return TINY_TOK_RETURN;
-        if (strcmp(l->lexeme, "while") == 0) return TINY_TOK_WHILE;
-        if (strcmp(l->lexeme, "for") == 0) return TINY_TOK_FOR;
-        if (strcmp(l->lexeme, "else") == 0) return TINY_TOK_ELSE;
-        if (strcmp(l->lexeme, "struct") == 0) return TINY_TOK_STRUCT;
-        if (strcmp(l->lexeme, "new") == 0) return TINY_TOK_NEW;
-        if (strcmp(l->lexeme, "cast") == 0) return TINY_TOK_CAST;
-        if (strcmp(l->lexeme, "break") == 0) return TINY_TOK_BREAK;
-        if (strcmp(l->lexeme, "continue") == 0) return TINY_TOK_CONTINUE;
-        if (strcmp(l->lexeme, "use") == 0) return TINY_TOK_USE;
+        if (strcmp(l->lexeme, "if") == 0)
+            return TINY_TOK_IF;
+        if (strcmp(l->lexeme, "func") == 0)
+            return TINY_TOK_FUNC;
+        if (strcmp(l->lexeme, "foreign") == 0)
+            return TINY_TOK_FOREIGN;
+        if (strcmp(l->lexeme, "return") == 0)
+            return TINY_TOK_RETURN;
+        if (strcmp(l->lexeme, "while") == 0)
+            return TINY_TOK_WHILE;
+        if (strcmp(l->lexeme, "for") == 0)
+            return TINY_TOK_FOR;
+        if (strcmp(l->lexeme, "else") == 0)
+            return TINY_TOK_ELSE;
+        if (strcmp(l->lexeme, "struct") == 0)
+            return TINY_TOK_STRUCT;
+        if (strcmp(l->lexeme, "new") == 0)
+            return TINY_TOK_NEW;
+        if (strcmp(l->lexeme, "cast") == 0)
+            return TINY_TOK_CAST;
+        if (strcmp(l->lexeme, "break") == 0)
+            return TINY_TOK_BREAK;
+        if (strcmp(l->lexeme, "continue") == 0)
+            return TINY_TOK_CONTINUE;
+        if (strcmp(l->lexeme, "use") == 0)
+            return TINY_TOK_USE;
 
         return TINY_TOK_IDENT;
     }
@@ -189,8 +207,7 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
         bool isFloat = false;
         bool isHex = false;
 
-        while (isdigit(l->last) || (l->last == 'x' && !isHex) || (isHex && isxdigit(l->last)) ||
-               (l->last == '.' && !isFloat)) {
+        while (isdigit(l->last) || (l->last == 'x' && !isHex) || (isHex && isxdigit(l->last)) || (l->last == '.' && !isFloat)) {
             if (l->last == 'x') {
                 isHex = true;
             } else if (l->last == '.') {
@@ -204,11 +221,11 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
         sb_push(&l->ctx, l->lexeme, 0);
 
         if (isFloat) {
-            l->fValue = (float)strtod(l->lexeme, NULL);
+            l->fValue = (float) strtod(l->lexeme, NULL);
         } else if (isHex) {
             int64_t value = strtoll(l->lexeme, NULL, 16);
 
-            l->iValue = (int)value;
+            l->iValue = (int) value;
         } else {
             l->iValue = strtol(l->lexeme, NULL, 10);
         }
@@ -285,8 +302,12 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
     return TINY_TOK_LEXER_ERROR;
 }
 
-Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) { return l->lastTok = GetToken(l); }
+Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l) {
+    return l->lastTok = GetToken(l);
+}
 
-void Tiny_DestroyLexer(Tiny_Lexer *l) { sb_free(&l->ctx, l->lexeme); }
+void Tiny_DestroyLexer(Tiny_Lexer *l) {
+    sb_free(&l->ctx, l->lexeme);
+}
 
 #endif
