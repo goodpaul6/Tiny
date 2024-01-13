@@ -156,7 +156,7 @@ void DictRemove(Dict *dict, Tiny_Value key) {
     unsigned long hash = HashValue(key);
 
     unsigned long index = hash % dict->bucketCount;
-    unsigned long origin = index;
+    //unsigned long origin = index;
 
     for (;;) {
         Tiny_Value keyHere = *ArrayGet(&dict->keys, index);

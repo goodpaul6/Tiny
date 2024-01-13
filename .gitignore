@@ -13,3 +13,6 @@ build
 bin 
 CMakeLists.txt.user
 .vscode
+.cproject
+.project
+.settings/

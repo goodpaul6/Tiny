@@ -482,7 +482,7 @@ static Tiny_Value Lib_Input(Tiny_StateThread *thread, const Tiny_Value *args, in
     size_t bufferCapacity = 8;
 
     int c = getc(stdin);
-    int i = 0;
+    //int i = 0;
 
     while (c != '\n') {
         if (bufferLength + 1 >= bufferCapacity) {
