@@ -1,4 +1,5 @@
-#pragma once
+#ifndef UTILS_H
+#define UTILS_H
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -26,3 +27,6 @@ int Tiny_TranslatePosToLineNumber(const char *src, Tiny_TokenPos pos);
 
 void Tiny_FormatErrorV(char *buf, size_t bufsize, const char *fileName, const char *src,
                        Tiny_TokenPos pos, const char *s, va_list args);
+
+#endif
+

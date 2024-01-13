@@ -1,4 +1,5 @@
-#pragma once
+#ifndef ARENA_H
+#define ARENA_H
 
 #include <stddef.h>
 
@@ -24,3 +25,5 @@ void Tiny_InitArena(Tiny_Arena* a, Tiny_Context ctx);
 void* Tiny_ArenaAlloc(Tiny_Arena* a, size_t size, size_t align);
 
 void Tiny_DestroyArena(Tiny_Arena* a);
+
+#endif

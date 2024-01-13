@@ -1,4 +1,5 @@
-#pragma once
+#ifndef DETAILS_H
+#define DETAILS_H
 
 #include <setjmp.h>
 
@@ -90,3 +91,6 @@ typedef struct Tiny_State {
     // here.
     Tiny_CompileResult compileErrorResult;
 } Tiny_State;
+
+#endif
+

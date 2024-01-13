@@ -1,4 +1,5 @@
-#pragma once
+#ifndef LEXER_H
+#define LEXER_H
 
 #include <stdbool.h>
 
@@ -34,3 +35,6 @@ void Tiny_InitLexer(Tiny_Lexer *l, const char *fileName, const char *src, Tiny_C
 Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l);
 
 void Tiny_DestroyLexer(Tiny_Lexer *l);
+
+#endif
+

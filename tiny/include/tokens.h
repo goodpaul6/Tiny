@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TOKENS_H
+#define TOKENS_H
 
 typedef enum {
     TINY_TOK_OPENPAREN,
@@ -73,3 +74,6 @@ typedef enum {
     // HACK(Apaar): Not an actual token
     TINY_TOK_LEXER_ERROR,
 } Tiny_TokenKind;
+
+#endif
+

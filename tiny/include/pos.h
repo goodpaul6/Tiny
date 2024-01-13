@@ -1,4 +1,5 @@
-#pragma once
+#ifndef POS_H
+#define POS_H
 
 #include <stdint.h>
 
@@ -15,3 +16,5 @@ typedef struct Tiny_FriendlyPos {
 
 // Convert a Tiny_Pos to a line number
 Tiny_FriendlyPos Tiny_PosToFriendlyPos(Tiny_Pos pos, const char* src, uint32_t srcLen);
+
+#endif

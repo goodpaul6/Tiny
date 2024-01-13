@@ -1,4 +1,5 @@
-#pragma once
+#ifndef EXPR_H
+#define EXPR_H
 
 #include "tiny.h"
 
@@ -148,3 +149,6 @@ typedef struct Tiny_Expr {
         } use;
     };
 } Tiny_Expr;
+
+#endif
+

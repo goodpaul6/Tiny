@@ -1,4 +1,5 @@
-#pragma once
+#ifndef DICT_H
+#define DICT_H
 
 #include "array.h"
 #include "tiny.h"
@@ -18,3 +19,5 @@ void DictRemove(Dict *dict, Tiny_Value key);
 void DictClear(Dict *dict);
 
 void DestroyDict(Dict *dict);
+
+#endif
