@@ -3995,11 +3995,12 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
 
 Tiny_CompileResult Tiny_CompileFile(Tiny_State *state, const char *filename) {
     FILE *file = fopen(filename, "rb");
+    Tiny_CompileResult result = {
+    		.type = TINY_COMPILE_SUCCESS,
+    };
 
     if (!file) {
-        Tiny_CompileResult result = {
-            .type = TINY_COMPILE_ERROR,
-        };
+        result.type = TINY_COMPILE_ERROR;
 
         snprintf(result.error.msg, sizeof(result.error.msg),
                  "Error: Unable to open file '%s' for reading\n", filename);
@@ -4022,6 +4023,8 @@ Tiny_CompileResult Tiny_CompileFile(Tiny_State *state, const char *filename) {
     Tiny_CompileString(state, filename, s);
 
     TFree(&state->ctx, s);
+
+    return result;
 }
 
 bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen) {
