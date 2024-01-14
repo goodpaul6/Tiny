@@ -365,20 +365,6 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const 
     return newRetVal;
 }
 
-void Tiny_DestroyThread(Tiny_StateThread *thread) {
-    thread->pc = -1;
-
-    // Free all objects in the gc list
-    while (thread->gcHead) {
-        Tiny_Object *next = thread->gcHead->next;
-        DeleteObject(&thread->ctx, thread->gcHead);
-        thread->gcHead = next;
-    }
-
-    // Free all global variables
-    TFree(&thread->ctx, thread->globalVars);
-}
-
 static void GenerateCode(Tiny_State *state, Word inst) {
     sb_push(&state->ctx, state->program, inst);
 }
@@ -425,12 +411,12 @@ static int RegisterString(Tiny_State *state, const char *string) {
 
 static Tiny_Symbol* GetPrimTag(Tiny_SymbolType type) {
     static Tiny_Symbol prims[] = {
-            { TINY_SYM_TAG_VOID, (char*) "void", },
-            { TINY_SYM_TAG_BOOL, (char*) "bool", },
-            { TINY_SYM_TAG_INT, (char*) "int" },
+            { TINY_SYM_TAG_VOID,  (char*) "void", },
+            { TINY_SYM_TAG_BOOL,  (char*) "bool", },
+            { TINY_SYM_TAG_INT,   (char*) "int"   },
             { TINY_SYM_TAG_FLOAT, (char*) "float" },
-            { TINY_SYM_TAG_STR, (char*) "str" },
-            { TINY_SYM_TAG_ANY, (char*) "any" }
+            { TINY_SYM_TAG_STR,   (char*) "str"   },
+            { TINY_SYM_TAG_ANY,   (char*) "any"   }
     };
 
     return &prims[type - TINY_SYM_TAG_VOID];
@@ -3634,6 +3620,8 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
 //////////////////////////// VM UTILS FUNCTIONS ////////////////////////////
 
 #ifdef TINY_VM_UTILS
+        static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj);
+        inline static bool ExecuteCycle(Tiny_StateThread *thread);
 
         static void AllocGlobals(Tiny_StateThread *thread) {
             // If the global variables haven't been allocated yet,
@@ -3769,6 +3757,20 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
 
             // TODO: Eventually move to an actual entry point
             thread->pc = 0;
+        }
+
+        void Tiny_DestroyThread(Tiny_StateThread *thread) {
+            thread->pc = -1;
+
+            // Free all objects in the gc list
+            while (thread->gcHead) {
+                Tiny_Object *next = thread->gcHead->next;
+                DeleteObject(&thread->ctx, thread->gcHead);
+                thread->gcHead = next;
+            }
+
+            // Free all global variables
+            TFree(&thread->ctx, thread->globalVars);
         }
 
         bool Tiny_ExecuteCycle(Tiny_StateThread *thread) {

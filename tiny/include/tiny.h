@@ -264,8 +264,6 @@ void Tiny_BindStandardLib(Tiny_State *state);
 // See std.c for details.
 void Tiny_BindI64(Tiny_State *state);
 
-void Tiny_DestroyThread(Tiny_StateThread *thread);
-
 // The following functions are part of the "advanced" API for Tiny.
 // They allow you to access certain aspects of the compiler (in this
 // case, the symbol table) in order to improve your bindings.
@@ -284,7 +282,8 @@ void Tiny_DestroyThread(Tiny_StateThread *thread);
 bool Tiny_DisasmOne(const Tiny_State *state, int *pc, char *buf, size_t maxlen);
 
 typedef enum Tiny_MacroResultType {
-    TINY_MACRO_SUCCESS = 0, TINY_MACRO_ERROR = 1
+    TINY_MACRO_SUCCESS = 0,
+    TINY_MACRO_ERROR = 1
 } Tiny_MacroResultType;
 
 typedef struct Tiny_MacroResult {
@@ -412,6 +411,7 @@ const Tiny_Symbol* Tiny_FindFuncSymbol(Tiny_State *state, const char *name);
 
 void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state);
 void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *state, Tiny_Context ctx);
+void Tiny_DestroyThread(Tiny_StateThread *thread);
 
 // Sets the PC of the thread to the entry point of the program
 // and allocates space for global variables if they're not already
