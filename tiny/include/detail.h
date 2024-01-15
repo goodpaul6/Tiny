@@ -1,5 +1,5 @@
-#ifndef DETAILS_H
-#define DETAILS_H
+#ifndef TINY_DETAILS_H
+#define TINY_DETAILS_H
 
 #include <setjmp.h>
 

@@ -1,5 +1,5 @@
-#ifndef COMPILE_OPTIONS_H_
-#define COMPILE_OPTIONS_H_
+#ifndef TINY_COMPILE_OPTIONS_H_
+#define TINY_COMPILE_OPTIONS_H_
 
 // Add compiler
 #define TINY_COMPILER

@@ -1,5 +1,5 @@
-#ifndef DICT_H
-#define DICT_H
+#ifndef TINY_DICT_H
+#define TINY_DICT_H
 
 #include "array.h"
 #include "tiny.h"

@@ -1,5 +1,5 @@
-#ifndef LEXER_H
-#define LEXER_H
+#ifndef TINY_LEXER_H
+#define TINY_LEXER_H
 
 #include <stdbool.h>
 

@@ -1,5 +1,5 @@
-#ifndef ARRAY_H
-#define ARRAY_H
+#ifndef TINY_ARRAY_H
+#define TINY_ARRAY_H
 
 #include <stddef.h>
 

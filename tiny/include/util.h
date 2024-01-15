@@ -1,5 +1,5 @@
-#ifndef UTILS_H
-#define UTILS_H
+#ifndef TINY_UTILS_H
+#define TINY_UTILS_H
 
 #include <stdarg.h>
 #include <stddef.h>

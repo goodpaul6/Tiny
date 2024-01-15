@@ -1,5 +1,5 @@
-#ifndef EXPR_H
-#define EXPR_H
+#ifndef TINY_EXPR_H
+#define TINY_EXPR_H
 
 #include "tiny.h"
 

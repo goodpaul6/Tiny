@@ -1,5 +1,5 @@
-#ifndef POS_H
-#define POS_H
+#ifndef TINY_POS_H
+#define TINY_POS_H
 
 #include <stdint.h>
 

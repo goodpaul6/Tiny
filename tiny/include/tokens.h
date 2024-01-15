@@ -1,5 +1,5 @@
-#ifndef TOKENS_H
-#define TOKENS_H
+#ifndef TINY_TOKENS_H
+#define TINY_TOKENS_H
 
 typedef enum {
     TINY_TOK_OPENPAREN,

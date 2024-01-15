@@ -1,5 +1,5 @@
-#ifndef OPCODES_H
-#define OPCODES_H
+#ifndef TINY_OPCODES_H
+#define TINY_OPCODES_H
 
 enum {
     TINY_OP_PUSH_NULL,
