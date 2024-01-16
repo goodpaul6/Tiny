@@ -28,7 +28,7 @@ void ArrayInsert(Array *array, int index, Tiny_Value value);
 void ArrayRemove(Array *array, int index);
 
 void ArraySet(Array *array, int index, Tiny_Value value);
-Tiny_Value* ArrayGet(Array *array, int index);
+Tiny_Value *ArrayGet(Array *array, int index);
 
 void DestroyArray(Array *array);
 

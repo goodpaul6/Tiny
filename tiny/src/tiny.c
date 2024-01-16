@@ -1,5 +1,7 @@
 // tiny.c -- an bytecode-based interpreter for the tiny language
 
+#include "tiny.h"
+
 #include <assert.h>
 #include <ctype.h>
 #include <stdarg.h>
@@ -9,7 +11,6 @@
 #include <string.h>
 
 #include "compile_options.h"
-#include "tiny.h"
 #include "detail.h"
 #include "expr.h"
 #include "lexer.h"
@@ -23,7 +24,7 @@
 // This'll catch potential string lifetime issues at
 // compile-time.
 
-const Tiny_Value Tiny_Null = { TINY_VAL_NULL };
+const Tiny_Value Tiny_Null = {TINY_VAL_NULL};
 
 #ifdef TINY_COMPILER
 
@@ -42,7 +43,9 @@ static void ReportErrorL(Tiny_State *state, Tiny_Lexer *l, const char *s, ...) {
 
     state->compileErrorResult.type = TINY_COMPILE_ERROR;
 
-    Tiny_FormatErrorV(state->compileErrorResult.error.msg, sizeof(state->compileErrorResult.error.msg), l->fileName, l->src, l->pos, s, args);
+    Tiny_FormatErrorV(state->compileErrorResult.error.msg,
+                      sizeof(state->compileErrorResult.error.msg), l->fileName, l->src, l->pos, s,
+                      args);
 
     va_end(args);
 
@@ -55,14 +58,16 @@ static void ReportErrorSL(Tiny_State *state, const char *s, ...) {
 
     state->compileErrorResult.type = TINY_COMPILE_ERROR;
 
-    Tiny_FormatErrorV(state->compileErrorResult.error.msg, sizeof(state->compileErrorResult.error.msg), state->l.fileName, state->l.src, state->l.pos, s, args);
+    Tiny_FormatErrorV(state->compileErrorResult.error.msg,
+                      sizeof(state->compileErrorResult.error.msg), state->l.fileName, state->l.src,
+                      state->l.pos, s, args);
 
     va_end(args);
 
     longjmp(state->compileErrorJmpBuf, 1);
 }
 
-static char* CloneString(Tiny_Context *ctx, const char *str) {
+static char *CloneString(Tiny_Context *ctx, const char *str) {
     size_t len = strlen(str);
 
     char *dup = TMalloc(ctx, len + 1);
@@ -73,11 +78,12 @@ static char* CloneString(Tiny_Context *ctx, const char *str) {
 
 // Create a string node specifically for being put inside an expr (i.e. allocated in the parser
 // arena)
-static Tiny_StringNode* CreateExprStringNode(Tiny_State *state, const char *str) {
+static Tiny_StringNode *CreateExprStringNode(Tiny_State *state, const char *str) {
     size_t len = strlen(str);
 
-    Tiny_StringNode *node = Tiny_ArenaAlloc(&state->parserArena, sizeof(Tiny_StringNode) + len + 1, sizeof(void*));
-    char *dup = (char*) node + sizeof(Tiny_StringNode);
+    Tiny_StringNode *node =
+        Tiny_ArenaAlloc(&state->parserArena, sizeof(Tiny_StringNode) + len + 1, sizeof(void *));
+    char *dup = (char *)node + sizeof(Tiny_StringNode);
 
     memcpy(dup, str, len + 1);
     node->value = dup;
@@ -86,30 +92,26 @@ static Tiny_StringNode* CreateExprStringNode(Tiny_State *state, const char *str)
     return node;
 }
 
-void* Tiny_ToAddr(const Tiny_Value value) {
-    if (value.type == TINY_VAL_LIGHT_NATIVE)
-        return value.addr;
-    if (value.type != TINY_VAL_NATIVE)
-        return NULL;
+void *Tiny_ToAddr(const Tiny_Value value) {
+    if (value.type == TINY_VAL_LIGHT_NATIVE) return value.addr;
+    if (value.type != TINY_VAL_NATIVE) return NULL;
 
     return value.obj->nat.addr;
 }
 
-const Tiny_NativeProp* Tiny_GetProp(const Tiny_Value value) {
-    if (value.type != TINY_VAL_NATIVE)
-        return NULL;
+const Tiny_NativeProp *Tiny_GetProp(const Tiny_Value value) {
+    if (value.type != TINY_VAL_NATIVE) return NULL;
     return value.obj->nat.prop;
 }
 
 Tiny_Value Tiny_GetField(const Tiny_Value value, int index) {
-    if (value.type != TINY_VAL_STRUCT)
-        return Tiny_Null;
+    if (value.type != TINY_VAL_STRUCT) return Tiny_Null;
     assert(index >= 0 && index < value.obj->ostruct.n);
 
     return value.obj->ostruct.fields[index];
 }
 
-static Tiny_Object* NewObject(Tiny_StateThread *thread, Tiny_ValueType type) {
+static Tiny_Object *NewObject(Tiny_StateThread *thread, Tiny_ValueType type) {
     assert(type != TINY_VAL_STRUCT);
 
     Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object));
@@ -126,7 +128,8 @@ static Tiny_Object* NewObject(Tiny_StateThread *thread, Tiny_ValueType type) {
 
 // Allocates memory for and copies the given string contiguously with the object, resulting in
 // a single allocation for the entire thing.
-static Tiny_Object* NewStringObjectEmbedString(Tiny_StateThread *thread, const char *str, size_t len) {
+static Tiny_Object *NewStringObjectEmbedString(Tiny_StateThread *thread, const char *str,
+                                               size_t len) {
     Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + len + 1);
 
     obj->type = TINY_VAL_STRING;
@@ -135,7 +138,7 @@ static Tiny_Object* NewStringObjectEmbedString(Tiny_StateThread *thread, const c
     obj->marked = 0;
 
     obj->string.len = len;
-    obj->string.ptr = (char*) obj + sizeof(Tiny_Object);
+    obj->string.ptr = (char *)obj + sizeof(Tiny_Object);
     memcpy(obj->string.ptr, str, len);
 
     // Null terminate the string for interfacing with C
@@ -220,17 +223,17 @@ Tiny_Value Tiny_NewStringCopyNullTerminated(Tiny_StateThread *thread, const char
 static void Symbol_destroy(Tiny_Symbol *sym, Tiny_Context *ctx);
 
 static Tiny_Value Lib_ToInt(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
-    return Tiny_NewInt((int) Tiny_ToFloat(args[0]));
+    return Tiny_NewInt((int)Tiny_ToFloat(args[0]));
 }
 
 static Tiny_Value Lib_ToFloat(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
-    return Tiny_NewFloat((float) Tiny_ToInt(args[0]));
+    return Tiny_NewFloat((float)Tiny_ToInt(args[0]));
 }
 
-Tiny_State* Tiny_CreateStateWithContext(Tiny_Context ctx) {
+Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx) {
     Tiny_State *state = TMalloc(&ctx, sizeof(Tiny_State));
 
-    state->l = (Tiny_Lexer ) { 0 };
+    state->l = (Tiny_Lexer){0};
 
     state->ctx = ctx;
 
@@ -257,9 +260,7 @@ Tiny_State* Tiny_CreateStateWithContext(Tiny_Context ctx) {
     return state;
 }
 
-Tiny_State* Tiny_CreateState(void) {
-    return Tiny_CreateStateWithContext(Tiny_DefaultContext);
-}
+Tiny_State *Tiny_CreateState(void) { return Tiny_CreateStateWithContext(Tiny_DefaultContext); }
 
 void Tiny_DeleteState(Tiny_State *state) {
     sb_free(&state->ctx, state->program);
@@ -328,7 +329,8 @@ void Tiny_SetGlobal(Tiny_StateThread *thread, int globalIndex, Tiny_Value value)
     thread->globalVars[globalIndex] = value;
 }
 
-Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const Tiny_Value *args, int count) {
+Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const Tiny_Value *args,
+                             int count) {
     assert(thread->state && functionIndex >= 0);
 
     int pc, fp, sp, fc;
@@ -379,7 +381,7 @@ static int GenerateInt(Tiny_State *state, int value) {
 
     int pos = sb_count(state->program);
 
-    Word *wp = (Word*) (&value);
+    Word *wp = (Word *)(&value);
     for (int i = 0; i < sizeof(int); ++i) {
         GenerateCode(state, *wp++);
     }
@@ -391,7 +393,7 @@ static void GenerateIntAt(Tiny_State *state, int value, int pc) {
     // Must be aligned
     assert(pc % 4 == 0);
 
-    Word *wp = (Word*) (&value);
+    Word *wp = (Word *)(&value);
     for (int i = 0; i < 4; ++i) {
         state->program[pc + i] = *wp++;
     }
@@ -399,8 +401,7 @@ static void GenerateIntAt(Tiny_State *state, int value, int pc) {
 
 static int RegisterString(Tiny_State *state, const char *string) {
     for (int i = 0; i < state->numStrings; ++i) {
-        if (strcmp(state->strings[i], string) == 0)
-            return i;
+        if (strcmp(state->strings[i], string) == 0) return i;
     }
 
     assert(state->numStrings < MAX_STRINGS);
@@ -409,20 +410,24 @@ static int RegisterString(Tiny_State *state, const char *string) {
     return state->numStrings - 1;
 }
 
-static Tiny_Symbol* GetPrimTag(Tiny_SymbolType type) {
-    static Tiny_Symbol prims[] = {
-            { TINY_SYM_TAG_VOID,  (char*) "void", },
-            { TINY_SYM_TAG_BOOL,  (char*) "bool", },
-            { TINY_SYM_TAG_INT,   (char*) "int"   },
-            { TINY_SYM_TAG_FLOAT, (char*) "float" },
-            { TINY_SYM_TAG_STR,   (char*) "str"   },
-            { TINY_SYM_TAG_ANY,   (char*) "any"   }
-    };
+static Tiny_Symbol *GetPrimTag(Tiny_SymbolType type) {
+    static Tiny_Symbol prims[] = {{
+                                      TINY_SYM_TAG_VOID,
+                                      (char *)"void",
+                                  },
+                                  {
+                                      TINY_SYM_TAG_BOOL,
+                                      (char *)"bool",
+                                  },
+                                  {TINY_SYM_TAG_INT, (char *)"int"},
+                                  {TINY_SYM_TAG_FLOAT, (char *)"float"},
+                                  {TINY_SYM_TAG_STR, (char *)"str"},
+                                  {TINY_SYM_TAG_ANY, (char *)"any"}};
 
     return &prims[type - TINY_SYM_TAG_VOID];
 }
 
-static Tiny_Symbol* Symbol_create(Tiny_SymbolType type, const char *name, Tiny_State *state) {
+static Tiny_Symbol *Symbol_create(Tiny_SymbolType type, const char *name, Tiny_State *state) {
     Tiny_Symbol *sym = TMalloc(&state->ctx, sizeof(Tiny_Symbol));
 
     sym->name = CloneString(&state->ctx, name);
@@ -467,9 +472,7 @@ static void Symbol_destroy(Tiny_Symbol *sym, Tiny_Context *ctx) {
     TFree(ctx, sym);
 }
 
-static void OpenScope(Tiny_State *state) {
-    ++state->currScope;
-}
+static void OpenScope(Tiny_State *state) { ++state->currScope; }
 
 static void CloseScope(Tiny_State *state) {
     if (state->currFunc) {
@@ -487,7 +490,7 @@ static void CloseScope(Tiny_State *state) {
     --state->currScope;
 }
 
-static Tiny_Symbol* ReferenceVariable(Tiny_State *state, const char *name) {
+static Tiny_Symbol *ReferenceVariable(Tiny_State *state, const char *name) {
     if (state->currFunc) {
         // Check local variables
         for (int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
@@ -518,8 +521,7 @@ static Tiny_Symbol* ReferenceVariable(Tiny_State *state, const char *name) {
         Tiny_Symbol *sym = state->globalSymbols[i];
 
         if (sym->type == TINY_SYM_GLOBAL || sym->type == TINY_SYM_CONST) {
-            if (strcmp(sym->name, name) == 0)
-                return sym;
+            if (strcmp(sym->name, name) == 0) return sym;
         }
     }
 
@@ -527,12 +529,14 @@ static Tiny_Symbol* ReferenceVariable(Tiny_State *state, const char *name) {
     return NULL;
 }
 
-static Tiny_Symbol* DeclareGlobalVar(Tiny_State *state, const char *name) {
+static Tiny_Symbol *DeclareGlobalVar(Tiny_State *state, const char *name) {
     Tiny_Symbol *sym = ReferenceVariable(state, name);
 
     if (sym && (sym->type == TINY_SYM_GLOBAL || sym->type == TINY_SYM_CONST)) {
-        ReportErrorSL(state, "Attempted to declare multiple global entities with the same "
-                "name '%s'.", name);
+        ReportErrorSL(state,
+                      "Attempted to declare multiple global entities with the same "
+                      "name '%s'.",
+                      name);
     }
 
     Tiny_Symbol *newNode = Symbol_create(TINY_SYM_GLOBAL, name, state);
@@ -554,7 +558,8 @@ static Tiny_Symbol* DeclareGlobalVar(Tiny_State *state, const char *name) {
 // position relative to frame pointer We could reverse it, but this works out
 // nicely for Foreign calls since we can just supply a pointer to the initial
 // arg instead of reversing them.
-static Tiny_Symbol* DeclareArgument(Tiny_State *state, const char *name, Tiny_Symbol *tag, int nargs) {
+static Tiny_Symbol *DeclareArgument(Tiny_State *state, const char *name, Tiny_Symbol *tag,
+                                    int nargs) {
     assert(state->currFunc);
     assert(tag);
 
@@ -564,7 +569,8 @@ static Tiny_Symbol* DeclareArgument(Tiny_State *state, const char *name, Tiny_Sy
         assert(sym->type == TINY_SYM_LOCAL);
 
         if (strcmp(sym->name, name) == 0) {
-            ReportErrorSL(state, "Function '%s' takes multiple arguments with name '%s'.\n", state->currFunc->name, name);
+            ReportErrorSL(state, "Function '%s' takes multiple arguments with name '%s'.\n",
+                          state->currFunc->name, name);
         }
     }
 
@@ -581,7 +587,7 @@ static Tiny_Symbol* DeclareArgument(Tiny_State *state, const char *name, Tiny_Sy
     return newNode;
 }
 
-static Tiny_Symbol* DeclareLocal(Tiny_State *state, const char *name) {
+static Tiny_Symbol *DeclareLocal(Tiny_State *state, const char *name) {
     assert(state->currFunc);
 
     for (int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
@@ -590,8 +596,10 @@ static Tiny_Symbol* DeclareLocal(Tiny_State *state, const char *name) {
         assert(sym->type == TINY_SYM_LOCAL);
 
         if (!sym->var.scopeEnded && strcmp(sym->name, name) == 0) {
-            ReportErrorSL(state, "Function '%s' has multiple locals in the same scope with "
-                    "name '%s'.\n", state->currFunc->name, name);
+            ReportErrorSL(state,
+                          "Function '%s' has multiple locals in the same scope with "
+                          "name '%s'.\n",
+                          state->currFunc->name, name);
         }
     }
 
@@ -607,17 +615,22 @@ static Tiny_Symbol* DeclareLocal(Tiny_State *state, const char *name) {
     return newNode;
 }
 
-static Tiny_Symbol* DeclareConst(Tiny_State *state, const char *name, Tiny_Symbol *tag) {
+static Tiny_Symbol *DeclareConst(Tiny_State *state, const char *name, Tiny_Symbol *tag) {
     Tiny_Symbol *sym = ReferenceVariable(state, name);
 
-    if (sym && (sym->type == TINY_SYM_CONST || sym->type == TINY_SYM_LOCAL || sym->type == TINY_SYM_GLOBAL)) {
-        ReportErrorSL(state, "Attempted to define constant with the same name '%s' as "
-                "another value.\n", name);
+    if (sym && (sym->type == TINY_SYM_CONST || sym->type == TINY_SYM_LOCAL ||
+                sym->type == TINY_SYM_GLOBAL)) {
+        ReportErrorSL(state,
+                      "Attempted to define constant with the same name '%s' as "
+                      "another value.\n",
+                      name);
     }
 
     if (state->currFunc)
-        fprintf(stderr, "Warning: Constant '%s' declared inside function bodies will still "
-                "have global scope.\n", name);
+        fprintf(stderr,
+                "Warning: Constant '%s' declared inside function bodies will still "
+                "have global scope.\n",
+                name);
 
     Tiny_Symbol *newNode = Symbol_create(TINY_SYM_CONST, name, state);
 
@@ -628,7 +641,7 @@ static Tiny_Symbol* DeclareConst(Tiny_State *state, const char *name, Tiny_Symbo
     return newNode;
 }
 
-static Tiny_Symbol* DeclareFunction(Tiny_State *state, const char *name) {
+static Tiny_Symbol *DeclareFunction(Tiny_State *state, const char *name) {
     Tiny_Symbol *newNode = Symbol_create(TINY_SYM_FUNCTION, name, state);
 
     newNode->func.index = state->numFunctions;
@@ -642,18 +655,20 @@ static Tiny_Symbol* DeclareFunction(Tiny_State *state, const char *name) {
     return newNode;
 }
 
-static Tiny_Symbol* ReferenceFunction(Tiny_State *state, const char *name) {
+static Tiny_Symbol *ReferenceFunction(Tiny_State *state, const char *name) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
         Tiny_Symbol *node = state->globalSymbols[i];
 
-        if ((node->type == TINY_SYM_FUNCTION || node->type == TINY_SYM_FOREIGN_FUNCTION) && strcmp(node->name, name) == 0)
+        if ((node->type == TINY_SYM_FUNCTION || node->type == TINY_SYM_FOREIGN_FUNCTION) &&
+            strcmp(node->name, name) == 0)
             return node;
     }
 
     return NULL;
 }
 
-static void BindFunction(Tiny_State *state, const char *name, Tiny_Symbol **argTags, bool varargs, Tiny_Symbol *returnTag, Tiny_ForeignFunction func) {
+static void BindFunction(Tiny_State *state, const char *name, Tiny_Symbol **argTags, bool varargs,
+                         Tiny_Symbol *returnTag, Tiny_ForeignFunction func) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
         Tiny_Symbol *node = state->globalSymbols[i];
 
@@ -679,7 +694,7 @@ static void BindFunction(Tiny_State *state, const char *name, Tiny_Symbol **argT
     state->numForeignFunctions += 1;
 }
 
-static Tiny_Symbol* GetTagFromName(Tiny_State *state, const char *name, bool declareStruct);
+static Tiny_Symbol *GetTagFromName(Tiny_State *state, const char *name, bool declareStruct);
 
 void Tiny_RegisterType(Tiny_State *state, const char *name) {
     Tiny_Symbol *s = GetTagFromName(state, name, false);
@@ -700,7 +715,7 @@ void Tiny_RegisterType(Tiny_State *state, const char *name) {
     sb_push(&state->ctx, state->globalSymbols, s);
 }
 
-static Tiny_Symbol* ParseTypeL(Tiny_State *state, Tiny_Lexer *l);
+static Tiny_Symbol *ParseTypeL(Tiny_State *state, Tiny_Lexer *l);
 
 void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction func) {
     Tiny_Lexer l;
@@ -786,11 +801,12 @@ void Tiny_BindConstFloat(Tiny_State *state, const char *name, float f) {
 }
 
 void Tiny_BindConstString(Tiny_State *state, const char *name, const char *string) {
-    DeclareConst(state, name, GetPrimTag(TINY_SYM_TAG_STR))->constant.sIndex = RegisterString(state, string);
+    DeclareConst(state, name, GetPrimTag(TINY_SYM_TAG_STR))->constant.sIndex =
+        RegisterString(state, string);
 }
 
-static Tiny_Expr* Expr_create(Tiny_ExprType type, Tiny_State *state) {
-    Tiny_Expr *exp = Tiny_ArenaAlloc(&state->parserArena, sizeof(Tiny_Expr), sizeof(void*));
+static Tiny_Expr *Expr_create(Tiny_ExprType type, Tiny_State *state) {
+    Tiny_Expr *exp = Tiny_ArenaAlloc(&state->parserArena, sizeof(Tiny_Expr), sizeof(void *));
 
     exp->next = NULL;
     exp->pos = state->l.pos;
@@ -802,7 +818,7 @@ static Tiny_Expr* Expr_create(Tiny_ExprType type, Tiny_State *state) {
     return exp;
 }
 
-static Tiny_Expr* ParseExpr(Tiny_State *state);
+static Tiny_Expr *ParseExpr(Tiny_State *state);
 
 static void GetExpectTokenSL(Tiny_State *state, Tiny_TokenKind tok, const char *msg) {
     Tiny_GetToken(&state->l);
@@ -817,7 +833,9 @@ static void ReportErrorE(Tiny_State *state, const Tiny_Expr *exp, const char *s,
 
     state->compileErrorResult.type = TINY_COMPILE_ERROR;
 
-    Tiny_FormatErrorV(state->compileErrorResult.error.msg, sizeof(state->compileErrorResult.error.msg), state->l.fileName, state->l.src, exp->pos, s, args);
+    Tiny_FormatErrorV(state->compileErrorResult.error.msg,
+                      sizeof(state->compileErrorResult.error.msg), state->l.fileName, state->l.src,
+                      exp->pos, s, args);
 
     va_end(args);
 
@@ -830,7 +848,9 @@ static void ReportErrorS(Tiny_State *state, const Tiny_Symbol *sym, const char *
 
     state->compileErrorResult.type = TINY_COMPILE_ERROR;
 
-    Tiny_FormatErrorV(state->compileErrorResult.error.msg, sizeof(state->compileErrorResult.error.msg), state->l.fileName, state->l.src, sym->pos, s, args);
+    Tiny_FormatErrorV(state->compileErrorResult.error.msg,
+                      sizeof(state->compileErrorResult.error.msg), state->l.fileName, state->l.src,
+                      sym->pos, s, args);
 
     va_end(args);
 
@@ -847,9 +867,10 @@ static void ExpectTokenSL(Tiny_State *state, Tiny_TokenKind tok, const char *msg
     ExpectTokenL(state, &state->l, tok, msg);
 }
 
-static Tiny_Symbol* GetStructTag(Tiny_State *state, const char *name) {
+static Tiny_Symbol *GetStructTag(Tiny_State *state, const char *name) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        if (state->globalSymbols[i]->type == TINY_SYM_TAG_STRUCT && strcmp(state->globalSymbols[i]->name, name) == 0) {
+        if (state->globalSymbols[i]->type == TINY_SYM_TAG_STRUCT &&
+            strcmp(state->globalSymbols[i]->name, name) == 0) {
             return state->globalSymbols[i];
         }
     }
@@ -857,11 +878,10 @@ static Tiny_Symbol* GetStructTag(Tiny_State *state, const char *name) {
     return NULL;
 }
 
-static Tiny_Symbol* DeclareStruct(Tiny_State *state, const char *name, bool search) {
+static Tiny_Symbol *DeclareStruct(Tiny_State *state, const char *name, bool search) {
     if (search) {
         Tiny_Symbol *s = GetStructTag(state, name);
-        if (s)
-            return s;
+        if (s) return s;
     }
 
     Tiny_Symbol *s = Symbol_create(TINY_SYM_TAG_STRUCT, name, state);
@@ -874,7 +894,7 @@ static Tiny_Symbol* DeclareStruct(Tiny_State *state, const char *name, bool sear
     return s;
 }
 
-static Tiny_Symbol* GetTagFromName(Tiny_State *state, const char *name, bool declareStruct) {
+static Tiny_Symbol *GetTagFromName(Tiny_State *state, const char *name, bool declareStruct) {
     if (strcmp(name, "void") == 0)
         return GetPrimTag(TINY_SYM_TAG_VOID);
     else if (strcmp(name, "bool") == 0)
@@ -891,7 +911,8 @@ static Tiny_Symbol* GetTagFromName(Tiny_State *state, const char *name, bool dec
         for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
             Tiny_Symbol *s = state->globalSymbols[i];
 
-            if ((s->type == TINY_SYM_TAG_FOREIGN || s->type == TINY_SYM_TAG_STRUCT) && strcmp(s->name, name) == 0) {
+            if ((s->type == TINY_SYM_TAG_FOREIGN || s->type == TINY_SYM_TAG_STRUCT) &&
+                strcmp(s->name, name) == 0) {
                 return s;
             }
         }
@@ -904,9 +925,9 @@ static Tiny_Symbol* GetTagFromName(Tiny_State *state, const char *name, bool dec
     return NULL;
 }
 
-static const char* GetTagName(const Tiny_Symbol *tag);
+static const char *GetTagName(const Tiny_Symbol *tag);
 
-static Tiny_Symbol* GetOrCreateNullable(Tiny_State *state, Tiny_Symbol *inner) {
+static Tiny_Symbol *GetOrCreateNullable(Tiny_State *state, Tiny_Symbol *inner) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
         Tiny_Symbol *sym = state->globalSymbols[i];
 
@@ -916,7 +937,7 @@ static Tiny_Symbol* GetOrCreateNullable(Tiny_State *state, Tiny_Symbol *inner) {
     }
 
     // FIXME(Apaar): Allow names longer than 256 chars
-    char nameBuf[256] = { 0 };
+    char nameBuf[256] = {0};
 
     snprintf(nameBuf, sizeof(nameBuf), "%s?", GetTagName(inner));
 
@@ -929,7 +950,7 @@ static Tiny_Symbol* GetOrCreateNullable(Tiny_State *state, Tiny_Symbol *inner) {
     return sym;
 }
 
-static Tiny_Symbol* GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
+static Tiny_Symbol *GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
     assert(s->type == TINY_SYM_TAG_STRUCT);
     assert(s->sstruct.defined);
 
@@ -937,23 +958,19 @@ static Tiny_Symbol* GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
         Tiny_Symbol *f = s->sstruct.fields[i];
 
         if (strcmp(f->name, name) == 0) {
-            if (index)
-                *index = i;
+            if (index) *index = i;
             return f->fieldTag;
         }
     }
 
-    if (index)
-        *index = -1;
+    if (index) *index = -1;
 
     return NULL;
 }
 
-static Tiny_TokenKind GetNextToken(Tiny_State *state) {
-    return Tiny_GetToken(&state->l);
-}
+static Tiny_TokenKind GetNextToken(Tiny_State *state) { return Tiny_GetToken(&state->l); }
 
-static Tiny_Symbol* ParseTypeL(Tiny_State *state, Tiny_Lexer *l) {
+static Tiny_Symbol *ParseTypeL(Tiny_State *state, Tiny_Lexer *l) {
     ExpectTokenL(state, l, TINY_TOK_IDENT, "Expected identifier for typename.");
 
     Tiny_Symbol *s = GetTagFromName(state, l->lexeme, true);
@@ -966,7 +983,8 @@ static Tiny_Symbol* ParseTypeL(Tiny_State *state, Tiny_Lexer *l) {
 
     if (l->lastTok == TINY_TOK_QUESTION) {
         if (s->type == TINY_SYM_TAG_VOID) {
-            ReportErrorL(state, l, "Attempted to make a nullable 'void' type which doesn't make any sense.");
+            ReportErrorL(state, l,
+                         "Attempted to make a nullable 'void' type which doesn't make any sense.");
         }
 
         s = GetOrCreateNullable(state, s);
@@ -976,13 +994,11 @@ static Tiny_Symbol* ParseTypeL(Tiny_State *state, Tiny_Lexer *l) {
     return s;
 }
 
-static Tiny_Symbol* ParseTypeSL(Tiny_State *state) {
-    return ParseTypeL(state, &state->l);
-}
+static Tiny_Symbol *ParseTypeSL(Tiny_State *state) { return ParseTypeL(state, &state->l); }
 
-static Tiny_Expr* ParseStatement(Tiny_State *state);
+static Tiny_Expr *ParseStatement(Tiny_State *state);
 
-static Tiny_Expr* ParseIf(Tiny_State *state) {
+static Tiny_Expr *ParseIf(Tiny_State *state) {
     Tiny_Expr *exp = Expr_create(TINY_EXP_IF, state);
 
     GetNextToken(state);
@@ -999,7 +1015,7 @@ static Tiny_Expr* ParseIf(Tiny_State *state) {
     return exp;
 }
 
-static Tiny_Expr* ParseBlock(Tiny_State *state) {
+static Tiny_Expr *ParseBlock(Tiny_State *state) {
     assert(state->l.lastTok == TINY_TOK_OPENCURLY);
 
     Tiny_Expr *exp = Expr_create(TINY_EXP_BLOCK, state);
@@ -1025,11 +1041,12 @@ static Tiny_Expr* ParseBlock(Tiny_State *state) {
     return exp;
 }
 
-static Tiny_Expr* ParseFunc(Tiny_State *state) {
+static Tiny_Expr *ParseFunc(Tiny_State *state) {
     assert(state->l.lastTok == TINY_TOK_FUNC);
 
     if (state->currFunc) {
-        ReportErrorSL(state, "Attempted to define function inside of function '%s'.", state->currFunc->name);
+        ReportErrorSL(state, "Attempted to define function inside of function '%s'.",
+                      state->currFunc->name);
     }
 
     Tiny_Expr *exp = Expr_create(TINY_EXP_PROC, state);
@@ -1069,12 +1086,12 @@ static Tiny_Expr* ParseFunc(Tiny_State *state) {
         sb_push(&state->ctx, args, arg);
 
         if (state->l.lastTok != TINY_TOK_CLOSEPAREN && state->l.lastTok != TINY_TOK_COMMA) {
-            ReportErrorSL(state, "Expected ')' or ',' after parameter name in function "
-                    "parameter list.");
+            ReportErrorSL(state,
+                          "Expected ')' or ',' after parameter name in function "
+                          "parameter list.");
         }
 
-        if (state->l.lastTok == TINY_TOK_COMMA)
-            GetNextToken(state);
+        if (state->l.lastTok == TINY_TOK_COMMA) GetNextToken(state);
     }
 
     for (int i = 0; i < sb_count(args); ++i) {
@@ -1104,9 +1121,10 @@ static Tiny_Expr* ParseFunc(Tiny_State *state) {
     return exp;
 }
 
-static Tiny_Symbol* ParseStruct(Tiny_State *state) {
+static Tiny_Symbol *ParseStruct(Tiny_State *state) {
     if (state->currFunc) {
-        ReportErrorSL(state, "Attempted to declare struct inside func %s. Can't do that bruh.", state->currFunc->name);
+        ReportErrorSL(state, "Attempted to declare struct inside func %s. Can't do that bruh.",
+                      state->currFunc->name);
     }
 
     Tiny_TokenPos pos = state->l.pos;
@@ -1137,7 +1155,8 @@ static Tiny_Symbol* ParseStruct(Tiny_State *state) {
 
         for (int i = 0; i < count; ++i) {
             if (strcmp(s->sstruct.fields[i]->name, state->l.lexeme) == 0) {
-                ReportErrorSL(state, "Declared multiple fields with the same name %s.", state->l.lexeme);
+                ReportErrorSL(state, "Declared multiple fields with the same name %s.",
+                              state->l.lexeme);
             }
         }
 
@@ -1161,7 +1180,7 @@ static Tiny_Symbol* ParseStruct(Tiny_State *state) {
     return s;
 }
 
-static Tiny_Expr* ParseCall(Tiny_State *state, Tiny_StringNode *ident) {
+static Tiny_Expr *ParseCall(Tiny_State *state, Tiny_StringNode *ident) {
     assert(state->l.lastTok == TINY_TOK_OPENPAREN);
 
     Tiny_Expr *exp = Expr_create(TINY_EXP_CALL, state);
@@ -1187,9 +1206,9 @@ static Tiny_Expr* ParseCall(Tiny_State *state, Tiny_StringNode *ident) {
     return exp;
 }
 
-static Tiny_Expr* ParseFactor(Tiny_State *state);
+static Tiny_Expr *ParseFactor(Tiny_State *state);
 
-static Tiny_Expr* ParseValue(Tiny_State *state) {
+static Tiny_Expr *ParseValue(Tiny_State *state) {
     switch (state->l.lastTok) {
         case TINY_TOK_NULL: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_NULL, state);
@@ -1197,8 +1216,7 @@ static Tiny_Expr* ParseValue(Tiny_State *state) {
             GetNextToken(state);
 
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_BOOL: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_BOOL, state);
@@ -1208,8 +1226,7 @@ static Tiny_Expr* ParseValue(Tiny_State *state) {
             GetNextToken(state);
 
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_IDENT: {
             Tiny_TokenPos pos = state->l.pos;
@@ -1231,8 +1248,7 @@ static Tiny_Expr* ParseValue(Tiny_State *state) {
             exp->id.name = ident;
 
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_MINUS:
         case TINY_TOK_BANG: {
@@ -1243,40 +1259,35 @@ static Tiny_Expr* ParseValue(Tiny_State *state) {
             exp->unary.exp = ParseFactor(state);
 
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_CHAR: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_CHAR, state);
             exp->iValue = state->l.iValue;
             GetNextToken(state);
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_INT: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_INT, state);
             exp->iValue = state->l.iValue;
             GetNextToken(state);
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_FLOAT: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_FLOAT, state);
             exp->fValue = state->l.fValue;
             GetNextToken(state);
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_STRING: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_STRING, state);
             exp->sIndex = RegisterString(state, state->l.lexeme);
             GetNextToken(state);
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_OPENPAREN: {
             GetNextToken(state);
@@ -1288,8 +1299,7 @@ static Tiny_Expr* ParseValue(Tiny_State *state) {
             Tiny_Expr *exp = Expr_create(TINY_EXP_PAREN, state);
             exp->paren = inner;
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_NEW: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_CONSTRUCTOR, state);
@@ -1313,13 +1323,15 @@ static Tiny_Expr* ParseValue(Tiny_State *state) {
             while (state->l.lastTok != TINY_TOK_CLOSECURLY) {
                 if (state->l.lastTok == TINY_TOK_DOT) {
                     // Named argument, .xyz = value
-                    GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after '.' in designated initializer.");
+                    GetExpectTokenSL(state, TINY_TOK_IDENT,
+                                     "Expected identifier after '.' in designated initializer.");
 
                     Tiny_StringNode *ident = CreateExprStringNode(state, state->l.lexeme);
 
                     TINY_LL_APPEND(exp->constructor.argNamesHead, argNamesTail, ident);
 
-                    GetExpectTokenSL(state, TINY_TOK_EQUAL, "Expected = after designated initializer");
+                    GetExpectTokenSL(state, TINY_TOK_EQUAL,
+                                     "Expected = after designated initializer");
 
                     GetNextToken(state);
                 }
@@ -1332,15 +1344,13 @@ static Tiny_Expr* ParseValue(Tiny_State *state) {
                     ReportErrorSL(state, "Expected '}' or ',' in constructor arg list.");
                 }
 
-                if (state->l.lastTok == TINY_TOK_COMMA)
-                    GetNextToken(state);
+                if (state->l.lastTok == TINY_TOK_COMMA) GetNextToken(state);
             }
 
             GetNextToken(state);
 
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_CAST: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_CAST, state);
@@ -1357,7 +1367,8 @@ static Tiny_Expr* ParseValue(Tiny_State *state) {
 
             exp->cast.tag = ParseTypeSL(state);
 
-            ExpectTokenSL(state, TINY_TOK_CLOSEPAREN, "Expected ')' to match previous '(' after cast.");
+            ExpectTokenSL(state, TINY_TOK_CLOSEPAREN,
+                          "Expected ')' to match previous '(' after cast.");
 
             GetNextToken(state);
 
@@ -1375,8 +1386,7 @@ static Tiny_Expr* ParseValue(Tiny_State *state) {
             }
 
             return exp;
-        }
-            break;
+        } break;
 
             // This is effectively a ternary
         case TINY_TOK_IF: {
@@ -1389,22 +1399,21 @@ static Tiny_Expr* ParseValue(Tiny_State *state) {
             // Body and else statement must evaluate to a value
             exp->ifx.body = ParseExpr(state);
 
-            ExpectTokenSL(state, TINY_TOK_ELSE, "Expected 'else' after true value in if expression");
+            ExpectTokenSL(state, TINY_TOK_ELSE,
+                          "Expected 'else' after true value in if expression");
 
             GetNextToken(state);
 
             exp->ifx.alt = ParseExpr(state);
 
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_LEXER_ERROR: {
             assert(state->l.errorMsg);
             ReportErrorSL(state, state->l.errorMsg);
             return NULL;
-        }
-            break;
+        } break;
 
         default:
             break;
@@ -1414,7 +1423,7 @@ static Tiny_Expr* ParseValue(Tiny_State *state) {
     return NULL;
 }
 
-static Tiny_Expr* ParseArrowOrDot(Tiny_State *state, Tiny_Expr *lhs) {
+static Tiny_Expr *ParseArrowOrDot(Tiny_State *state, Tiny_Expr *lhs) {
     Tiny_Expr *exp = lhs;
 
     while (state->l.lastTok == TINY_TOK_DOT || state->l.lastTok == TINY_TOK_ARROW) {
@@ -1459,7 +1468,7 @@ static Tiny_Expr* ParseArrowOrDot(Tiny_State *state, Tiny_Expr *lhs) {
     return exp;
 }
 
-static Tiny_Expr* ParseFactor(Tiny_State *state) {
+static Tiny_Expr *ParseFactor(Tiny_State *state) {
     Tiny_Expr *exp = ParseValue(state);
     return ParseArrowOrDot(state, exp);
 }
@@ -1498,12 +1507,11 @@ static int GetTokenPrec(int tok) {
     return prec;
 }
 
-static Tiny_Expr* ParseBinRhs(Tiny_State *state, int exprPrec, Tiny_Expr *lhs) {
+static Tiny_Expr *ParseBinRhs(Tiny_State *state, int exprPrec, Tiny_Expr *lhs) {
     while (true) {
         int prec = GetTokenPrec(state->l.lastTok);
 
-        if (prec < exprPrec)
-            return lhs;
+        if (prec < exprPrec) return lhs;
 
         int binOp = state->l.lastTok;
 
@@ -1512,8 +1520,7 @@ static Tiny_Expr* ParseBinRhs(Tiny_State *state, int exprPrec, Tiny_Expr *lhs) {
         Tiny_Expr *rhs = ParseFactor(state);
         int nextPrec = GetTokenPrec(state->l.lastTok);
 
-        if (prec < nextPrec)
-            rhs = ParseBinRhs(state, prec + 1, rhs);
+        if (prec < nextPrec) rhs = ParseBinRhs(state, prec + 1, rhs);
 
         Tiny_Expr *newLhs = Expr_create(TINY_EXP_BINARY, state);
 
@@ -1525,12 +1532,12 @@ static Tiny_Expr* ParseBinRhs(Tiny_State *state, int exprPrec, Tiny_Expr *lhs) {
     }
 }
 
-static Tiny_Expr* ParseExpr(Tiny_State *state) {
+static Tiny_Expr *ParseExpr(Tiny_State *state) {
     Tiny_Expr *factor = ParseFactor(state);
     return ParseBinRhs(state, 0, factor);
 }
 
-static Tiny_Expr* ParseStatement(Tiny_State *state) {
+static Tiny_Expr *ParseStatement(Tiny_State *state) {
     switch (state->l.lastTok) {
         case TINY_TOK_OPENCURLY:
             return ParseBlock(state);
@@ -1554,8 +1561,7 @@ static Tiny_Expr* ParseStatement(Tiny_State *state) {
             CloseScope(state);
 
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_FOR: {
             GetNextToken(state);
@@ -1584,13 +1590,13 @@ static Tiny_Expr* ParseStatement(Tiny_State *state) {
             CloseScope(state);
 
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_RETURN: {
             if (!state->currFunc) {
-                ReportErrorSL(state, "Attempted to return from outside a function. Why? Why would "
-                        "you do that? Why would you do any of that?");
+                ReportErrorSL(state,
+                              "Attempted to return from outside a function. Why? Why would "
+                              "you do that? Why would you do any of that?");
             }
 
             Tiny_Expr *exp = Expr_create(TINY_EXP_RETURN, state);
@@ -1603,14 +1609,14 @@ static Tiny_Expr* ParseStatement(Tiny_State *state) {
             }
 
             if (state->currFunc->func.returnTag->type == TINY_SYM_TAG_VOID) {
-                ReportErrorSL(state, "Attempted to return value from function which is "
-                        "supposed to return nothing (void).");
+                ReportErrorSL(state,
+                              "Attempted to return value from function which is "
+                              "supposed to return nothing (void).");
             }
 
             exp->retExpr = ParseExpr(state);
             return exp;
-        }
-            break;
+        } break;
 
             // TODO(Apaar): Labeled break/continue
         case TINY_TOK_BREAK: {
@@ -1621,8 +1627,7 @@ static Tiny_Expr* ParseStatement(Tiny_State *state) {
             exp->breakContinue.patchLoc = -1;
 
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_CONTINUE: {
             Tiny_Expr *exp = Expr_create(TINY_EXP_CONTINUE, state);
@@ -1633,12 +1638,12 @@ static Tiny_Expr* ParseStatement(Tiny_State *state) {
             exp->breakContinue.patchLoc = -1;
 
             return exp;
-        }
-            break;
+        } break;
 
         case TINY_TOK_USE: {
             if (state->currFunc || state->currScope != 0) {
-                ReportErrorSL(state, "'use' statements are only valid at the top-level of a Tiny file.");
+                ReportErrorSL(state,
+                              "'use' statements are only valid at the top-level of a Tiny file.");
             }
 
             Tiny_Expr *exp = Expr_create(TINY_EXP_USE, state);
@@ -1657,7 +1662,8 @@ static Tiny_Expr* ParseStatement(Tiny_State *state) {
             GetNextToken(state);
 
             while (state->l.lastTok != TINY_TOK_CLOSEPAREN) {
-                ExpectTokenSL(state, TINY_TOK_STRING, "Expected string as arg to 'use' module name");
+                ExpectTokenSL(state, TINY_TOK_STRING,
+                              "Expected string as arg to 'use' module name");
 
                 Tiny_StringNode *arg = CreateExprStringNode(state, state->l.lexeme);
 
@@ -1685,8 +1691,7 @@ static Tiny_Expr* ParseStatement(Tiny_State *state) {
             }
 
             return exp;
-        }
-            break;
+        } break;
 
         default: {
             Tiny_Expr *lhs = ParseFactor(state);
@@ -1737,17 +1742,23 @@ static Tiny_Expr* ParseStatement(Tiny_State *state) {
                 }
 
                 if (rhs->type == TINY_EXP_BOOL) {
-                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_BOOL))->constant.bValue = rhs->boolean;
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_BOOL))
+                        ->constant.bValue = rhs->boolean;
                 } else if (rhs->type == TINY_EXP_CHAR) {
-                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_INT))->constant.iValue = rhs->iValue;
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_INT))
+                        ->constant.iValue = rhs->iValue;
                 } else if (rhs->type == TINY_EXP_INT) {
-                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_INT))->constant.iValue = rhs->iValue;
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_INT))
+                        ->constant.iValue = rhs->iValue;
                 } else if (rhs->type == TINY_EXP_FLOAT) {
-                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_FLOAT))->constant.fValue = rhs->fValue;
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_FLOAT))
+                        ->constant.fValue = rhs->fValue;
                 } else if (rhs->type == TINY_EXP_STRING) {
-                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_STR))->constant.sIndex = rhs->sIndex;
+                    DeclareConst(state, lhs->id.name->value, GetPrimTag(TINY_SYM_TAG_STR))
+                        ->constant.sIndex = rhs->sIndex;
                 } else {
-                    ReportErrorSL(state, "Expected number or string to be bound to constant '%s'.", lhs->id.name->value);
+                    ReportErrorSL(state, "Expected number or string to be bound to constant '%s'.",
+                                  lhs->id.name->value);
                 }
             }
 
@@ -1761,15 +1772,14 @@ static Tiny_Expr* ParseStatement(Tiny_State *state) {
             bin->binary.op = op;
 
             return bin;
-        }
-            break;
+        } break;
     }
 
     ReportErrorSL(state, "Unexpected token '%s'.", state->l.lexeme);
     return NULL;
 }
 
-static Tiny_Expr* ParseProgram(Tiny_State *state) {
+static Tiny_Expr *ParseProgram(Tiny_State *state) {
     GetNextToken(state);
 
     if (state->l.lastTok == TINY_TOK_EOF) {
@@ -1790,7 +1800,7 @@ static Tiny_Expr* ParseProgram(Tiny_State *state) {
     return head;
 }
 
-static const char* GetTagName(const Tiny_Symbol *tag) {
+static const char *GetTagName(const Tiny_Symbol *tag) {
     assert(tag);
     return tag->name;
 }
@@ -1823,8 +1833,7 @@ static bool IsTagAssignableTo(const Tiny_Symbol *src, const Tiny_Symbol *dest) {
 }
 
 static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
-    if (exp->tag)
-        return;
+    if (exp->tag) return;
 
     switch (exp->type) {
         case TINY_EXP_NULL:
@@ -1848,10 +1857,12 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
         case TINY_EXP_ID: {
             if (!exp->id.sym) {
-                ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name->value);
+                ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n",
+                             exp->id.name->value);
             }
 
-            assert(exp->id.sym->type == TINY_SYM_GLOBAL || exp->id.sym->type == TINY_SYM_LOCAL || exp->id.sym->type == TINY_SYM_CONST);
+            assert(exp->id.sym->type == TINY_SYM_GLOBAL || exp->id.sym->type == TINY_SYM_LOCAL ||
+                   exp->id.sym->type == TINY_SYM_CONST);
 
             if (exp->id.sym->type != TINY_SYM_CONST) {
                 assert(exp->id.sym->var.tag);
@@ -1860,17 +1871,18 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             } else {
                 exp->tag = exp->id.sym->constant.tag;
             }
-        }
-            break;
+        } break;
 
         case TINY_EXP_CALL: {
             Tiny_Symbol *func = ReferenceFunction(state, exp->call.calleeName->value);
 
             if (!func) {
-                ReportErrorE(state, exp, "Calling undeclared function '%s'.\n", exp->call.calleeName->value);
+                ReportErrorE(state, exp, "Calling undeclared function '%s'.\n",
+                             exp->call.calleeName->value);
             }
 
-            int argc = func->type == TINY_SYM_FOREIGN_FUNCTION ? sb_count(func->foreignFunc.argTags) : sb_count(func->func.args);
+            int argc = func->type == TINY_SYM_FOREIGN_FUNCTION ? sb_count(func->foreignFunc.argTags)
+                                                               : sb_count(func->func.args);
 
             bool isVarargs = func->type == TINY_SYM_FOREIGN_FUNCTION && func->foreignFunc.varargs;
 
@@ -1881,7 +1893,8 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                 const Tiny_Symbol *expectedArgTag = NULL;
 
                 if (i >= argc && !isVarargs) {
-                    ReportErrorE(state, node, "Too many arguments to function '%s' (%d expected).", exp->call.calleeName, argc);
+                    ReportErrorE(state, node, "Too many arguments to function '%s' (%d expected).",
+                                 exp->call.calleeName, argc);
                 }
 
                 if (func->type == TINY_SYM_FOREIGN_FUNCTION) {
@@ -1897,21 +1910,22 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                 }
 
                 if (!IsTagAssignableTo(node->tag, expectedArgTag)) {
-                    ReportErrorE(state, node, "Argument %i to '%s' is supposed to be a '%s' but you supplied a '%s'\n", i + 1, func->name,
-                            GetTagName(expectedArgTag), GetTagName(node->tag));
+                    ReportErrorE(
+                        state, node,
+                        "Argument %i to '%s' is supposed to be a '%s' but you supplied a '%s'\n",
+                        i + 1, func->name, GetTagName(expectedArgTag), GetTagName(node->tag));
                 }
             }
 
-            exp->tag = func->type == TINY_SYM_FOREIGN_FUNCTION ? func->foreignFunc.returnTag : func->func.returnTag;
-        }
-            break;
+            exp->tag = func->type == TINY_SYM_FOREIGN_FUNCTION ? func->foreignFunc.returnTag
+                                                               : func->func.returnTag;
+        } break;
 
         case TINY_EXP_PAREN: {
             ResolveTypes(state, exp->paren);
 
             exp->tag = exp->paren->tag;
-        }
-            break;
+        } break;
 
         case TINY_EXP_BINARY: {
             switch (exp->binary.op) {
@@ -1929,13 +1943,15 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     bool fRhs = !iRhs && exp->binary.rhs->tag->type == TINY_SYM_TAG_FLOAT;
 
                     if ((!iLhs && !fLhs) || (!iRhs && !fRhs)) {
-                        ReportErrorE(state, exp, "Left and right hand side of binary op must be ints or "
-                                "floats, but they're %s and %s", GetTagName(exp->binary.lhs->tag), GetTagName(exp->binary.rhs->tag));
+                        ReportErrorE(state, exp,
+                                     "Left and right hand side of binary op must be ints or "
+                                     "floats, but they're %s and %s",
+                                     GetTagName(exp->binary.lhs->tag),
+                                     GetTagName(exp->binary.rhs->tag));
                     }
 
                     exp->tag = GetPrimTag((iLhs && iRhs) ? TINY_SYM_TAG_INT : TINY_SYM_TAG_FLOAT);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_AND:
                 case TINY_TOK_OR:
@@ -1947,27 +1963,31 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     bool iRhs = exp->binary.rhs->tag->type == TINY_SYM_TAG_INT;
 
                     if (!(iLhs && iRhs)) {
-                        ReportErrorE(state, exp, "Both sides of binary op must be ints, but they're %s and %s\n", GetTagName(exp->binary.lhs->tag),
-                                GetTagName(exp->binary.rhs->tag));
+                        ReportErrorE(
+                            state, exp,
+                            "Both sides of binary op must be ints, but they're %s and %s\n",
+                            GetTagName(exp->binary.lhs->tag), GetTagName(exp->binary.rhs->tag));
                     }
 
                     exp->tag = GetPrimTag(TINY_SYM_TAG_INT);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_LOG_AND:
                 case TINY_TOK_LOG_OR: {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    if (exp->binary.lhs->tag->type != TINY_SYM_TAG_BOOL || exp->binary.rhs->tag->type != TINY_SYM_TAG_BOOL) {
-                        ReportErrorE(state, exp, "Left and right hand side of binary and/or must be bools, "
-                                "but they're %s and %s", GetTagName(exp->binary.lhs->tag), GetTagName(exp->binary.rhs->tag));
+                    if (exp->binary.lhs->tag->type != TINY_SYM_TAG_BOOL ||
+                        exp->binary.rhs->tag->type != TINY_SYM_TAG_BOOL) {
+                        ReportErrorE(state, exp,
+                                     "Left and right hand side of binary and/or must be bools, "
+                                     "but they're %s and %s",
+                                     GetTagName(exp->binary.lhs->tag),
+                                     GetTagName(exp->binary.rhs->tag));
                     }
 
                     exp->tag = GetPrimTag(TINY_SYM_TAG_BOOL);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_GT:
                 case TINY_TOK_LT:
@@ -1983,26 +2003,30 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     bool fRhs = !iRhs && exp->binary.rhs->tag->type == TINY_SYM_TAG_FLOAT;
 
                     if ((!iLhs && !fLhs) || (!iRhs && !fRhs)) {
-                        ReportErrorE(state, exp, "Left and right hand side of binary comparison must be "
-                                "ints or floats, but they're %s and %s", GetTagName(exp->binary.lhs->tag), GetTagName(exp->binary.rhs->tag));
+                        ReportErrorE(state, exp,
+                                     "Left and right hand side of binary comparison must be "
+                                     "ints or floats, but they're %s and %s",
+                                     GetTagName(exp->binary.lhs->tag),
+                                     GetTagName(exp->binary.rhs->tag));
                     }
 
                     exp->tag = GetPrimTag(TINY_SYM_TAG_BOOL);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_EQUALS:
                 case TINY_TOK_NOTEQUALS: {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
-                    if (exp->binary.lhs->tag->type == TINY_SYM_TAG_VOID || exp->binary.rhs->tag->type == TINY_SYM_TAG_VOID) {
-                        ReportErrorE(state, exp, "Attempted to check for equality with void. This is not allowed.");
+                    if (exp->binary.lhs->tag->type == TINY_SYM_TAG_VOID ||
+                        exp->binary.rhs->tag->type == TINY_SYM_TAG_VOID) {
+                        ReportErrorE(
+                            state, exp,
+                            "Attempted to check for equality with void. This is not allowed.");
                     }
 
                     exp->tag = GetPrimTag(TINY_SYM_TAG_BOOL);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_DECLARE: {
                     assert(exp->binary.lhs->type == TINY_EXP_ID);
@@ -2012,15 +2036,15 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     ResolveTypes(state, exp->binary.rhs);
 
                     if (exp->binary.rhs->tag->type == TINY_SYM_TAG_VOID) {
-                        ReportErrorE(state, exp, "Attempted to initialize variable with void expression. "
-                                "Don't do that.");
+                        ReportErrorE(state, exp,
+                                     "Attempted to initialize variable with void expression. "
+                                     "Don't do that.");
                     }
 
                     exp->binary.lhs->id.sym->var.tag = exp->binary.rhs->tag;
 
                     exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_PLUSEQUAL:
                 case TINY_TOK_MINUSEQUAL:
@@ -2034,22 +2058,20 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     ResolveTypes(state, exp->binary.rhs);
 
                     if (!IsTagAssignableTo(exp->binary.rhs->tag, exp->binary.lhs->tag)) {
-                        ReportErrorE(state, exp, "Attempted to assign a '%s' to a '%s'. Can't do that.", GetTagName(exp->binary.rhs->tag),
-                                GetTagName(exp->binary.lhs->tag));
+                        ReportErrorE(
+                            state, exp, "Attempted to assign a '%s' to a '%s'. Can't do that.",
+                            GetTagName(exp->binary.rhs->tag), GetTagName(exp->binary.lhs->tag));
                     }
 
                     exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
-                }
-                    break;
+                } break;
 
                 default: {
                     ResolveTypes(state, exp->binary.rhs);
                     exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
-                }
-                    break;
+                } break;
             }
-        }
-            break;
+        } break;
 
         case TINY_EXP_UNARY: {
             ResolveTypes(state, exp->unary.exp);
@@ -2060,28 +2082,27 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     bool f = !i && exp->unary.exp->tag->type == TINY_SYM_TAG_FLOAT;
 
                     if (!(i || f)) {
-                        ReportErrorE(state, exp, "Attempted to apply unary '-' to a %s.", GetTagName(exp->unary.exp->tag));
+                        ReportErrorE(state, exp, "Attempted to apply unary '-' to a %s.",
+                                     GetTagName(exp->unary.exp->tag));
                     }
 
                     exp->tag = i ? GetPrimTag(TINY_SYM_TAG_INT) : GetPrimTag(TINY_SYM_TAG_FLOAT);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_BANG: {
                     if (exp->unary.exp->tag->type != TINY_SYM_TAG_BOOL) {
-                        ReportErrorE(state, exp, "Attempted to apply unary 'not' to a %s.", GetTagName(exp->unary.exp->tag));
+                        ReportErrorE(state, exp, "Attempted to apply unary 'not' to a %s.",
+                                     GetTagName(exp->unary.exp->tag));
                     }
 
                     exp->tag = GetPrimTag(TINY_SYM_TAG_BOOL);
-                }
-                    break;
+                } break;
 
                 default:
                     assert(0);
                     break;
             }
-        }
-            break;
+        } break;
 
         case TINY_EXP_BLOCK: {
             for (Tiny_Expr *node = exp->blockHead; node; node = node->next) {
@@ -2089,8 +2110,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             }
 
             exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
-        }
-            break;
+        } break;
 
         case TINY_EXP_PROC: {
             Tiny_Symbol *prevCurrFunc = state->currFunc;
@@ -2101,14 +2121,14 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             state->currFunc = prevCurrFunc;
 
             exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
-        }
-            break;
+        } break;
 
         case TINY_EXP_IF: {
             ResolveTypes(state, exp->ifx.cond);
 
             if (exp->ifx.cond->tag->type != TINY_SYM_TAG_BOOL) {
-                ReportErrorE(state, exp, "If condition is supposed to be a bool but its a %s", GetTagName(exp->ifx.cond->tag));
+                ReportErrorE(state, exp, "If condition is supposed to be a bool but its a %s",
+                             GetTagName(exp->ifx.cond->tag));
             }
 
             ResolveTypes(state, exp->ifx.body);
@@ -2118,8 +2138,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             }
 
             exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
-        }
-            break;
+        } break;
 
         case TINY_EXP_RETURN: {
             assert(state->currFunc);
@@ -2128,45 +2147,49 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                 ResolveTypes(state, exp->retExpr);
 
                 if (!IsTagAssignableTo(exp->retExpr->tag, state->currFunc->func.returnTag)) {
-                    ReportErrorE(state, exp, "You tried to return a '%s' from function '%s' but its return type is '%s'", GetTagName(exp->retExpr->tag),
-                            state->currFunc->name, GetTagName(state->currFunc->func.returnTag));
+                    ReportErrorE(
+                        state, exp,
+                        "You tried to return a '%s' from function '%s' but its return type is '%s'",
+                        GetTagName(exp->retExpr->tag), state->currFunc->name,
+                        GetTagName(state->currFunc->func.returnTag));
                 }
             } else if (state->currFunc->func.returnTag->type != TINY_SYM_TAG_VOID) {
-                ReportErrorE(state, exp, "Attempted to return without value in function '%s' even though its "
-                        "return type is %s", state->currFunc->name, GetTagName(state->currFunc->func.returnTag));
+                ReportErrorE(state, exp,
+                             "Attempted to return without value in function '%s' even though its "
+                             "return type is %s",
+                             state->currFunc->name, GetTagName(state->currFunc->func.returnTag));
             }
 
             exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
-        }
-            break;
+        } break;
 
         case TINY_EXP_WHILE: {
             ResolveTypes(state, exp->whilex.cond);
 
             if (exp->whilex.cond->tag->type != TINY_SYM_TAG_BOOL) {
-                ReportErrorE(state, exp, "While condition is supposed to be a bool but its a %s", GetTagName(exp->whilex.cond->tag));
+                ReportErrorE(state, exp, "While condition is supposed to be a bool but its a %s",
+                             GetTagName(exp->whilex.cond->tag));
             }
 
             ResolveTypes(state, exp->whilex.body);
 
             exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
-        }
-            break;
+        } break;
 
         case TINY_EXP_FOR: {
             ResolveTypes(state, exp->forx.init);
             ResolveTypes(state, exp->forx.cond);
 
             if (exp->forx.cond->tag->type != TINY_SYM_TAG_BOOL) {
-                ReportErrorE(state, exp, "For condition is supposed to be a bool but its a %s", GetTagName(exp->forx.cond->tag));
+                ReportErrorE(state, exp, "For condition is supposed to be a bool but its a %s",
+                             GetTagName(exp->forx.cond->tag));
             }
 
             ResolveTypes(state, exp->forx.step);
             ResolveTypes(state, exp->forx.body);
 
             exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
-        }
-            break;
+        } break;
 
         case TINY_EXP_DOT: {
             ResolveTypes(state, exp->dot.lhs);
@@ -2178,10 +2201,10 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             exp->tag = GetFieldTag(exp->dot.lhs->tag, exp->dot.field->value, NULL);
 
             if (!exp->tag) {
-                ReportErrorE(state, exp, "Struct %s doesn't have a field named %s", GetTagName(exp->dot.lhs->tag), exp->dot.field->value);
+                ReportErrorE(state, exp, "Struct %s doesn't have a field named %s",
+                             GetTagName(exp->dot.lhs->tag), exp->dot.field->value);
             }
-        }
-            break;
+        } break;
 
         case TINY_EXP_CONSTRUCTOR: {
             assert(exp->constructor.structTag->sstruct.defined);
@@ -2191,16 +2214,21 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             Tiny_StringNode *nameNode = exp->constructor.argNamesHead;
 
             int i = 0;
-            for (Tiny_Expr *argNode = exp->constructor.argsHead; argNode; (argNode = argNode->next, ++i)) {
+            for (Tiny_Expr *argNode = exp->constructor.argsHead; argNode;
+                 (argNode = argNode->next, ++i)) {
                 ResolveTypes(state, argNode);
 
                 if (!nameNode && exp->constructor.argNamesHead) {
-                    ReportErrorE(state, exp, "Invalid designated initializer for struct %s. Make sure you "
-                            "initialize every field.", GetTagName(exp->constructor.structTag));
+                    ReportErrorE(state, exp,
+                                 "Invalid designated initializer for struct %s. Make sure you "
+                                 "initialize every field.",
+                                 GetTagName(exp->constructor.structTag));
                 }
 
                 if (i >= tagCount) {
-                    ReportErrorE(state, exp, "struct %s constructor expects %d args but you supplied more.", GetTagName(exp->constructor.structTag), tagCount);
+                    ReportErrorE(state, exp,
+                                 "struct %s constructor expects %d args but you supplied more.",
+                                 GetTagName(exp->constructor.structTag), tagCount);
                 }
 
                 if (exp->constructor.argNamesHead) {
@@ -2215,9 +2243,12 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                         }
 
                         if (!IsTagAssignableTo(argNode->tag, expectedField->fieldTag)) {
-                            ReportErrorE(state, argNode, "Designated initializer .%s to constructor is supposed to "
-                                    "be a %s but "
-                                    "you supplied a %s", expectedField->name, GetTagName(expectedField->fieldTag), GetTagName(argNode->tag));
+                            ReportErrorE(state, argNode,
+                                         "Designated initializer .%s to constructor is supposed to "
+                                         "be a %s but "
+                                         "you supplied a %s",
+                                         expectedField->name, GetTagName(expectedField->fieldTag),
+                                         GetTagName(argNode->tag));
                         }
 
                         found = true;
@@ -2225,17 +2256,23 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                     }
 
                     if (!found) {
-                        ReportErrorE(state, argNode, "Designated initializer .%s doesn't correspond to any"
-                                "field on struct %s", nameNode->value, GetTagName(exp->constructor.structTag));
+                        ReportErrorE(state, argNode,
+                                     "Designated initializer .%s doesn't correspond to any"
+                                     "field on struct %s",
+                                     nameNode->value, GetTagName(exp->constructor.structTag));
                     }
                 } else {
                     Tiny_Symbol *expectedField = exp->constructor.structTag->sstruct.fields[i];
                     assert(expectedField->type == TINY_SYM_FIELD);
 
                     if (!IsTagAssignableTo(argNode->tag, expectedField->fieldTag)) {
-                        ReportErrorE(state, argNode, "Initializer %i (for field '%s') to constructor is supposed to "
-                                "be a %s but "
-                                "you supplied a %s", i + 1, expectedField->name, GetTagName(expectedField->fieldTag), GetTagName(argNode->tag));
+                        ReportErrorE(
+                            state, argNode,
+                            "Initializer %i (for field '%s') to constructor is supposed to "
+                            "be a %s but "
+                            "you supplied a %s",
+                            i + 1, expectedField->name, GetTagName(expectedField->fieldTag),
+                            GetTagName(argNode->tag));
                     }
                 }
 
@@ -2245,8 +2282,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             }
 
             exp->tag = exp->constructor.structTag;
-        }
-            break;
+        } break;
 
         case TINY_EXP_CAST: {
             assert(exp->cast.value);
@@ -2257,13 +2293,14 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             // TODO(Apaar): Allow casting of int to float etc
 
             // Allow casting from any or to any, but nothing else
-            if (exp->cast.value->tag->type != TINY_SYM_TAG_ANY && exp->cast.tag->type != TINY_SYM_TAG_ANY) {
-                ReportErrorE(state, exp->cast.value, "Attempted to cast a %s; only any is allowed.", GetTagName(exp->cast.value->tag));
+            if (exp->cast.value->tag->type != TINY_SYM_TAG_ANY &&
+                exp->cast.tag->type != TINY_SYM_TAG_ANY) {
+                ReportErrorE(state, exp->cast.value, "Attempted to cast a %s; only any is allowed.",
+                             GetTagName(exp->cast.value->tag));
             }
 
             exp->tag = exp->cast.tag;
-        }
-            break;
+        } break;
 
         case TINY_EXP_IF_TERNARY: {
             assert(exp->ifx.cond);
@@ -2273,7 +2310,9 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             ResolveTypes(state, exp->ifx.cond);
 
             if (exp->ifx.cond->tag->type != TINY_SYM_TAG_BOOL) {
-                ReportErrorE(state, exp, "Ternary if condition is supposed to be a bool but its a %s", GetTagName(exp->ifx.cond->tag));
+                ReportErrorE(state, exp,
+                             "Ternary if condition is supposed to be a bool but its a %s",
+                             GetTagName(exp->ifx.cond->tag));
             }
 
             ResolveTypes(state, exp->ifx.body);
@@ -2281,13 +2320,14 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
             // TODO(Apaar): We assume symbols are interned here
             if (exp->ifx.body->tag != exp->ifx.alt->tag) {
-                ReportErrorE(state, exp, "Ternary if 'true' value type '%s' is different from the false value type '%s'", GetTagName(exp->ifx.body->tag),
-                        GetTagName(exp->ifx.alt->tag));
+                ReportErrorE(
+                    state, exp,
+                    "Ternary if 'true' value type '%s' is different from the false value type '%s'",
+                    GetTagName(exp->ifx.body->tag), GetTagName(exp->ifx.alt->tag));
             }
 
             exp->tag = exp->ifx.body->tag;
-        }
-            break;
+        } break;
 
         case TINY_EXP_BREAK:
         case TINY_EXP_CONTINUE:
@@ -2328,7 +2368,7 @@ static void GeneratePushFloat(Tiny_State *state, float fValue) {
 static void GeneratePushString(Tiny_State *state, int sIndex) {
     if (sIndex <= 0xff) {
         GenerateCode(state, TINY_OP_PUSH_STRING_FF);
-        GenerateCode(state, (Word) sIndex);
+        GenerateCode(state, (Word)sIndex);
     } else {
         GenerateCode(state, TINY_OP_PUSH_STRING);
         GenerateInt(state, sIndex);
@@ -2342,7 +2382,8 @@ static void CompileGetIdOrDot(Tiny_State *state, Tiny_Expr *exp) {
         if (!exp->id.sym)
             ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name);
 
-        assert(exp->id.sym->type == TINY_SYM_GLOBAL || exp->id.sym->type == TINY_SYM_LOCAL || exp->id.sym->type == TINY_SYM_CONST);
+        assert(exp->id.sym->type == TINY_SYM_GLOBAL || exp->id.sym->type == TINY_SYM_LOCAL ||
+               exp->id.sym->type == TINY_SYM_CONST);
 
         if (exp->id.sym->type != TINY_SYM_CONST) {
             if (exp->id.sym->type == TINY_SYM_GLOBAL) {
@@ -2354,14 +2395,15 @@ static void CompileGetIdOrDot(Tiny_State *state, Tiny_Expr *exp) {
                     GenerateInt(state, exp->id.sym->var.index);
                 } else {
                     GenerateCode(state, TINY_OP_GETLOCAL_W);
-                    GenerateCode(state, (Word) exp->id.sym->var.index);
+                    GenerateCode(state, (Word)exp->id.sym->var.index);
                 }
             }
         } else {
             if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_STR)) {
                 GeneratePushString(state, exp->id.sym->constant.sIndex);
             } else if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_BOOL)) {
-                GenerateCode(state, exp->id.sym->constant.bValue ? TINY_OP_PUSH_TRUE : TINY_OP_PUSH_FALSE);
+                GenerateCode(state,
+                             exp->id.sym->constant.bValue ? TINY_OP_PUSH_TRUE : TINY_OP_PUSH_FALSE);
             } else if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_INT)) {
                 GeneratePushInt(state, exp->id.sym->constant.iValue);
             } else if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_FLOAT)) {
@@ -2386,7 +2428,7 @@ static void CompileGetIdOrDot(Tiny_State *state, Tiny_Expr *exp) {
         CompileExpr(state, exp->dot.lhs);
 
         GenerateCode(state, TINY_OP_STRUCT_GET);
-        GenerateCode(state, (Word) idx);
+        GenerateCode(state, (Word)idx);
     }
 }
 
@@ -2405,7 +2447,8 @@ static void CompileCall(Tiny_State *state, Tiny_Expr *exp) {
 
     Tiny_Symbol *sym = ReferenceFunction(state, exp->call.calleeName->value);
     if (!sym) {
-        ReportErrorE(state, exp, "Attempted to call undefined function '%s'.\n", exp->call.calleeName);
+        ReportErrorE(state, exp, "Attempted to call undefined function '%s'.\n",
+                     exp->call.calleeName);
     }
 
     if (sym->type == TINY_SYM_FOREIGN_FUNCTION) {
@@ -2414,15 +2457,16 @@ static void CompileCall(Tiny_State *state, Tiny_Expr *exp) {
         int fNargs = sb_count(sym->foreignFunc.argTags);
 
         if (!(sym->foreignFunc.varargs && nargs >= fNargs) && fNargs != nargs) {
-            ReportErrorE(state, exp, "Function '%s' expects %s%d args but you supplied %d.\n", exp->call.calleeName,
-                    sym->foreignFunc.varargs ? "at least " : "", fNargs, nargs);
+            ReportErrorE(state, exp, "Function '%s' expects %s%d args but you supplied %d.\n",
+                         exp->call.calleeName, sym->foreignFunc.varargs ? "at least " : "", fNargs,
+                         nargs);
         }
 
-        GenerateCode(state, (Word) nargs);
+        GenerateCode(state, (Word)nargs);
         GenerateInt(state, sym->foreignFunc.index);
     } else {
         GenerateCode(state, TINY_OP_CALL);
-        GenerateCode(state, (Word) nargs);
+        GenerateCode(state, (Word)nargs);
         GenerateInt(state, sym->func.index);
     }
 }
@@ -2431,41 +2475,34 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
     switch (exp->type) {
         case TINY_EXP_NULL: {
             GenerateCode(state, TINY_OP_PUSH_NULL);
-        }
-            break;
+        } break;
 
         case TINY_EXP_ID:
         case TINY_EXP_DOT: {
             CompileGetIdOrDot(state, exp);
-        }
-            break;
+        } break;
 
         case TINY_EXP_BOOL: {
             GenerateCode(state, exp->boolean ? TINY_OP_PUSH_TRUE : TINY_OP_PUSH_FALSE);
-        }
-            break;
+        } break;
 
         case TINY_EXP_INT:
         case TINY_EXP_CHAR: {
             GeneratePushInt(state, exp->iValue);
-        }
-            break;
+        } break;
 
         case TINY_EXP_FLOAT: {
             GeneratePushFloat(state, exp->fValue);
-        }
-            break;
+        } break;
 
         case TINY_EXP_STRING: {
             GeneratePushString(state, exp->sIndex);
-        }
-            break;
+        } break;
 
         case TINY_EXP_CALL: {
             CompileCall(state, exp);
             GenerateCode(state, TINY_OP_GET_RETVAL);
-        }
-            break;
+        } break;
 
         case TINY_EXP_CONSTRUCTOR: {
             assert(exp->constructor.structTag->sstruct.defined);
@@ -2496,8 +2533,7 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
 
             GenerateCode(state, TINY_OP_PUSH_STRUCT);
             GenerateCode(state, sb_count(exp->constructor.structTag->sstruct.fields));
-        }
-            break;
+        } break;
 
         case TINY_EXP_CAST: {
             assert(exp->tag);
@@ -2506,8 +2542,7 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
             // TODO(Apaar): Once the cast actually does something, change this to
             // generate casting opcodes (ex. OP_INT_TO_FLOAT, OP_FLOAT_TO_INT, etc)
             CompileExpr(state, exp->cast.value);
-        }
-            break;
+        } break;
 
         case TINY_EXP_BINARY: {
             switch (exp->binary.op) {
@@ -2520,8 +2555,7 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
                         CompileExpr(state, exp->binary.rhs);
                         GenerateCode(state, TINY_OP_ADD);
                     }
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_MINUS: {
                     CompileExpr(state, exp->binary.lhs);
@@ -2532,86 +2566,74 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
                         CompileExpr(state, exp->binary.rhs);
                         GenerateCode(state, TINY_OP_SUB);
                     }
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_STAR: {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_MUL);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_SLASH: {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_DIV);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_PERCENT: {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_MOD);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_OR: {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_OR);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_AND: {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_AND);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_LT: {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_LT);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_GT: {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_GT);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_EQUALS: {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_EQU);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_NOTEQUALS: {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_EQU);
                     GenerateCode(state, TINY_OP_LOG_NOT);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_LTE: {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_LTE);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_GTE: {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_GTE);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_LOG_AND: {
                     CompileExpr(state, exp->binary.lhs);
@@ -2633,8 +2655,7 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
                     GenerateCode(state, TINY_OP_PUSH_FALSE);
 
                     GenerateIntAt(state, sb_count(state->program), exitLoc);
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_LOG_OR: {
                     CompileExpr(state, exp->binary.lhs);
@@ -2654,20 +2675,17 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
                     CompileExpr(state, exp->binary.rhs);
 
                     GenerateIntAt(state, sb_count(state->program), exitPatchLoc);
-                }
-                    break;
+                } break;
 
                 default:
                     ReportErrorE(state, exp, "Found assignment when expecting expression.\n");
                     break;
             }
-        }
-            break;
+        } break;
 
         case TINY_EXP_PAREN: {
             CompileExpr(state, exp->paren);
-        }
-            break;
+        } break;
 
         case TINY_EXP_UNARY: {
             switch (exp->unary.op) {
@@ -2682,21 +2700,19 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
                         GenerateInt(state, -1);
                         GenerateCode(state, TINY_OP_MUL);
                     }
-                }
-                    break;
+                } break;
 
                 case TINY_TOK_BANG: {
                     CompileExpr(state, exp->unary.exp);
                     GenerateCode(state, TINY_OP_LOG_NOT);
-                }
-                    break;
+                } break;
 
                 default:
-                    ReportErrorE(state, exp, "Unsupported unary operator %c (%d)\n", exp->unary.op, exp->unary.op);
+                    ReportErrorE(state, exp, "Unsupported unary operator %c (%d)\n", exp->unary.op,
+                                 exp->unary.op);
                     break;
             }
-        }
-            break;
+        } break;
 
         case TINY_EXP_IF_TERNARY: {
             CompileExpr(state, exp->ifx.cond);
@@ -2716,8 +2732,7 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
             CompileExpr(state, exp->ifx.alt);
 
             GenerateIntAt(state, sb_count(state->program), exitPcLoc);
-        }
-            break;
+        } break;
 
         default:
             ReportErrorE(state, exp, "Got statement when expecting expression.\n");
@@ -2740,34 +2755,33 @@ static void PatchBreakContinue(Tiny_State *state, Tiny_Expr *body, int breakPC, 
         case TINY_EXP_IF: {
             PatchBreakContinue(state, body->ifx.body, breakPC, continuePC);
             PatchBreakContinue(state, body->ifx.alt, breakPC, continuePC);
-        }
-            break;
+        } break;
 
         case TINY_EXP_BLOCK: {
             for (Tiny_Expr *node = body->blockHead; node; node = node->next) {
                 PatchBreakContinue(state, node, breakPC, continuePC);
             }
-        }
-            break;
+        } break;
 
         case TINY_EXP_BREAK: {
             if (breakPC < 0) {
-                ReportErrorE(state, body, "A break statement does not make sense here. It must be inside a loop.");
+                ReportErrorE(
+                    state, body,
+                    "A break statement does not make sense here. It must be inside a loop.");
             }
 
             GenerateIntAt(state, breakPC, body->breakContinue.patchLoc);
-        }
-            break;
+        } break;
 
         case TINY_EXP_CONTINUE: {
             if (continuePC < 0) {
-                ReportErrorE(state, body, "A continue statement does not make sense here. It must be "
-                        "inside a loop.");
+                ReportErrorE(state, body,
+                             "A continue statement does not make sense here. It must be "
+                             "inside a loop.");
             }
 
             GenerateIntAt(state, continuePC, body->breakContinue.patchLoc);
-        }
-            break;
+        } break;
 
         default:
             break;
@@ -2846,22 +2860,24 @@ void Tiny_GetExecutingFileLine(const Tiny_StateThread *thread, const char **file
 }
 
 static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
-    AddPCFileLineRecord(state,
-            (Tiny_PCToFileLine ) { .pc = sb_count(state->program), .fileStrIndex = state->l.fileName ? RegisterString(state, state->l.fileName) : -1,
-                            .line = exp->lineNumber, });
+    AddPCFileLineRecord(
+        state,
+        (Tiny_PCToFileLine){
+            .pc = sb_count(state->program),
+            .fileStrIndex = state->l.fileName ? RegisterString(state, state->l.fileName) : -1,
+            .line = exp->lineNumber,
+        });
 
     switch (exp->type) {
         case TINY_EXP_CALL: {
             CompileCall(state, exp);
-        }
-            break;
+        } break;
 
         case TINY_EXP_BLOCK: {
             for (Tiny_Expr *node = exp->blockHead; node; node = node->next) {
                 CompileStatement(state, node);
             }
-        }
-            break;
+        } break;
 
         case TINY_EXP_BINARY: {
             switch (exp->binary.op) {
@@ -2880,66 +2896,62 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
                 case TINY_TOK_PERCENTEQUAL:
                 case TINY_TOK_ANDEQUAL:
                 case TINY_TOK_OREQUAL: {
-                    if (exp->binary.lhs->type == TINY_EXP_ID || exp->binary.lhs->type == TINY_EXP_DOT) {
+                    if (exp->binary.lhs->type == TINY_EXP_ID ||
+                        exp->binary.lhs->type == TINY_EXP_DOT) {
                         switch (exp->binary.op) {
                             case TINY_TOK_PLUSEQUAL: {
                                 CompileGetIdOrDot(state, exp->binary.lhs);
 
-                                if (exp->binary.rhs->type == TINY_EXP_INT && exp->binary.rhs->iValue == 1) {
+                                if (exp->binary.rhs->type == TINY_EXP_INT &&
+                                    exp->binary.rhs->iValue == 1) {
                                     GenerateCode(state, TINY_OP_ADD1);
                                 } else {
                                     CompileExpr(state, exp->binary.rhs);
                                     GenerateCode(state, TINY_OP_ADD);
                                 }
-                            }
-                                break;
+                            } break;
 
                             case TINY_TOK_MINUSEQUAL: {
                                 CompileGetIdOrDot(state, exp->binary.lhs);
 
-                                if (exp->binary.rhs->type == TINY_EXP_INT && exp->binary.rhs->iValue == 1) {
+                                if (exp->binary.rhs->type == TINY_EXP_INT &&
+                                    exp->binary.rhs->iValue == 1) {
                                     GenerateCode(state, TINY_OP_SUB1);
                                 } else {
                                     CompileExpr(state, exp->binary.rhs);
                                     GenerateCode(state, TINY_OP_SUB);
                                 }
-                            }
-                                break;
+                            } break;
 
                             case TINY_TOK_STAREQUAL: {
                                 CompileGetIdOrDot(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, TINY_OP_MUL);
-                            }
-                                break;
+                            } break;
 
                             case TINY_TOK_SLASHEQUAL: {
                                 CompileGetIdOrDot(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, TINY_OP_DIV);
-                            }
-                                break;
+                            } break;
 
                             case TINY_TOK_PERCENTEQUAL: {
                                 CompileGetIdOrDot(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, TINY_OP_MOD);
-                            }
-                                break;
+                            } break;
 
                             case TINY_TOK_ANDEQUAL: {
                                 CompileGetIdOrDot(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, TINY_OP_AND);
-                            }
-                                break;
+                            } break;
 
                             case TINY_TOK_OREQUAL: {
                                 CompileGetIdOrDot(state, exp->binary.lhs);
                                 CompileExpr(state, exp->binary.rhs);
                                 GenerateCode(state, TINY_OP_OR);
-                            }
-                                break;
+                            } break;
 
                             default:
                                 CompileExpr(state, exp->binary.rhs);
@@ -2949,7 +2961,9 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
                         if (exp->binary.lhs->type == TINY_EXP_ID) {
                             if (!exp->binary.lhs->id.sym) {
                                 // The variable being referenced doesn't exist
-                                ReportErrorE(state, exp, "Assigning to undeclared identifier '%s'.\n", exp->binary.lhs->id.name);
+                                ReportErrorE(state, exp,
+                                             "Assigning to undeclared identifier '%s'.\n",
+                                             exp->binary.lhs->id.name);
                             }
 
                             if (exp->binary.lhs->id.sym->type == TINY_SYM_GLOBAL) {
@@ -2960,7 +2974,8 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
                                 GenerateInt(state, exp->binary.lhs->id.sym->var.index);
                             } else  // Probably a constant, can't change it
                             {
-                                ReportErrorE(state, exp, "Cannot assign to id '%s'.\n", exp->binary.lhs->id.name);
+                                ReportErrorE(state, exp, "Cannot assign to id '%s'.\n",
+                                             exp->binary.lhs->id.name);
                             }
 
                             exp->binary.lhs->id.sym->var.initialized = true;
@@ -2970,27 +2985,28 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
 
                             int idx;
 
-                            GetFieldTag(exp->binary.lhs->dot.lhs->tag, exp->binary.lhs->dot.field->value, &idx);
+                            GetFieldTag(exp->binary.lhs->dot.lhs->tag,
+                                        exp->binary.lhs->dot.field->value, &idx);
 
                             assert(idx >= 0 && idx <= UCHAR_MAX);
 
                             CompileExpr(state, exp->binary.lhs->dot.lhs);
 
                             GenerateCode(state, TINY_OP_STRUCT_SET);
-                            GenerateCode(state, (Word) idx);
+                            GenerateCode(state, (Word)idx);
                         }
                     } else {
-                        ReportErrorE(state, exp, "LHS of assignment operation must be a variable or dot expr\n");
+                        ReportErrorE(
+                            state, exp,
+                            "LHS of assignment operation must be a variable or dot expr\n");
                     }
-                }
-                    break;
+                } break;
 
                 default:
                     ReportErrorE(state, exp, "Invalid operation when expecting statement.\n");
                     break;
             }
-        }
-            break;
+        } break;
 
         case TINY_EXP_PROC: {
             GenerateCode(state, TINY_OP_GOTO);
@@ -2999,12 +3015,13 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
             state->functionPcs[exp->proc.decl->func.index] = sb_count(state->program);
 
             if (sb_count(exp->proc.decl->func.locals) > 0xff) {
-                ReportErrorE(state, exp, "Exceeded maximum number of local variables (%d) allowed.", 0xff);
+                ReportErrorE(state, exp, "Exceeded maximum number of local variables (%d) allowed.",
+                             0xff);
             }
 
             if (sb_count(exp->proc.decl->func.locals) > 0) {
                 GenerateCode(state, TINY_OP_PUSH_NULL_N);
-                GenerateCode(state, (Word) sb_count(exp->proc.decl->func.locals));
+                GenerateCode(state, (Word)sb_count(exp->proc.decl->func.locals));
             }
 
             if (exp->proc.body) {
@@ -3013,8 +3030,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
 
             GenerateCode(state, TINY_OP_RETURN);
             GenerateIntAt(state, sb_count(state->program), skipGotoPc);
-        }
-            break;
+        } break;
 
         case TINY_EXP_IF: {
             CompileExpr(state, exp->ifx.cond);
@@ -3022,8 +3038,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
 
             int skipGotoPc = GenerateInt(state, 0);
 
-            if (exp->ifx.body)
-                CompileStatement(state, exp->ifx.body);
+            if (exp->ifx.body) CompileStatement(state, exp->ifx.body);
 
             if (exp->ifx.alt) {
                 GenerateCode(state, TINY_OP_GOTO);
@@ -3037,8 +3052,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
             } else {
                 GenerateIntAt(state, sb_count(state->program), skipGotoPc);
             }
-        }
-            break;
+        } break;
 
         case TINY_EXP_WHILE: {
             int condPc = sb_count(state->program);
@@ -3048,8 +3062,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
             GenerateCode(state, TINY_OP_GOTOZ);
             int skipGotoPc = GenerateInt(state, 0);
 
-            if (exp->whilex.body)
-                CompileStatement(state, exp->whilex.body);
+            if (exp->whilex.body) CompileStatement(state, exp->whilex.body);
 
             GenerateCode(state, TINY_OP_GOTO);
             GenerateInt(state, condPc);
@@ -3057,8 +3070,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
             GenerateIntAt(state, sb_count(state->program), skipGotoPc);
 
             PatchBreakContinue(state, exp->whilex.body, sb_count(state->program), condPc);
-        }
-            break;
+        } break;
 
         case TINY_EXP_FOR: {
             CompileStatement(state, exp->forx.init);
@@ -3069,8 +3081,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
             GenerateCode(state, TINY_OP_GOTOZ);
             int skipGotoPc = GenerateInt(state, 0);
 
-            if (exp->forx.body)
-                CompileStatement(state, exp->forx.body);
+            if (exp->forx.body) CompileStatement(state, exp->forx.body);
 
             int stepPc = sb_count(state->program);
 
@@ -3082,8 +3093,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
             GenerateIntAt(state, sb_count(state->program), skipGotoPc);
 
             PatchBreakContinue(state, exp->forx.body, sb_count(state->program), stepPc);
-        }
-            break;
+        } break;
 
         case TINY_EXP_RETURN: {
             if (exp->retExpr) {
@@ -3092,23 +3102,22 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
             } else {
                 GenerateCode(state, TINY_OP_RETURN);
             }
-        }
-            break;
+        } break;
 
         case TINY_EXP_BREAK:
         case TINY_EXP_CONTINUE: {
             GenerateCode(state, TINY_OP_GOTO);
             exp->breakContinue.patchLoc = GenerateInt(state, 0);
-        }
-            break;
+        } break;
 
         case TINY_EXP_USE:
             // Ignore use statements
             break;
 
         default:
-            ReportErrorE(state, exp, "So this parsed successfully but when compiling I saw an expression where "
-                    "I was expecting a statement.\n");
+            ReportErrorE(state, exp,
+                         "So this parsed successfully but when compiling I saw an expression where "
+                         "I was expecting a statement.\n");
             break;
     }
 }
@@ -3164,7 +3173,7 @@ static void CompileState(Tiny_State *state, Tiny_Expr *progHead) {
     // just overwrite it
     if (sb_count(state->program) > 0) {
         if (state->program[sb_count(state->program) - 1] == TINY_OP_HALT) {
-            stb__sbn(state->program)-= 1;
+            stb__sbn(state->program) -= 1;
         }
     }
 
@@ -3178,13 +3187,13 @@ static void CompileState(Tiny_State *state, Tiny_Expr *progHead) {
     // Tiny_CompileString is called twice with same state)
     if (state->numFunctions > 0) {
         state->functionPcs =
-        TRealloc(&state->ctx, state->functionPcs, state->numFunctions * sizeof(int));
+            TRealloc(&state->ctx, state->functionPcs, state->numFunctions * sizeof(int));
     }
 
     if (state->numForeignFunctions > 0) {
         state->foreignFunctions =
-        TRealloc(&state->ctx, state->foreignFunctions,
-                state->numForeignFunctions * sizeof(Tiny_ForeignFunction));
+            TRealloc(&state->ctx, state->foreignFunctions,
+                     state->numForeignFunctions * sizeof(Tiny_ForeignFunction));
     }
 
     assert(state->numForeignFunctions == 0 || state->foreignFunctions);
@@ -3216,7 +3225,7 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
         }
 
         if (state->globalSymbols) {
-            stb__sbn(state->globalSymbols)= firstSymIndex;
+            stb__sbn(state->globalSymbols) = firstSymIndex;
         }
 
         // TOOD(Apaar): Can we just goto below?
@@ -3225,7 +3234,7 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
 
         if (state->program) {
             // TODO(Apaar): Should we realloc and shrink?
-            stb__sbn(state->program)= startCodeLen;
+            stb__sbn(state->program) = startCodeLen;
         }
 
         state->l = prevLexer;
@@ -3251,22 +3260,26 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
             Tiny_Symbol *s = state->globalSymbols[i];
             if (s->type == TINY_SYM_MODULE && strcmp(s->name, exp->use.moduleName->value) == 0) {
                 // TODO(Apaar): Document this limit and assert above
-                char *args[128] = { 0 };
+                char *args[128] = {0};
                 char **argp = args;
 
                 for (Tiny_StringNode *node = exp->use.argsHead; node; node = node->next) {
                     if (argp - args > sizeof(args) / sizeof(args[0])) {
-                        ReportErrorE(state, exp, "Macro %s takes too many args (limit is %d)", exp->use.moduleName->value, sizeof(args) / sizeof(args[0]));
+                        ReportErrorE(state, exp, "Macro %s takes too many args (limit is %d)",
+                                     exp->use.moduleName->value, sizeof(args) / sizeof(args[0]));
                     }
 
                     *argp++ = node->value;
                 }
 
-                Tiny_MacroResult result = s->modFunc(state, args, (int) (argp - args), exp->use.asName ? exp->use.asName->value : NULL);
+                Tiny_MacroResult result =
+                    s->modFunc(state, args, (int)(argp - args),
+                               exp->use.asName ? exp->use.asName->value : NULL);
 
                 if (result.type != TINY_MACRO_SUCCESS) {
-                    ReportErrorE(state, exp, "'use' module '%s' failed: %s", exp->use.moduleName,
-                            result.errorMessage ? result.errorMessage : "(no error message produced)");
+                    ReportErrorE(
+                        state, exp, "'use' module '%s' failed: %s", exp->use.moduleName,
+                        result.errorMessage ? result.errorMessage : "(no error message produced)");
                 }
 
                 found = true;
@@ -3275,7 +3288,8 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
         }
 
         if (!found) {
-            ReportErrorE(state, exp, "Attempted to reference undefined macro '%s'", exp->use.moduleName);
+            ReportErrorE(state, exp, "Attempted to reference undefined macro '%s'",
+                         exp->use.moduleName);
         }
     }
 
@@ -3289,8 +3303,9 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
 
     CompileState(state, progHead);
 
-    CheckInitialized(state, firstSymIndex, lastSymIndex);  // Done after compilation because it might have registered
-                                                           // undefined functions during the compilation stage
+    CheckInitialized(state, firstSymIndex,
+                     lastSymIndex);  // Done after compilation because it might have registered
+                                     // undefined functions during the compilation stage
 
     Tiny_DestroyLexer(&state->l);
 
@@ -3300,828 +3315,787 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
     state->l = prevLexer;
     state->parserArena = prevParserArena;
 
-    return (Tiny_CompileResult ) { .type = TINY_COMPILE_SUCCESS } ;
-        }
+    return (Tiny_CompileResult){.type = TINY_COMPILE_SUCCESS};
+}
 
-        Tiny_CompileResult Tiny_CompileFile(Tiny_State *state, const char *filename) {
-            FILE *file = fopen(filename, "rb");
-            Tiny_CompileResult result = { .type = TINY_COMPILE_SUCCESS, };
+Tiny_CompileResult Tiny_CompileFile(Tiny_State *state, const char *filename) {
+    FILE *file = fopen(filename, "rb");
+    Tiny_CompileResult result = {
+        .type = TINY_COMPILE_SUCCESS,
+    };
 
-            if (!file) {
-                result.type = TINY_COMPILE_ERROR;
+    if (!file) {
+        result.type = TINY_COMPILE_ERROR;
 
-                snprintf(result.error.msg, sizeof(result.error.msg), "Error: Unable to open file '%s' for reading\n", filename);
-                return result;
-            }
+        snprintf(result.error.msg, sizeof(result.error.msg),
+                 "Error: Unable to open file '%s' for reading\n", filename);
+        return result;
+    }
 
-            fseek(file, 0, SEEK_END);
+    fseek(file, 0, SEEK_END);
 
-            long len = ftell(file);
+    long len = ftell(file);
 
-            char *s = TMalloc(&state->ctx, len + 1);
+    char *s = TMalloc(&state->ctx, len + 1);
 
-            rewind(file);
+    rewind(file);
 
-            fread(s, 1, len, file);
-            s[len] = 0;
+    fread(s, 1, len, file);
+    s[len] = 0;
 
-            fclose(file);
+    fclose(file);
 
-            Tiny_CompileString(state, filename, s);
+    Tiny_CompileString(state, filename, s);
 
-            TFree(&state->ctx, s);
+    TFree(&state->ctx, s);
 
-            return result;
-        }
+    return result;
+}
 
-        bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen) {
-            int pc = *ppc;
+bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen) {
+    int pc = *ppc;
 
-            assert(pc >= 0 && pc < sb_count(state->program));
+    assert(pc >= 0 && pc < sb_count(state->program));
 
-            const char *fname = NULL;
-            int line = 0;
+    const char *fname = NULL;
+    int line = 0;
 
-            GetFileLineForPC(state, pc, &fname, &line);
+    GetFileLineForPC(state, pc, &fname, &line);
 
-            int used = snprintf(buf, maxlen, "%d (%s:%d)\t", pc, fname, line);
+    int used = snprintf(buf, maxlen, "%d (%s:%d)\t", pc, fname, line);
 
-            if (used >= maxlen) {
-                return -1;
-            }
+    if (used >= maxlen) {
+        return -1;
+    }
 
-            buf += used;
-            maxlen -= used;
+    buf += used;
+    maxlen -= used;
 
-            switch (state->program[pc]) {
+    switch (state->program[pc]) {
 #define OP_NO_ARGS(op)              \
     case TINY_OP_##op: {            \
         snprintf(buf, maxlen, #op); \
         ++pc;                       \
     } break;
 
-                OP_NO_ARGS(PUSH_NULL)
+        OP_NO_ARGS(PUSH_NULL)
 
-                case TINY_OP_PUSH_NULL_N: {
-                    Word count = state->program[++pc];
-                    snprintf(buf, maxlen, "PUSH_NULL_N %d", count);
-                    ++pc;
-                }
-                    break;
+        case TINY_OP_PUSH_NULL_N: {
+            Word count = state->program[++pc];
+            snprintf(buf, maxlen, "PUSH_NULL_N %d", count);
+            ++pc;
+        } break;
 
-                OP_NO_ARGS(PUSH_TRUE)
-                OP_NO_ARGS(PUSH_FALSE)
-                OP_NO_ARGS(PUSH_0)
-                OP_NO_ARGS(PUSH_1)
+            OP_NO_ARGS(PUSH_TRUE)
+            OP_NO_ARGS(PUSH_FALSE)
+            OP_NO_ARGS(PUSH_0)
+            OP_NO_ARGS(PUSH_1)
 
-                case TINY_OP_PUSH_CHAR: {
-                    char ch = state->program[++pc];
+        case TINY_OP_PUSH_CHAR: {
+            char ch = state->program[++pc];
 
-                    snprintf(buf, maxlen, "PUSH_CHAR '%c'", ch);
-                    ++pc;
-                }
-                    break;
+            snprintf(buf, maxlen, "PUSH_CHAR '%c'", ch);
+            ++pc;
+        } break;
 
-                case TINY_OP_PUSH_INT: {
-                    ++pc;
+        case TINY_OP_PUSH_INT: {
+            ++pc;
 
-                    int i = ReadIntegerAt(state, &pc);
+            int i = ReadIntegerAt(state, &pc);
 
-                    snprintf(buf, maxlen, "PUSH_INT %d", i);
-                }
-                    break;
+            snprintf(buf, maxlen, "PUSH_INT %d", i);
+        } break;
 
-                case TINY_OP_PUSH_FLOAT: {
-                    ++pc;
+        case TINY_OP_PUSH_FLOAT: {
+            ++pc;
 
-                    float f = ReadFloatAt(state, &pc);
+            float f = ReadFloatAt(state, &pc);
 
-                    snprintf(buf, maxlen, "PUSH_FLOAT %f", f);
-                }
-                    break;
+            snprintf(buf, maxlen, "PUSH_FLOAT %f", f);
+        } break;
 
-                case TINY_OP_PUSH_STRING: {
-                    ++pc;
+        case TINY_OP_PUSH_STRING: {
+            ++pc;
 
-                    int stringIndex = ReadIntegerAt(state, &pc);
+            int stringIndex = ReadIntegerAt(state, &pc);
 
-                    snprintf(buf, maxlen, "PUSH_STRING %d (\"%s\")", stringIndex, state->strings[stringIndex]);
-                }
-                    break;
+            snprintf(buf, maxlen, "PUSH_STRING %d (\"%s\")", stringIndex,
+                     state->strings[stringIndex]);
+        } break;
 
-                case TINY_OP_PUSH_STRING_FF: {
-                    ++pc;
+        case TINY_OP_PUSH_STRING_FF: {
+            ++pc;
 
-                    int stringIndex = (int) state->program[pc];
+            int stringIndex = (int)state->program[pc];
 
-                    snprintf(buf, maxlen, "PUSH_STRING_FF %d (\"%s\")", stringIndex, state->strings[stringIndex]);
-                    ++pc;
-                }
-                    break;
+            snprintf(buf, maxlen, "PUSH_STRING_FF %d (\"%s\")", stringIndex,
+                     state->strings[stringIndex]);
+            ++pc;
+        } break;
 
-                case TINY_OP_PUSH_STRUCT: {
-                    ++pc;
+        case TINY_OP_PUSH_STRUCT: {
+            ++pc;
 
-                    Word nFields = state->program[pc];
-                    assert(nFields > 0);
+            Word nFields = state->program[pc];
+            assert(nFields > 0);
 
-                    snprintf(buf, maxlen, "PUSH_STRUCT %d", nFields);
-                    ++pc;
-                }
-                    break;
+            snprintf(buf, maxlen, "PUSH_STRUCT %d", nFields);
+            ++pc;
+        } break;
 
-                case TINY_OP_STRUCT_GET: {
-                    ++pc;
+        case TINY_OP_STRUCT_GET: {
+            ++pc;
 
-                    Word i = state->program[pc];
+            Word i = state->program[pc];
 
-                    snprintf(buf, maxlen, "STRUCT_GET %d", i);
-                    ++pc;
-                }
-                    break;
+            snprintf(buf, maxlen, "STRUCT_GET %d", i);
+            ++pc;
+        } break;
 
-                case TINY_OP_STRUCT_SET: {
-                    ++pc;
+        case TINY_OP_STRUCT_SET: {
+            ++pc;
 
-                    Word i = state->program[pc];
+            Word i = state->program[pc];
 
-                    snprintf(buf, maxlen, "STRUCT_SET %d", i);
-                    ++pc;
-                }
-                    break;
+            snprintf(buf, maxlen, "STRUCT_SET %d", i);
+            ++pc;
+        } break;
 
-                    // TODO(Apaar): Refactor some of the instrs above to use this
+            // TODO(Apaar): Refactor some of the instrs above to use this
 
-                OP_NO_ARGS(ADD)
-                OP_NO_ARGS(SUB)
-                OP_NO_ARGS(MUL)
-                OP_NO_ARGS(DIV)
-                OP_NO_ARGS(MOD)
-                OP_NO_ARGS(OR)
-                OP_NO_ARGS(AND)
-                OP_NO_ARGS(LT)
-                OP_NO_ARGS(LTE)
-                OP_NO_ARGS(GT)
-                OP_NO_ARGS(GTE)
+            OP_NO_ARGS(ADD)
+            OP_NO_ARGS(SUB)
+            OP_NO_ARGS(MUL)
+            OP_NO_ARGS(DIV)
+            OP_NO_ARGS(MOD)
+            OP_NO_ARGS(OR)
+            OP_NO_ARGS(AND)
+            OP_NO_ARGS(LT)
+            OP_NO_ARGS(LTE)
+            OP_NO_ARGS(GT)
+            OP_NO_ARGS(GTE)
 
-                OP_NO_ARGS(ADD1)
-                OP_NO_ARGS(SUB1)
+            OP_NO_ARGS(ADD1)
+            OP_NO_ARGS(SUB1)
 
-                OP_NO_ARGS(EQU)
+            OP_NO_ARGS(EQU)
 
-                OP_NO_ARGS(LOG_NOT)
+            OP_NO_ARGS(LOG_NOT)
 
-                case TINY_OP_SET: {
-                    ++pc;
-                    int varIdx = ReadIntegerAt(state, &pc);
+        case TINY_OP_SET: {
+            ++pc;
+            int varIdx = ReadIntegerAt(state, &pc);
 
-                    // TODO(Apaar): Be helpful by searching global
-                    // symbols for this vars name.
+            // TODO(Apaar): Be helpful by searching global
+            // symbols for this vars name.
 
-                    snprintf(buf, maxlen, "SET %d", varIdx);
-                }
-                    break;
+            snprintf(buf, maxlen, "SET %d", varIdx);
+        } break;
 
-                case TINY_OP_GET: {
-                    ++pc;
-                    int varIdx = ReadIntegerAt(state, &pc);
+        case TINY_OP_GET: {
+            ++pc;
+            int varIdx = ReadIntegerAt(state, &pc);
 
-                    snprintf(buf, maxlen, "GET %d", varIdx);
-                }
-                    break;
+            snprintf(buf, maxlen, "GET %d", varIdx);
+        } break;
 
-                case TINY_OP_GOTO: {
-                    ++pc;
-                    int newPC = ReadIntegerAt(state, &pc);
+        case TINY_OP_GOTO: {
+            ++pc;
+            int newPC = ReadIntegerAt(state, &pc);
 
-                    snprintf(buf, maxlen, "GOTO %d", newPC);
-                }
-                    break;
+            snprintf(buf, maxlen, "GOTO %d", newPC);
+        } break;
 
-                case TINY_OP_GOTOZ: {
-                    ++pc;
-                    int newPC = ReadIntegerAt(state, &pc);
+        case TINY_OP_GOTOZ: {
+            ++pc;
+            int newPC = ReadIntegerAt(state, &pc);
 
-                    snprintf(buf, maxlen, "GOTOZ %d", newPC);
-                }
-                    break;
+            snprintf(buf, maxlen, "GOTOZ %d", newPC);
+        } break;
 
-                case TINY_OP_CALL: {
-                    ++pc;
-                    Word nargs = state->program[pc++];
-                    int pcIdx = ReadIntegerAt(state, &pc);
+        case TINY_OP_CALL: {
+            ++pc;
+            Word nargs = state->program[pc++];
+            int pcIdx = ReadIntegerAt(state, &pc);
 
-                    // TODO(Apaar): Print function name too
+            // TODO(Apaar): Print function name too
 
-                    snprintf(buf, maxlen, "CALL %d %d (%d)", nargs, pcIdx, state->functionPcs[pcIdx]);
-                }
-                    break;
+            snprintf(buf, maxlen, "CALL %d %d (%d)", nargs, pcIdx, state->functionPcs[pcIdx]);
+        } break;
 
-                OP_NO_ARGS(RETURN)
-                OP_NO_ARGS(RETURN_VALUE)
+            OP_NO_ARGS(RETURN)
+            OP_NO_ARGS(RETURN_VALUE)
 
-                case TINY_OP_CALLF: {
-                    ++pc;
-                    Word nargs = state->program[pc++];
-                    int fIdx = ReadIntegerAt(state, &pc);
+        case TINY_OP_CALLF: {
+            ++pc;
+            Word nargs = state->program[pc++];
+            int fIdx = ReadIntegerAt(state, &pc);
 
-                    // TODO(Apaar): Print function name too
+            // TODO(Apaar): Print function name too
 
-                    // Can't print fptr with %p because that's only for
-                    // data pointers.
-                    snprintf(buf, maxlen, "CALLF %d %d", nargs, fIdx);
-                }
-                    break;
+            // Can't print fptr with %p because that's only for
+            // data pointers.
+            snprintf(buf, maxlen, "CALLF %d %d", nargs, fIdx);
+        } break;
 
-                case TINY_OP_GETLOCAL: {
-                    ++pc;
-                    int varIdx = ReadIntegerAt(state, &pc);
+        case TINY_OP_GETLOCAL: {
+            ++pc;
+            int varIdx = ReadIntegerAt(state, &pc);
 
-                    snprintf(buf, maxlen, "GETLOCAL %d", varIdx);
-                }
-                    break;
+            snprintf(buf, maxlen, "GETLOCAL %d", varIdx);
+        } break;
 
-                case TINY_OP_GETLOCAL_W: {
-                    ++pc;
-                    Word i = state->program[pc++];
+        case TINY_OP_GETLOCAL_W: {
+            ++pc;
+            Word i = state->program[pc++];
 
-                    snprintf(buf, maxlen, "GETLOCAL_W %d", i);
-                }
-                    break;
+            snprintf(buf, maxlen, "GETLOCAL_W %d", i);
+        } break;
 
-                case TINY_OP_SETLOCAL: {
-                    ++pc;
-                    int varIdx = ReadIntegerAt(state, &pc);
+        case TINY_OP_SETLOCAL: {
+            ++pc;
+            int varIdx = ReadIntegerAt(state, &pc);
 
-                    snprintf(buf, maxlen, "SETLOCAL %d", varIdx);
-                }
-                    break;
+            snprintf(buf, maxlen, "SETLOCAL %d", varIdx);
+        } break;
 
-                OP_NO_ARGS(GET_RETVAL)
-                OP_NO_ARGS(HALT)
-                OP_NO_ARGS(MISALIGNED_INSTRUCTION)
+            OP_NO_ARGS(GET_RETVAL)
+            OP_NO_ARGS(HALT)
+            OP_NO_ARGS(MISALIGNED_INSTRUCTION)
 
 #undef OP_NO_ARGS
 
-                default: {
-                    snprintf(buf, maxlen, "(unknown opcode %d)", state->program[pc]);
-                    return false;
-                }
-                    break;
-            }
+        default: {
+            snprintf(buf, maxlen, "(unknown opcode %d)", state->program[pc]);
+            return false;
+        } break;
+    }
 
-            if (pc >= sb_count(state->program)) {
-                *ppc = -1;
-                return true;
-            }
+    if (pc >= sb_count(state->program)) {
+        *ppc = -1;
+        return true;
+    }
 
-            *ppc = pc;
-            return true;
+    *ppc = pc;
+    return true;
+}
+
+void Tiny_BindMacro(Tiny_State *state, const char *name, Tiny_MacroFunction fn) {
+    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        Tiny_Symbol *s = state->globalSymbols[i];
+        if (s->type == TINY_SYM_MODULE && strcmp(s->name, name) == 0) {
+            // TODO(Apaar): Do not error exit here, just return a valid result type!
+            fprintf(stderr, "There is already a module bound to name '%s'.", name);
+            exit(1);
         }
+    }
 
-        void Tiny_BindMacro(Tiny_State *state, const char *name, Tiny_MacroFunction fn) {
-            for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-                Tiny_Symbol *s = state->globalSymbols[i];
-                if (s->type == TINY_SYM_MODULE && strcmp(s->name, name) == 0) {
-                    // TODO(Apaar): Do not error exit here, just return a valid result type!
-                    fprintf(stderr, "There is already a module bound to name '%s'.", name);
-                    exit(1);
-                }
-            }
+    Tiny_Symbol *newNode = Symbol_create(TINY_SYM_MODULE, name, state);
 
-            Tiny_Symbol *newNode = Symbol_create(TINY_SYM_MODULE, name, state);
+    newNode->modFunc = fn;
 
-            newNode->modFunc = fn;
+    sb_push(&state->ctx, state->globalSymbols, newNode);
+}
 
-            sb_push(&state->ctx, state->globalSymbols, newNode);
-        }
+size_t Tiny_SymbolArrayCount(Tiny_Symbol *const *arr) { return sb_count(arr); }
 
-        size_t Tiny_SymbolArrayCount(Tiny_Symbol *const*arr) {
-            return sb_count(arr);
-        }
+const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name) {
+    const Tiny_Symbol *sym = GetTagFromName(state, name, false);
 
-        const Tiny_Symbol* Tiny_FindTypeSymbol(Tiny_State *state, const char *name) {
-            const Tiny_Symbol *sym = GetTagFromName(state, name, false);
+    // We shouldn't return undefined structs (this is an error)
+    if (sym && sym->type == TINY_SYM_TAG_STRUCT && !sym->sstruct.defined) {
+        return NULL;
+    }
 
-            // We shouldn't return undefined structs (this is an error)
-            if (sym && sym->type == TINY_SYM_TAG_STRUCT && !sym->sstruct.defined) {
-                return NULL;
-            }
+    return sym;
+}
 
-            return sym;
-        }
-
-        const Tiny_Symbol* Tiny_FindFuncSymbol(Tiny_State *state, const char *name) {
-            return ReferenceFunction(state, name);
-        }
+const Tiny_Symbol *Tiny_FindFuncSymbol(Tiny_State *state, const char *name) {
+    return ReferenceFunction(state, name);
+}
 
 #endif
 
 //////////////////////////// VM UTILS FUNCTIONS ////////////////////////////
 
 #ifdef TINY_VM_UTILS
-        static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj);
-        inline static bool ExecuteCycle(Tiny_StateThread *thread);
+static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj);
+inline static bool ExecuteCycle(Tiny_StateThread *thread);
 
-        static void AllocGlobals(Tiny_StateThread *thread) {
-            // If the global variables haven't been allocated yet,
-            // do that
-            if (!thread->globalVars) {
-                thread->globalVars = TMalloc(&thread->ctx, sizeof(Tiny_Value) * thread->state->numGlobalVars);
-                memset(thread->globalVars, 0, sizeof(Tiny_Value) * thread->state->numGlobalVars);
-            }
-        }
+static void AllocGlobals(Tiny_StateThread *thread) {
+    // If the global variables haven't been allocated yet,
+    // do that
+    if (!thread->globalVars) {
+        thread->globalVars =
+            TMalloc(&thread->ctx, sizeof(Tiny_Value) * thread->state->numGlobalVars);
+        memset(thread->globalVars, 0, sizeof(Tiny_Value) * thread->state->numGlobalVars);
+    }
+}
 
-        static void* DefaultAlloc(void *ptr, size_t size, void *userdata) {
-            if (size == 0) {
-                free(ptr);
-                return NULL;
-            }
+static void *DefaultAlloc(void *ptr, size_t size, void *userdata) {
+    if (size == 0) {
+        free(ptr);
+        return NULL;
+    }
 
-            return realloc(ptr, size);
-        }
+    return realloc(ptr, size);
+}
 
-        size_t Tiny_StringLen(const Tiny_Value value) {
-            if (value.type == TINY_VAL_CONST_STRING)
-                return strlen(value.cstr);
-            if (value.type != TINY_VAL_STRING)
-                return 0;
+size_t Tiny_StringLen(const Tiny_Value value) {
+    if (value.type == TINY_VAL_CONST_STRING) return strlen(value.cstr);
+    if (value.type != TINY_VAL_STRING) return 0;
 
-            return value.obj->string.len;
-        }
+    return value.obj->string.len;
+}
 
-        const char* Tiny_ToString(const Tiny_Value value) {
-            if (value.type == TINY_VAL_CONST_STRING)
-                return value.cstr;
-            if (value.type != TINY_VAL_STRING)
-                return NULL;
+const char *Tiny_ToString(const Tiny_Value value) {
+    if (value.type == TINY_VAL_CONST_STRING) return value.cstr;
+    if (value.type != TINY_VAL_STRING) return NULL;
 
-            return value.obj->string.ptr;
-        }
+    return value.obj->string.ptr;
+}
 
-        bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b) {
-            bool bothStrings =
-                    ((a.type == TINY_VAL_CONST_STRING && b.type == TINY_VAL_STRING) || (a.type == TINY_VAL_STRING && b.type == TINY_VAL_CONST_STRING));
+bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b) {
+    bool bothStrings = ((a.type == TINY_VAL_CONST_STRING && b.type == TINY_VAL_STRING) ||
+                        (a.type == TINY_VAL_STRING && b.type == TINY_VAL_CONST_STRING));
 
-            if (a.type != b.type && !bothStrings) {
-                return false;
-            }
+    if (a.type != b.type && !bothStrings) {
+        return false;
+    }
 
-            if (a.type == TINY_VAL_NULL) {
-                return true;
-            }
+    if (a.type == TINY_VAL_NULL) {
+        return true;
+    }
 
-            if (a.type == TINY_VAL_BOOL) {
-                return a.boolean == b.boolean;
-            }
+    if (a.type == TINY_VAL_BOOL) {
+        return a.boolean == b.boolean;
+    }
 
-            if (a.type == TINY_VAL_INT) {
-                return a.i == b.i;
-            }
+    if (a.type == TINY_VAL_INT) {
+        return a.i == b.i;
+    }
 
-            if (a.type == TINY_VAL_FLOAT) {
-                return a.f == b.f;
-            }
+    if (a.type == TINY_VAL_FLOAT) {
+        return a.f == b.f;
+    }
 
-            if (a.type == TINY_VAL_STRING) {
-                size_t aLen = Tiny_StringLen(a);
-                size_t bLen = Tiny_StringLen(b);
+    if (a.type == TINY_VAL_STRING) {
+        size_t aLen = Tiny_StringLen(a);
+        size_t bLen = Tiny_StringLen(b);
 
-                if (aLen != bLen) {
-                    return false;
-                }
-
-                return strncmp(a.obj->string.ptr, Tiny_ToString(b), aLen) == 0;
-            }
-
-            if (a.type == TINY_VAL_CONST_STRING) {
-                if (b.type == TINY_VAL_CONST_STRING && a.cstr == b.cstr) {
-                    return true;
-                }
-
-                size_t aLen = Tiny_StringLen(a);
-                size_t bLen = Tiny_StringLen(b);
-
-                if (aLen != bLen) {
-                    return false;
-                }
-
-                return strncmp(a.cstr, Tiny_ToString(b), aLen) == 0;
-            }
-
-            if (a.type == TINY_VAL_NATIVE) {
-                return a.obj->nat.addr == b.obj->nat.addr;
-            }
-
-            if (a.type == TINY_VAL_LIGHT_NATIVE) {
-                return a.addr == b.addr;
-            }
-
-            if (a.type == TINY_VAL_STRUCT) {
-                return a.obj == b.obj;
-            }
-
+        if (aLen != bLen) {
             return false;
         }
 
-        Tiny_Context Tiny_DefaultContext = { DefaultAlloc, NULL };
+        return strncmp(a.obj->string.ptr, Tiny_ToString(b), aLen) == 0;
+    }
 
-        void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *state, Tiny_Context ctx) {
-            thread->ctx = ctx;
-
-            thread->state = state;
-
-            thread->gcHead = NULL;
-            thread->numObjects = 0;
-            // TODO: Use INIT_GC_THRESH definition
-            thread->maxNumObjects = 8;
-
-            thread->globalVars = NULL;
-
-            thread->pc = -1;
-            thread->fp = thread->sp = 0;
-
-            thread->retVal = Tiny_Null;
-
-            thread->fc = 0;
-
-            thread->userdata = NULL;
+    if (a.type == TINY_VAL_CONST_STRING) {
+        if (b.type == TINY_VAL_CONST_STRING && a.cstr == b.cstr) {
+            return true;
         }
 
-        void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state) {
-            Tiny_InitThreadWithContext(thread, state, Tiny_DefaultContext);
+        size_t aLen = Tiny_StringLen(a);
+        size_t bLen = Tiny_StringLen(b);
+
+        if (aLen != bLen) {
+            return false;
         }
 
-        void Tiny_StartThread(Tiny_StateThread *thread) {
-            AllocGlobals(thread);
+        return strncmp(a.cstr, Tiny_ToString(b), aLen) == 0;
+    }
 
-            // TODO: Eventually move to an actual entry point
-            thread->pc = 0;
-        }
+    if (a.type == TINY_VAL_NATIVE) {
+        return a.obj->nat.addr == b.obj->nat.addr;
+    }
 
-        void Tiny_DestroyThread(Tiny_StateThread *thread) {
-            thread->pc = -1;
+    if (a.type == TINY_VAL_LIGHT_NATIVE) {
+        return a.addr == b.addr;
+    }
 
-            // Free all objects in the gc list
-            while (thread->gcHead) {
-                Tiny_Object *next = thread->gcHead->next;
-                DeleteObject(&thread->ctx, thread->gcHead);
-                thread->gcHead = next;
-            }
+    if (a.type == TINY_VAL_STRUCT) {
+        return a.obj == b.obj;
+    }
 
-            // Free all global variables
-            TFree(&thread->ctx, thread->globalVars);
-        }
+    return false;
+}
 
-        bool Tiny_ExecuteCycle(Tiny_StateThread *thread) {
-            return ExecuteCycle(thread);
-        }
+Tiny_Context Tiny_DefaultContext = {DefaultAlloc, NULL};
 
-        void Tiny_Run(Tiny_StateThread *thread) {
-            while (ExecuteCycle(thread))
-                ;
-        }
+void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *state,
+                                Tiny_Context ctx) {
+    thread->ctx = ctx;
+
+    thread->state = state;
+
+    thread->gcHead = NULL;
+    thread->numObjects = 0;
+    // TODO: Use INIT_GC_THRESH definition
+    thread->maxNumObjects = 8;
+
+    thread->globalVars = NULL;
+
+    thread->pc = -1;
+    thread->fp = thread->sp = 0;
+
+    thread->retVal = Tiny_Null;
+
+    thread->fc = 0;
+
+    thread->userdata = NULL;
+}
+
+void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state) {
+    Tiny_InitThreadWithContext(thread, state, Tiny_DefaultContext);
+}
+
+void Tiny_StartThread(Tiny_StateThread *thread) {
+    AllocGlobals(thread);
+
+    // TODO: Eventually move to an actual entry point
+    thread->pc = 0;
+}
+
+void Tiny_DestroyThread(Tiny_StateThread *thread) {
+    thread->pc = -1;
+
+    // Free all objects in the gc list
+    while (thread->gcHead) {
+        Tiny_Object *next = thread->gcHead->next;
+        DeleteObject(&thread->ctx, thread->gcHead);
+        thread->gcHead = next;
+    }
+
+    // Free all global variables
+    TFree(&thread->ctx, thread->globalVars);
+}
+
+bool Tiny_ExecuteCycle(Tiny_StateThread *thread) { return ExecuteCycle(thread); }
+
+void Tiny_Run(Tiny_StateThread *thread) {
+    while (ExecuteCycle(thread))
+        ;
+}
 
 #endif
 
 /////////////////// VM ///////////////////
 
-        static void DoPush(Tiny_StateThread *thread, Tiny_Value value) {
-            thread->stack[thread->sp++] = value;
+static void DoPush(Tiny_StateThread *thread, Tiny_Value value) {
+    thread->stack[thread->sp++] = value;
+}
+
+static inline Tiny_Value DoPop(Tiny_StateThread *thread) { return thread->stack[--thread->sp]; }
+
+inline static bool ExpectBool(const Tiny_Value value) {
+    assert(value.type == TINY_VAL_BOOL);
+    return value.boolean;
+}
+
+static void DoPushIndir(Tiny_StateThread *thread, uint8_t nargs) {
+    assert(thread->fc < TINY_THREAD_MAX_CALL_DEPTH);
+
+    thread->frames[thread->fc++] = (Tiny_Frame){thread->pc, thread->fp, nargs};
+    thread->fp = thread->sp;
+}
+
+static void DoPopIndir(Tiny_StateThread *thread) {
+    assert(thread->fc > 0);
+
+    thread->sp = thread->fp;
+
+    Tiny_Frame frame = thread->frames[--thread->fc];
+
+    thread->sp -= frame.nargs;
+    thread->fp = frame.fp;
+    thread->pc = frame.pc;
+}
+
+static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj) {
+    if (obj->type == TINY_VAL_STRING) {
+        char *internalStr = (char *)obj + sizeof(Tiny_Object);
+
+        if (obj->string.ptr == internalStr) {
+            // FIXME(Apaar): Is it possible for there to be a string which just happens to be
+            // allocated after the object pointer?
+
+            // If the string pointer is directly after the object then it is part of the object
+            // allocation and does not need to be freed separately
+        } else {
+            TFree(ctx, obj->string.ptr);
         }
-
-        static inline Tiny_Value DoPop(Tiny_StateThread *thread) {
-            return thread->stack[--thread->sp];
+    } else if (obj->type == TINY_VAL_NATIVE) {
+        if (obj->nat.prop && obj->nat.prop->finalize) {
+            obj->nat.prop->finalize(ctx, obj->nat.addr);
         }
+    }
 
-        inline static bool ExpectBool(const Tiny_Value value) {
-            assert(value.type == TINY_VAL_BOOL);
-            return value.boolean;
+    TFree(ctx, obj);
+}
+
+static inline bool IsObject(Tiny_Value val) {
+    return val.type == TINY_VAL_STRING || val.type == TINY_VAL_NATIVE ||
+           val.type == TINY_VAL_STRUCT;
+}
+
+void Tiny_ProtectFromGC(Tiny_Value value) {
+    if (!IsObject(value)) return;
+
+    Tiny_Object *obj = value.obj;
+
+    assert(obj);
+
+    if (obj->marked) return;
+
+    if (obj->type == TINY_VAL_NATIVE) {
+        if (obj->nat.prop && obj->nat.prop->protectFromGC)
+            obj->nat.prop->protectFromGC(obj->nat.addr);
+    } else if (obj->type == TINY_VAL_STRUCT) {
+        for (int i = 0; i < obj->ostruct.n; ++i) Tiny_ProtectFromGC(obj->ostruct.fields[i]);
+    }
+
+    obj->marked = 1;
+}
+
+static void MarkAll(Tiny_StateThread *thread) {
+    assert(thread->state);
+
+    Tiny_ProtectFromGC(thread->retVal);
+
+    for (int i = 0; i < thread->sp; ++i) Tiny_ProtectFromGC(thread->stack[i]);
+
+    for (int i = 0; i < thread->state->numGlobalVars; ++i)
+        Tiny_ProtectFromGC(thread->globalVars[i]);
+}
+
+static void Sweep(Tiny_StateThread *thread) {
+    Tiny_Object **object = &thread->gcHead;
+    while (*object) {
+        if (!(*object)->marked) {
+            Tiny_Object *unreached = *object;
+            --thread->numObjects;
+            *object = unreached->next;
+            DeleteObject(&thread->ctx, unreached);
+        } else {
+            (*object)->marked = 0;
+            object = &(*object)->next;
         }
+    }
+}
 
-        static void DoPushIndir(Tiny_StateThread *thread, uint8_t nargs) {
-            assert(thread->fc < TINY_THREAD_MAX_CALL_DEPTH);
-
-            thread->frames[thread->fc++] = (Tiny_Frame ) { thread->pc, thread->fp, nargs };
-            thread->fp = thread->sp;
-        }
-
-        static void DoPopIndir(Tiny_StateThread *thread) {
-            assert(thread->fc > 0);
-
-            thread->sp = thread->fp;
-
-            Tiny_Frame frame = thread->frames[--thread->fc];
-
-            thread->sp -= frame.nargs;
-            thread->fp = frame.fp;
-            thread->pc = frame.pc;
-        }
+static void GarbageCollect(Tiny_StateThread *thread) {
+    MarkAll(thread);
+    Sweep(thread);
+    thread->maxNumObjects = thread->numObjects * 2;
+}
 
-        static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj) {
-            if (obj->type == TINY_VAL_STRING) {
-                char *internalStr = (char*) obj + sizeof(Tiny_Object);
+Tiny_Value Tiny_NewBool(bool value) {
+    Tiny_Value val;
 
-                if (obj->string.ptr == internalStr) {
-                    // FIXME(Apaar): Is it possible for there to be a string which just happens to be
-                    // allocated after the object pointer?
+    val.type = TINY_VAL_BOOL;
+    val.boolean = value;
 
-                    // If the string pointer is directly after the object then it is part of the object
-                    // allocation and does not need to be freed separately
-                } else {
-                    TFree(ctx, obj->string.ptr);
-                }
-            } else if (obj->type == TINY_VAL_NATIVE) {
-                if (obj->nat.prop && obj->nat.prop->finalize) {
-                    obj->nat.prop->finalize(ctx, obj->nat.addr);
-                }
-            }
+    return val;
+}
 
-            TFree(ctx, obj);
-        }
+Tiny_Value Tiny_NewInt(int i) {
+    Tiny_Value val;
 
-        static inline bool IsObject(Tiny_Value val) {
-            return val.type == TINY_VAL_STRING || val.type == TINY_VAL_NATIVE || val.type == TINY_VAL_STRUCT;
-        }
+    val.type = TINY_VAL_INT;
+    val.i = i;
 
-        void Tiny_ProtectFromGC(Tiny_Value value) {
-            if (!IsObject(value))
-                return;
+    return val;
+}
 
-            Tiny_Object *obj = value.obj;
+Tiny_Value Tiny_NewFloat(float f) {
+    Tiny_Value val;
 
-            assert(obj);
+    val.type = TINY_VAL_FLOAT;
+    val.f = f;
 
-            if (obj->marked)
-                return;
+    return val;
+}
 
-            if (obj->type == TINY_VAL_NATIVE) {
-                if (obj->nat.prop && obj->nat.prop->protectFromGC)
-                    obj->nat.prop->protectFromGC(obj->nat.addr);
-            } else if (obj->type == TINY_VAL_STRUCT) {
-                for (int i = 0; i < obj->ostruct.n; ++i)
-                    Tiny_ProtectFromGC(obj->ostruct.fields[i]);
-            }
+Tiny_Value Tiny_NewConstString(const char *str) {
+    assert(str);
 
-            obj->marked = 1;
-        }
+    Tiny_Value val;
 
-        static void MarkAll(Tiny_StateThread *thread) {
-            assert(thread->state);
+    val.type = TINY_VAL_CONST_STRING;
+    val.cstr = str;
 
-            Tiny_ProtectFromGC(thread->retVal);
+    return val;
+}
 
-            for (int i = 0; i < thread->sp; ++i)
-                Tiny_ProtectFromGC(thread->stack[i]);
+static Tiny_Object *NewStructObject(Tiny_StateThread *thread, Word n) {
+    assert(n >= 0);
+    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + sizeof(Tiny_Value) * n);
 
-            for (int i = 0; i < thread->state->numGlobalVars; ++i)
-                Tiny_ProtectFromGC(thread->globalVars[i]);
-        }
+    obj->type = TINY_VAL_STRUCT;
+    obj->next = thread->gcHead;
+    thread->gcHead = obj;
+    obj->marked = 0;
 
-        static void Sweep(Tiny_StateThread *thread) {
-            Tiny_Object **object = &thread->gcHead;
-            while (*object) {
-                if (!(*object)->marked) {
-                    Tiny_Object *unreached = *object;
-                    --thread->numObjects;
-                    *object = unreached->next;
-                    DeleteObject(&thread->ctx, unreached);
-                } else {
-                    (*object)->marked = 0;
-                    object = &(*object)->next;
-                }
-            }
-        }
+    obj->ostruct.n = n;
 
-        static void GarbageCollect(Tiny_StateThread *thread) {
-            MarkAll(thread);
-            Sweep(thread);
-            thread->maxNumObjects = thread->numObjects * 2;
-        }
+    thread->numObjects++;
 
-        Tiny_Value Tiny_NewBool(bool value) {
-            Tiny_Value val;
+    return obj;
+}
 
-            val.type = TINY_VAL_BOOL;
-            val.boolean = value;
+inline static int ReadIntegerAt(const Tiny_State *state, int *pc) {
+    // Move PC up to the next 4 aligned thing
+    *pc = (*pc + 3) & ~3;
 
-            return val;
-        }
+    int val = *(int *)(&state->program[*pc]);
+    *pc += sizeof(int) / sizeof(Word);
 
-        Tiny_Value Tiny_NewInt(int i) {
-            Tiny_Value val;
+    return val;
+}
 
-            val.type = TINY_VAL_INT;
-            val.i = i;
+static int ReadInteger(Tiny_StateThread *thread) {
+    return ReadIntegerAt(thread->state, &thread->pc);
+}
 
-            return val;
-        }
+inline static float ReadFloatAt(const Tiny_State *state, int *pc) {
+    // Move PC up to the next 4 aligned thing
+    *pc = (*pc + 3) & ~3;
 
-        Tiny_Value Tiny_NewFloat(float f) {
-            Tiny_Value val;
+    float val = *(float *)(&state->program[*pc]);
+    *pc += sizeof(float) / sizeof(Word);
 
-            val.type = TINY_VAL_FLOAT;
-            val.f = f;
+    return val;
+}
 
-            return val;
-        }
+static float ReadFloat(Tiny_StateThread *thread) { return ReadFloatAt(thread->state, &thread->pc); }
 
-        Tiny_Value Tiny_NewConstString(const char *str) {
-            assert(str);
+inline static bool ExecuteCycle(Tiny_StateThread *thread) {
+    assert(thread && thread->state);
 
-            Tiny_Value val;
+    if (thread->pc < 0) return false;
 
-            val.type = TINY_VAL_CONST_STRING;
-            val.cstr = str;
+    const Tiny_State *state = thread->state;
 
-            return val;
-        }
+    switch (state->program[thread->pc]) {
+        case TINY_OP_PUSH_NULL: {
+            ++thread->pc;
+            DoPush(thread, Tiny_Null);
+        } break;
 
-        static Tiny_Object* NewStructObject(Tiny_StateThread *thread, Word n) {
-            assert(n >= 0);
-            Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + sizeof(Tiny_Value) * n);
+        case TINY_OP_PUSH_NULL_N: {
+            ++thread->pc;
 
-            obj->type = TINY_VAL_STRUCT;
-            obj->next = thread->gcHead;
-            thread->gcHead = obj;
-            obj->marked = 0;
+            Word n = thread->state->program[thread->pc++];
 
-            obj->ostruct.n = n;
+            memset(&thread->stack[thread->sp], 0, sizeof(Tiny_Value) * n);
+            thread->sp += n;
+        } break;
 
-            thread->numObjects++;
+        case TINY_OP_PUSH_TRUE: {
+            ++thread->pc;
+            DoPush(thread, Tiny_NewBool(true));
+        } break;
 
-            return obj;
-        }
+        case TINY_OP_PUSH_FALSE: {
+            ++thread->pc;
+            DoPush(thread, Tiny_NewBool(false));
+        } break;
 
-        inline static int ReadIntegerAt(const Tiny_State *state, int *pc) {
-            // Move PC up to the next 4 aligned thing
-            *pc = (*pc + 3) & ~3;
+        case TINY_OP_PUSH_INT: {
+            ++thread->pc;
 
-            int val = *(int*) (&state->program[*pc]);
-            *pc += sizeof(int) / sizeof(Word);
+            thread->stack[thread->sp].type = TINY_VAL_INT;
+            thread->stack[thread->sp].i = ReadInteger(thread);
+            thread->sp += 1;
+        } break;
 
-            return val;
-        }
+        case TINY_OP_PUSH_0: {
+            ++thread->pc;
 
-        static int ReadInteger(Tiny_StateThread *thread) {
-            return ReadIntegerAt(thread->state, &thread->pc);
-        }
+            thread->stack[thread->sp].type = TINY_VAL_INT;
+            thread->stack[thread->sp].i = 0;
+            thread->sp += 1;
+        } break;
 
-        inline static float ReadFloatAt(const Tiny_State *state, int *pc) {
-            // Move PC up to the next 4 aligned thing
-            *pc = (*pc + 3) & ~3;
+        case TINY_OP_PUSH_1: {
+            ++thread->pc;
 
-            float val = *(float*) (&state->program[*pc]);
-            *pc += sizeof(float) / sizeof(Word);
+            thread->stack[thread->sp].type = TINY_VAL_INT;
+            thread->stack[thread->sp].i = 1;
+            thread->sp += 1;
+        } break;
 
-            return val;
-        }
+        case TINY_OP_PUSH_CHAR: {
+            ++thread->pc;
 
-        static float ReadFloat(Tiny_StateThread *thread) {
-            return ReadFloatAt(thread->state, &thread->pc);
-        }
+            thread->stack[thread->sp].type = TINY_VAL_INT;
+            thread->stack[thread->sp].i = thread->state->program[thread->pc];
+            thread->sp += 1;
+            thread->pc += 1;
+        } break;
 
-        inline static bool ExecuteCycle(Tiny_StateThread *thread) {
-            assert(thread && thread->state);
+        case TINY_OP_PUSH_FLOAT: {
+            ++thread->pc;
 
-            if (thread->pc < 0)
-                return false;
+            DoPush(thread, Tiny_NewFloat(ReadFloat(thread)));
+        } break;
 
-            const Tiny_State *state = thread->state;
+        case TINY_OP_PUSH_STRING: {
+            ++thread->pc;
 
-            switch (state->program[thread->pc]) {
-                case TINY_OP_PUSH_NULL: {
-                    ++thread->pc;
-                    DoPush(thread, Tiny_Null);
-                }
-                    break;
+            int stringIndex = ReadInteger(thread);
 
-                case TINY_OP_PUSH_NULL_N: {
-                    ++thread->pc;
+            DoPush(thread, Tiny_NewConstString(thread->state->strings[stringIndex]));
+        } break;
 
-                    Word n = thread->state->program[thread->pc++];
+        case TINY_OP_PUSH_STRING_FF: {
+            ++thread->pc;
 
-                    memset(&thread->stack[thread->sp], 0, sizeof(Tiny_Value) * n);
-                    thread->sp += n;
-                }
-                    break;
+            Word sIndex = thread->state->program[thread->pc++];
+            DoPush(thread, Tiny_NewConstString(thread->state->strings[sIndex]));
+        } break;
 
-                case TINY_OP_PUSH_TRUE: {
-                    ++thread->pc;
-                    DoPush(thread, Tiny_NewBool(true));
-                }
-                    break;
+        case TINY_OP_PUSH_STRUCT: {
+            ++thread->pc;
 
-                case TINY_OP_PUSH_FALSE: {
-                    ++thread->pc;
-                    DoPush(thread, Tiny_NewBool(false));
-                }
-                    break;
+            Word nFields = thread->state->program[thread->pc++];
+            assert(nFields > 0);
 
-                case TINY_OP_PUSH_INT: {
-                    ++thread->pc;
+            Tiny_Object *obj = NewStructObject(thread, nFields);
 
-                    thread->stack[thread->sp].type = TINY_VAL_INT;
-                    thread->stack[thread->sp].i = ReadInteger(thread);
-                    thread->sp += 1;
-                }
-                    break;
+            memcpy(obj->ostruct.fields, &thread->stack[thread->sp - nFields],
+                   sizeof(Tiny_Value) * nFields);
+            thread->sp -= nFields;
 
-                case TINY_OP_PUSH_0: {
-                    ++thread->pc;
+            thread->stack[thread->sp].type = TINY_VAL_STRUCT;
+            thread->stack[thread->sp].obj = obj;
 
-                    thread->stack[thread->sp].type = TINY_VAL_INT;
-                    thread->stack[thread->sp].i = 0;
-                    thread->sp += 1;
-                }
-                    break;
+            thread->sp += 1;
+        } break;
 
-                case TINY_OP_PUSH_1: {
-                    ++thread->pc;
+        case TINY_OP_STRUCT_GET: {
+            ++thread->pc;
 
-                    thread->stack[thread->sp].type = TINY_VAL_INT;
-                    thread->stack[thread->sp].i = 1;
-                    thread->sp += 1;
-                }
-                    break;
+            Word i = thread->state->program[thread->pc++];
 
-                case TINY_OP_PUSH_CHAR: {
-                    ++thread->pc;
+            assert(i >= 0 && i < thread->stack[thread->sp - 1].obj->ostruct.n);
 
-                    thread->stack[thread->sp].type = TINY_VAL_INT;
-                    thread->stack[thread->sp].i = thread->state->program[thread->pc];
-                    thread->sp += 1;
-                    thread->pc += 1;
-                }
-                    break;
+            Tiny_Value val = thread->stack[thread->sp - 1].obj->ostruct.fields[i];
+            thread->stack[thread->sp - 1] = val;
+        } break;
 
-                case TINY_OP_PUSH_FLOAT: {
-                    ++thread->pc;
+        case TINY_OP_STRUCT_SET: {
+            ++thread->pc;
 
-                    DoPush(thread, Tiny_NewFloat(ReadFloat(thread)));
-                }
-                    break;
+            Word i = thread->state->program[thread->pc++];
 
-                case TINY_OP_PUSH_STRING: {
-                    ++thread->pc;
+            Tiny_Value vstruct = DoPop(thread);
+            Tiny_Value val = DoPop(thread);
 
-                    int stringIndex = ReadInteger(thread);
+            assert(i >= 0 && i < vstruct.obj->ostruct.n);
 
-                    DoPush(thread, Tiny_NewConstString(thread->state->strings[stringIndex]));
-                }
-                    break;
-
-                case TINY_OP_PUSH_STRING_FF: {
-                    ++thread->pc;
-
-                    Word sIndex = thread->state->program[thread->pc++];
-                    DoPush(thread, Tiny_NewConstString(thread->state->strings[sIndex]));
-                }
-                    break;
-
-                case TINY_OP_PUSH_STRUCT: {
-                    ++thread->pc;
-
-                    Word nFields = thread->state->program[thread->pc++];
-                    assert(nFields > 0);
-
-                    Tiny_Object *obj = NewStructObject(thread, nFields);
-
-                    memcpy(obj->ostruct.fields, &thread->stack[thread->sp - nFields], sizeof(Tiny_Value) * nFields);
-                    thread->sp -= nFields;
-
-                    thread->stack[thread->sp].type = TINY_VAL_STRUCT;
-                    thread->stack[thread->sp].obj = obj;
-
-                    thread->sp += 1;
-                }
-                    break;
-
-                case TINY_OP_STRUCT_GET: {
-                    ++thread->pc;
-
-                    Word i = thread->state->program[thread->pc++];
-
-                    assert(i >= 0 && i < thread->stack[thread->sp - 1].obj->ostruct.n);
-
-                    Tiny_Value val = thread->stack[thread->sp - 1].obj->ostruct.fields[i];
-                    thread->stack[thread->sp - 1] = val;
-                }
-                    break;
-
-                case TINY_OP_STRUCT_SET: {
-                    ++thread->pc;
-
-                    Word i = thread->state->program[thread->pc++];
-
-                    Tiny_Value vstruct = DoPop(thread);
-                    Tiny_Value val = DoPop(thread);
-
-                    assert(i >= 0 && i < vstruct.obj->ostruct.n);
-
-                    vstruct.obj->ostruct.fields[i] = val;
-                }
-                    break;
+            vstruct.obj->ostruct.fields[i] = val;
+        } break;
 
 #define BIN_OP(OP, operator)                                                \
     case TINY_OP_##OP: {                                                    \
@@ -4148,25 +4122,24 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
         ++thread->pc;                                                  \
     } break;
 
-                case TINY_OP_LTE: {
-                    Tiny_Value *a = &thread->stack[thread->sp - 2];
-                    const Tiny_Value *b = &thread->stack[--thread->sp];
-                    if (a->type == TINY_VAL_FLOAT && b->type == TINY_VAL_FLOAT) {
-                        a->type = TINY_VAL_BOOL;
-                        a->boolean = a->f <= b->f;
-                    } else if (a->type == TINY_VAL_INT && b->type == TINY_VAL_INT) {
-                        a->type = TINY_VAL_BOOL;
-                        a->boolean = a->i <= b->i;
-                    } else if (a->type == TINY_VAL_INT) {
-                        a->type = TINY_VAL_BOOL;
-                        a->boolean = (float) a->i <= b->f;
-                    } else {
-                        a->type = TINY_VAL_BOOL;
-                        a->boolean = a->f <= (float) b->i;
-                    }
-                    ++thread->pc;
-                }
-                    break;
+        case TINY_OP_LTE: {
+            Tiny_Value *a = &thread->stack[thread->sp - 2];
+            const Tiny_Value *b = &thread->stack[--thread->sp];
+            if (a->type == TINY_VAL_FLOAT && b->type == TINY_VAL_FLOAT) {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = a->f <= b->f;
+            } else if (a->type == TINY_VAL_INT && b->type == TINY_VAL_INT) {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = a->i <= b->i;
+            } else if (a->type == TINY_VAL_INT) {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = (float)a->i <= b->f;
+            } else {
+                a->type = TINY_VAL_BOOL;
+                a->boolean = a->f <= (float)b->i;
+            }
+            ++thread->pc;
+        } break;
 
 #define REL_OP(OP, operator)                                            \
     case TINY_OP_##OP: {                                                \
@@ -4188,170 +4161,149 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
         ++thread->pc;                                                   \
     } break;
 
-                BIN_OP(ADD, +)
-                BIN_OP(SUB, -)
-                BIN_OP(MUL, *)
-                BIN_OP(DIV, /)
-                BIN_OP_INT(MOD, %)
-                BIN_OP_INT(OR, |)
-                BIN_OP_INT(AND, &)
+            BIN_OP(ADD, +)
+            BIN_OP(SUB, -)
+            BIN_OP(MUL, *)
+            BIN_OP(DIV, /)
+            BIN_OP_INT(MOD, %)
+            BIN_OP_INT(OR, |)
+            BIN_OP_INT(AND, &)
 
-                REL_OP(LT, <)
-                REL_OP(GT, >)
-                REL_OP(GTE, >=)
+            REL_OP(LT, <)
+            REL_OP(GT, >)
+            REL_OP(GTE, >=)
 
 #undef BIN_OP
 #undef BIN_OP_INT
 #undef REL_OP
 
-                case TINY_OP_ADD1: {
-                    ++thread->pc;
-                    thread->stack[thread->sp - 1].i += 1;
-                }
-                    break;
+        case TINY_OP_ADD1: {
+            ++thread->pc;
+            thread->stack[thread->sp - 1].i += 1;
+        } break;
 
-                case TINY_OP_SUB1: {
-                    ++thread->pc;
-                    thread->stack[thread->sp - 1].i -= 1;
-                }
-                    break;
+        case TINY_OP_SUB1: {
+            ++thread->pc;
+            thread->stack[thread->sp - 1].i -= 1;
+        } break;
 
-                case TINY_OP_EQU: {
-                    ++thread->pc;
-                    Tiny_Value b = DoPop(thread);
-                    Tiny_Value a = DoPop(thread);
+        case TINY_OP_EQU: {
+            ++thread->pc;
+            Tiny_Value b = DoPop(thread);
+            Tiny_Value a = DoPop(thread);
 
-                    DoPush(thread, Tiny_NewBool(Tiny_AreValuesEqual(a, b)));
-                }
-                    break;
+            DoPush(thread, Tiny_NewBool(Tiny_AreValuesEqual(a, b)));
+        } break;
 
-                case TINY_OP_LOG_NOT: {
-                    ++thread->pc;
-                    Tiny_Value a = DoPop(thread);
+        case TINY_OP_LOG_NOT: {
+            ++thread->pc;
+            Tiny_Value a = DoPop(thread);
 
-                    DoPush(thread, Tiny_NewBool(!ExpectBool(a)));
-                }
-                    break;
+            DoPush(thread, Tiny_NewBool(!ExpectBool(a)));
+        } break;
 
-                case TINY_OP_SET: {
-                    ++thread->pc;
-                    int varIdx = ReadInteger(thread);
-                    thread->globalVars[varIdx] = DoPop(thread);
-                }
-                    break;
+        case TINY_OP_SET: {
+            ++thread->pc;
+            int varIdx = ReadInteger(thread);
+            thread->globalVars[varIdx] = DoPop(thread);
+        } break;
 
-                case TINY_OP_GET: {
-                    ++thread->pc;
-                    int varIdx = ReadInteger(thread);
-                    DoPush(thread, thread->globalVars[varIdx]);
-                }
-                    break;
+        case TINY_OP_GET: {
+            ++thread->pc;
+            int varIdx = ReadInteger(thread);
+            DoPush(thread, thread->globalVars[varIdx]);
+        } break;
 
-                case TINY_OP_GOTO: {
-                    ++thread->pc;
-                    int newPc = ReadInteger(thread);
-                    thread->pc = newPc;
-                }
-                    break;
+        case TINY_OP_GOTO: {
+            ++thread->pc;
+            int newPc = ReadInteger(thread);
+            thread->pc = newPc;
+        } break;
 
-                case TINY_OP_GOTOZ: {
-                    ++thread->pc;
-                    int newPc = ReadInteger(thread);
+        case TINY_OP_GOTOZ: {
+            ++thread->pc;
+            int newPc = ReadInteger(thread);
 
-                    Tiny_Value val = DoPop(thread);
+            Tiny_Value val = DoPop(thread);
 
-                    if (!ExpectBool(val))
-                        thread->pc = newPc;
-                }
-                    break;
+            if (!ExpectBool(val)) thread->pc = newPc;
+        } break;
 
-                case TINY_OP_CALL: {
-                    ++thread->pc;
-                    Word nargs = thread->state->program[thread->pc++];
-                    int pcIdx = ReadInteger(thread);
+        case TINY_OP_CALL: {
+            ++thread->pc;
+            Word nargs = thread->state->program[thread->pc++];
+            int pcIdx = ReadInteger(thread);
 
-                    DoPushIndir(thread, nargs);
-                    thread->pc = state->functionPcs[pcIdx];
-                }
-                    break;
+            DoPushIndir(thread, nargs);
+            thread->pc = state->functionPcs[pcIdx];
+        } break;
 
-                case TINY_OP_RETURN: {
-                    thread->retVal = Tiny_Null;
+        case TINY_OP_RETURN: {
+            thread->retVal = Tiny_Null;
 
-                    DoPopIndir(thread);
-                }
-                    break;
+            DoPopIndir(thread);
+        } break;
 
-                case TINY_OP_RETURN_VALUE: {
-                    thread->retVal = DoPop(thread);
-                    DoPopIndir(thread);
-                }
-                    break;
+        case TINY_OP_RETURN_VALUE: {
+            thread->retVal = DoPop(thread);
+            DoPopIndir(thread);
+        } break;
 
-                case TINY_OP_CALLF: {
-                    ++thread->pc;
+        case TINY_OP_CALLF: {
+            ++thread->pc;
 
-                    Word nargs = thread->state->program[thread->pc++];
-                    int fIdx = ReadInteger(thread);
+            Word nargs = thread->state->program[thread->pc++];
+            int fIdx = ReadInteger(thread);
 
-                    // the state of the stack prior to the function arguments being pushed
-                    int prevSize = thread->sp - nargs;
+            // the state of the stack prior to the function arguments being pushed
+            int prevSize = thread->sp - nargs;
 
-                    thread->retVal = state->foreignFunctions[fIdx](thread, &thread->stack[prevSize], nargs);
+            thread->retVal = state->foreignFunctions[fIdx](thread, &thread->stack[prevSize], nargs);
 
-                    // Resize the stack so that it has the arguments removed
-                    thread->sp = prevSize;
-                }
-                    break;
+            // Resize the stack so that it has the arguments removed
+            thread->sp = prevSize;
+        } break;
 
-                case TINY_OP_GETLOCAL: {
-                    ++thread->pc;
-                    int localIdx = ReadInteger(thread);
-                    DoPush(thread, thread->stack[thread->fp + localIdx]);
-                }
-                    break;
+        case TINY_OP_GETLOCAL: {
+            ++thread->pc;
+            int localIdx = ReadInteger(thread);
+            DoPush(thread, thread->stack[thread->fp + localIdx]);
+        } break;
 
-                case TINY_OP_GETLOCAL_W: {
-                    ++thread->pc;
-                    Word localIdx = thread->state->program[thread->pc++];
-                    DoPush(thread, thread->stack[thread->fp + localIdx]);
-                }
-                    break;
+        case TINY_OP_GETLOCAL_W: {
+            ++thread->pc;
+            Word localIdx = thread->state->program[thread->pc++];
+            DoPush(thread, thread->stack[thread->fp + localIdx]);
+        } break;
 
-                case TINY_OP_SETLOCAL: {
-                    ++thread->pc;
-                    int localIdx = ReadInteger(thread);
-                    Tiny_Value val = DoPop(thread);
-                    thread->stack[thread->fp + localIdx] = val;
-                }
-                    break;
+        case TINY_OP_SETLOCAL: {
+            ++thread->pc;
+            int localIdx = ReadInteger(thread);
+            Tiny_Value val = DoPop(thread);
+            thread->stack[thread->fp + localIdx] = val;
+        } break;
 
-                case TINY_OP_GET_RETVAL: {
-                    ++thread->pc;
-                    DoPush(thread, thread->retVal);
-                }
-                    break;
+        case TINY_OP_GET_RETVAL: {
+            ++thread->pc;
+            DoPush(thread, thread->retVal);
+        } break;
 
-                case TINY_OP_HALT: {
-                    thread->pc = -1;
-                }
-                    break;
+        case TINY_OP_HALT: {
+            thread->pc = -1;
+        } break;
 
-                case TINY_OP_MISALIGNED_INSTRUCTION: {
-                    // TODO(Apaar): Proper runtime error
-                    assert(false);
-                }
-                    break;
+        case TINY_OP_MISALIGNED_INSTRUCTION: {
+            // TODO(Apaar): Proper runtime error
+            assert(false);
+        } break;
 
-                default: {
-                    assert(false);
-                }
-                    break;
-            }
+        default: {
+            assert(false);
+        } break;
+    }
 
-            // Only collect garbage in between iterations
-            if (thread->numObjects >= thread->maxNumObjects)
-                GarbageCollect(thread);
+    // Only collect garbage in between iterations
+    if (thread->numObjects >= thread->maxNumObjects) GarbageCollect(thread);
 
-            return true;
-        }
+    return true;
+}

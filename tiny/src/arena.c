@@ -6,10 +6,10 @@
 #include "arena.h"
 #include "util.h"
 
-static Tiny_ArenaPage* AllocPage(Tiny_Context *ctx, size_t size) {
+static Tiny_ArenaPage *AllocPage(Tiny_Context *ctx, size_t size) {
     Tiny_ArenaPage *page = TMalloc(ctx, sizeof(Tiny_ArenaPage) + size);
 
-    page->data = (char*) page + sizeof(Tiny_ArenaPage);
+    page->data = (char *)page + sizeof(Tiny_ArenaPage);
     page->cap = size;
     page->used = 0;
     page->next = NULL;
@@ -41,7 +41,7 @@ void Tiny_InitArena(Tiny_Arena *a, Tiny_Context ctx) {
     a->head = NULL;
 }
 
-void* Tiny_ArenaAlloc(Tiny_Arena *a, size_t size, size_t align) {
+void *Tiny_ArenaAlloc(Tiny_Arena *a, size_t size, size_t align) {
     if (size > ARENA_PAGE_SIZE) {
         Tiny_ArenaPage *page = AllocPage(&a->ctx, size);
 
@@ -70,7 +70,7 @@ void* Tiny_ArenaAlloc(Tiny_Arena *a, size_t size, size_t align) {
 
     a->head->used = NextMultipleOf(a->head->used, align) + size;
 
-    void *data = (char*) a->head->data + (a->head->used - size);
+    void *data = (char *)a->head->data + (a->head->used - size);
 
     return data;
 }

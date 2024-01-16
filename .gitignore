@@ -16,3 +16,4 @@ CMakeLists.txt.user
 .cproject
 .project
 .settings/
+/Release/

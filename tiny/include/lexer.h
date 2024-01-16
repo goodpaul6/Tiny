@@ -37,4 +37,3 @@ Tiny_TokenKind Tiny_GetToken(Tiny_Lexer *l);
 void Tiny_DestroyLexer(Tiny_Lexer *l);
 
 #endif
-

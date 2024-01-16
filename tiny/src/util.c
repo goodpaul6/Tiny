@@ -1,23 +1,20 @@
+#include "util.h"
+
 #include <assert.h>
 #include <math.h>
 #include <stdlib.h>
 #include <string.h>
 
 #include "compile_options.h"
-#include "util.h"
 #include "tiny.h"
 
-void* TMalloc(Tiny_Context *ctx, size_t size) {
-    return ctx->alloc(NULL, size, ctx->userdata);
-}
+void *TMalloc(Tiny_Context *ctx, size_t size) { return ctx->alloc(NULL, size, ctx->userdata); }
 
-void* TRealloc(Tiny_Context *ctx, void *ptr, size_t size) {
+void *TRealloc(Tiny_Context *ctx, void *ptr, size_t size) {
     return ctx->alloc(ptr, size, ctx->userdata);
 }
 
-void TFree(Tiny_Context *ctx, void *ptr) {
-    ctx->alloc(ptr, 0, ctx->userdata);
-}
+void TFree(Tiny_Context *ctx, void *ptr) { ctx->alloc(ptr, 0, ctx->userdata); }
 
 #ifdef TINY_COMPILER
 
@@ -40,7 +37,7 @@ int Tiny_TranslatePosToLineNumber(const char *src, Tiny_TokenPos pos) {
 
 void Tiny_FormatErrorV(char *buf, size_t bufsize, const char *fileName, const char *src,
 
-Tiny_TokenPos pos, const char *s, va_list args) {
+                       Tiny_TokenPos pos, const char *s, va_list args) {
     assert(buf);
 
     size_t used = 0;

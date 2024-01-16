@@ -8,9 +8,9 @@
 #define TINY_VM_UTILS
 
 #ifdef TINY_COMPILER
-    #ifndef TINY_VM_UTILS
-        #define TINY_VM_UTILS
-    #endif
+#ifndef TINY_VM_UTILS
+#define TINY_VM_UTILS
+#endif
 #endif
 
 #endif /* COMPILE_OPTIONS_H_ */

@@ -14,8 +14,7 @@ static unsigned long HashBytes(const char *first, const char *last) {
     unsigned long hash = 5381;
     int c;
 
-    while (first != last && (c = *first++))
-        hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
+    while (first != last && (c = *first++)) hash = ((hash << 5) + hash) + c; /* hash * 33 + c */
 
     return hash;
 }
@@ -23,27 +22,25 @@ static unsigned long HashBytes(const char *first, const char *last) {
 static unsigned long HashValue(Tiny_Value value) {
     switch (value.type) {
         case TINY_VAL_BOOL:
-            return (int) value.boolean + 1;
+            return (int)value.boolean + 1;
         case TINY_VAL_INT:
-            return (unsigned long) value.i;
+            return (unsigned long)value.i;
         case TINY_VAL_CONST_STRING:
         case TINY_VAL_STRING: {
             const char *start = Tiny_ToString(value);
             size_t len = Tiny_StringLen(value);
 
             return HashBytes(start, start + len);
-        }
-            break;
+        } break;
         case TINY_VAL_STRUCT:
-            return (uintptr_t) value.obj;
+            return (uintptr_t)value.obj;
         default: {
             void *ptr = Tiny_ToAddr(value);
 
             assert(ptr);
 
-            return (uintptr_t) ptr;
-        }
-            break;
+            return (uintptr_t)ptr;
+        } break;
     }
 }
 
@@ -54,7 +51,7 @@ static void Init(Dict *dict, Tiny_Context ctx, int bucketCount) {
     InitArray(&dict->keys, ctx);
     InitArray(&dict->values, ctx);
 
-    Tiny_Value nullValue = { 0 };
+    Tiny_Value nullValue = {0};
 
     ArrayResize(&dict->keys, bucketCount, nullValue);
     ArrayResize(&dict->values, bucketCount, nullValue);
@@ -80,9 +77,7 @@ static void Grow(Dict *dict) {
     *dict = newDict;
 }
 
-void InitDict(Dict *dict, Tiny_Context ctx) {
-    Init(dict, ctx, INIT_BUCKET_COUNT);
-}
+void InitDict(Dict *dict, Tiny_Context ctx) { Init(dict, ctx, INIT_BUCKET_COUNT); }
 
 void DestroyDict(Dict *dict) {
     DestroyArray(&dict->keys);
@@ -94,8 +89,7 @@ void DictSet(Dict *dict, Tiny_Value key, Tiny_Value value) {
     // adjust growth factor and parameters (like allow it to fail
     // if there's no space). Better yet, break these apart into
     // DictSet and DictSetGrow so that it's clear.
-    if (dict->filledCount >= (dict->bucketCount * 2) / 3)
-        Grow(dict);
+    if (dict->filledCount >= (dict->bucketCount * 2) / 3) Grow(dict);
 
     unsigned long hash = HashValue(key);
 
@@ -137,18 +131,16 @@ void DictSet(Dict *dict, Tiny_Value key, Tiny_Value value) {
     ArraySet(&dict->values, index, value);
 }
 
-const Tiny_Value* DictGet(Dict *dict, Tiny_Value key) {
+const Tiny_Value *DictGet(Dict *dict, Tiny_Value key) {
     unsigned long index = HashValue(key) % dict->bucketCount;
     unsigned long origin = index;
 
     for (;;) {
         Tiny_Value keyHere = *ArrayGet(&dict->keys, index);
 
-        if (Tiny_IsNull(keyHere))
-            return NULL;
+        if (Tiny_IsNull(keyHere)) return NULL;
 
-        if (Tiny_AreValuesEqual(keyHere, key))
-            return ArrayGet(&dict->values, index);
+        if (Tiny_AreValuesEqual(keyHere, key)) return ArrayGet(&dict->values, index);
 
         index += 1;
         index %= dict->bucketCount;
@@ -167,13 +159,12 @@ void DictRemove(Dict *dict, Tiny_Value key) {
     unsigned long hash = HashValue(key);
 
     unsigned long index = hash % dict->bucketCount;
-    //unsigned long origin = index;
+    // unsigned long origin = index;
 
     for (;;) {
         Tiny_Value keyHere = *ArrayGet(&dict->keys, index);
 
-        if (Tiny_IsNull(keyHere))
-            return;  // Done
+        if (Tiny_IsNull(keyHere)) return;  // Done
 
         if (Tiny_AreValuesEqual(keyHere, key)) {
             ArraySet(&dict->keys, index, Tiny_Null);

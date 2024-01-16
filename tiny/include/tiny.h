@@ -24,7 +24,7 @@
 // malloc => ptr is NULL, size is provided
 // realloc => ptr is not NULL, size is provided
 // free => ptr is not NULL, size is 0
-typedef void* (*Tiny_AllocFunction)(void *ptr, size_t size, void *userdata);
+typedef void *(*Tiny_AllocFunction)(void *ptr, size_t size, void *userdata);
 
 // You can provide this when you create a Tiny_State
 // to override how memory is allocated within the Tiny
@@ -69,8 +69,8 @@ struct Tiny_Value;
 typedef struct Tiny_NativeProp {
     const char *name;
 
-    void (*protectFromGC)(void*);
-    void (*finalize)(Tiny_Context*, void*);
+    void (*protectFromGC)(void *);
+    void (*finalize)(Tiny_Context *, void *);
 } Tiny_NativeProp;
 
 typedef enum {
@@ -134,7 +134,8 @@ typedef struct Tiny_StateThread {
     void *userdata;
 } Tiny_StateThread;
 
-typedef Tiny_Value (*Tiny_ForeignFunction)(Tiny_StateThread *thread, const Tiny_Value *args, int count);
+typedef Tiny_Value (*Tiny_ForeignFunction)(Tiny_StateThread *thread, const Tiny_Value *args,
+                                           int count);
 
 #define TINY_FOREIGN_FUNCTION(name) \
     Tiny_Value name(Tiny_StateThread *thread, const Tiny_Value *args, int count)
@@ -221,11 +222,10 @@ void Tiny_SetGlobal(Tiny_StateThread *thread, int globalIndex, Tiny_Value value)
 // state of the thread prior to the function call and restores it afterwards.
 // This also allocates globals if the thread hasn't been started already, and in
 // that case, once the function call is over, the thread will be "done".
-Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const Tiny_Value *args, int count);
+Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const Tiny_Value *args,
+                             int count);
 
-static inline bool Tiny_IsThreadDone(const Tiny_StateThread *thread) {
-    return thread->pc < 0;
-}
+static inline bool Tiny_IsThreadDone(const Tiny_StateThread *thread) { return thread->pc < 0; }
 
 // This will write the filename and line number of the currently executing
 // piece of Tiny code to `fileName` and `line` respectively. You can provide
@@ -240,7 +240,7 @@ void Tiny_GetExecutingFileLine(const Tiny_StateThread *thread, const char **file
 // all the situations in which Tiny is used.
 //
 // See Tiny_AllocFunction above for how this can be used.
-static inline void* Tiny_AllocUsingContext(Tiny_Context ctx, void *ptr, size_t size) {
+static inline void *Tiny_AllocUsingContext(Tiny_Context ctx, void *ptr, size_t size) {
     return ctx.alloc(ptr, size, ctx.userdata);
 }
 
@@ -303,7 +303,8 @@ typedef struct Tiny_MacroResult {
 // This is very useful for making generic modules (see the array module in std.c for example)
 // or generating serializers/deserializers for user-defined types by using Tiny_CompileString
 // within these functions.
-typedef Tiny_MacroResult (*Tiny_MacroFunction)(Tiny_State *state, char *const*args, int nargs, const char *asName);
+typedef Tiny_MacroResult (*Tiny_MacroFunction)(Tiny_State *state, char *const *args, int nargs,
+                                               const char *asName);
 
 #define TINY_MACRO_FUNCTION(name) \
     Tiny_MacroResult name(Tiny_State *state, char *const *args, int nargs, const char *asName)
@@ -400,17 +401,18 @@ typedef struct Tiny_Symbol {
 
 void Tiny_BindMacro(Tiny_State *state, const char *name, Tiny_MacroFunction fn);
 
-size_t Tiny_SymbolArrayCount(Tiny_Symbol *const*arr);
+size_t Tiny_SymbolArrayCount(Tiny_Symbol *const *arr);
 
-const Tiny_Symbol* Tiny_FindTypeSymbol(Tiny_State *state, const char *name);
-const Tiny_Symbol* Tiny_FindFuncSymbol(Tiny_State *state, const char *name);
+const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name);
+const Tiny_Symbol *Tiny_FindFuncSymbol(Tiny_State *state, const char *name);
 
 // TODO(Apaar): Tiny_FindFuncSymbol, Tiny_FindConstSymbol, etc
 
 //////////////////////////// VM UTILS FUNCTIONS ////////////////////////////
 
 void Tiny_InitThread(Tiny_StateThread *thread, const Tiny_State *state);
-void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *state, Tiny_Context ctx);
+void Tiny_InitThreadWithContext(Tiny_StateThread *thread, const Tiny_State *state,
+                                Tiny_Context ctx);
 void Tiny_DestroyThread(Tiny_StateThread *thread);
 
 // Sets the PC of the thread to the entry point of the program
@@ -431,51 +433,44 @@ bool Tiny_ExecuteCycle(Tiny_StateThread *thread);
 // Tiny_Run.
 void Tiny_Run(Tiny_StateThread *thread);
 
-static inline bool Tiny_IsNull(const Tiny_Value value) {
-    return value.type == TINY_VAL_NULL;
-}
+static inline bool Tiny_IsNull(const Tiny_Value value) { return value.type == TINY_VAL_NULL; }
 
 static inline bool Tiny_ToBool(const Tiny_Value value) {
-    if (value.type != TINY_VAL_BOOL)
-        return false;
+    if (value.type != TINY_VAL_BOOL) return false;
     return value.boolean;
 }
 
 static inline int Tiny_ToInt(const Tiny_Value value) {
-    if (value.type != TINY_VAL_INT)
-        return 0;
+    if (value.type != TINY_VAL_INT) return 0;
     return value.i;
 }
 
 static inline float Tiny_ToFloat(const Tiny_Value value) {
-    if (value.type != TINY_VAL_FLOAT)
-        return 0;
+    if (value.type != TINY_VAL_FLOAT) return 0;
     return value.f;
 }
 
 static inline float Tiny_ToNumber(const Tiny_Value value) {
-    if (value.type == TINY_VAL_FLOAT)
-        return value.f;
-    if (value.type != TINY_VAL_INT)
-        return 0;
+    if (value.type == TINY_VAL_FLOAT) return value.f;
+    if (value.type != TINY_VAL_INT) return 0;
 
-    return (float) value.i;
+    return (float)value.i;
 }
 
 // Returns NULL if the value isn't a string/const string
-const char* Tiny_ToString(const Tiny_Value value);
+const char *Tiny_ToString(const Tiny_Value value);
 
 // Returns 0 if the value isn't a string/const string
 size_t Tiny_StringLen(const Tiny_Value value);
 
 // Returns value.addr if its a LIGHT_NATIVE
 // Returns the normal native address otherwise
-void* Tiny_ToAddr(const Tiny_Value value);
+void *Tiny_ToAddr(const Tiny_Value value);
 
 // This returns NULL if the value is a LIGHT_NATIVE instead of a NATIVE
 // It would also return NULL if the NativeProp supplied when the object was
 // created was NULL, either way, you have no information, so deal with it.
-const Tiny_NativeProp* Tiny_GetProp(const Tiny_Value value);
+const Tiny_NativeProp *Tiny_GetProp(const Tiny_Value value);
 
 // Returns Tiny_Null if value isn't a struct.
 // Asserts if index is out of bounds
@@ -485,10 +480,10 @@ Tiny_Value Tiny_GetField(const Tiny_Value value, int index);
 // comparing their pointers.
 bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b);
 
-Tiny_State* Tiny_CreateState(void);
+Tiny_State *Tiny_CreateState(void);
 
 // Note how the Context is copied.
-Tiny_State* Tiny_CreateStateWithContext(Tiny_Context ctx);
+Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx);
 
 #endif
 

@@ -22,7 +22,7 @@ typedef struct Tiny_Arena {
 
 void Tiny_InitArena(Tiny_Arena *a, Tiny_Context ctx);
 
-void* Tiny_ArenaAlloc(Tiny_Arena *a, size_t size, size_t align);
+void *Tiny_ArenaAlloc(Tiny_Arena *a, size_t size, size_t align);
 
 void Tiny_DestroyArena(Tiny_Arena *a);
 

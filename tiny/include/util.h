@@ -19,13 +19,13 @@
 
 typedef struct Tiny_Context Tiny_Context;
 
-void* TMalloc(Tiny_Context *ctx, size_t size);
-void* TRealloc(Tiny_Context *ctx, void *ptr, size_t size);
+void *TMalloc(Tiny_Context *ctx, size_t size);
+void *TRealloc(Tiny_Context *ctx, void *ptr, size_t size);
 void TFree(Tiny_Context *ctx, void *ptr);
 
 int Tiny_TranslatePosToLineNumber(const char *src, Tiny_TokenPos pos);
 
-void Tiny_FormatErrorV(char *buf, size_t bufsize, const char *fileName, const char *src, Tiny_TokenPos pos, const char *s, va_list args);
+void Tiny_FormatErrorV(char *buf, size_t bufsize, const char *fileName, const char *src,
+                       Tiny_TokenPos pos, const char *s, va_list args);
 
 #endif
-
