@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <string.h>
 
-#include "compile_options.h"
 #include "tiny.h"
 
 void *TMalloc(Tiny_Context *ctx, size_t size) { return ctx->alloc(NULL, size, ctx->userdata); }
@@ -16,7 +15,7 @@ void *TRealloc(Tiny_Context *ctx, void *ptr, size_t size) {
 
 void TFree(Tiny_Context *ctx, void *ptr) { ctx->alloc(ptr, 0, ctx->userdata); }
 
-#ifdef TINY_COMPILER
+#ifndef NO_TINY_COMPILER
 
 int Tiny_TranslatePosToLineNumber(const char *src, Tiny_TokenPos pos) {
     int curPos = 0;

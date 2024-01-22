@@ -1,6 +1,4 @@
-#include "compile_options.h"
-
-#ifdef TINY_COMPILER
+#ifndef NO_TINY_COMPILER
 #include <assert.h>
 
 #include "arena.h"

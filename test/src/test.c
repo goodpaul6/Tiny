@@ -1,7 +1,6 @@
 #include <assert.h>
 #include <stdlib.h>
 
-#include "compile_options.h"
 #include "arena.h"
 #include "array.h"
 #include "detail.h"
@@ -10,7 +9,7 @@
 #include "pos.h"
 #include "tiny.h"
 
-#ifdef TINY_COMPILER
+#ifndef NO_TINY_COMPILER
 
 static int MallocCalls = 0;
 static int FreeCalls = 0;
@@ -776,7 +775,7 @@ static void test_ParseFailureIsOkay() {
 #endif
 
 int main(int argc, char *argv[]) {
-#ifdef TINY_COMPILER
+#ifndef NO_TINY_COMPILER
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
     lrun("All Dict tests", test_Dict);
