@@ -1,8 +1,10 @@
-#include "dict.h"
+#ifndef TINY_NO_COMPILER
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
+
+#include "dict.h"
 
 #define INIT_BUCKET_COUNT 32
 
@@ -156,7 +158,7 @@ void DictRemove(Dict *dict, Tiny_Value key) {
     unsigned long hash = HashValue(key);
 
     unsigned long index = hash % dict->bucketCount;
-    unsigned long origin = index;
+    // unsigned long origin = index;
 
     for (;;) {
         Tiny_Value keyHere = *ArrayGet(&dict->keys, index);
@@ -199,3 +201,5 @@ void DictClear(Dict *dict) {
 
     dict->filledCount = 0;
 }
+
+#endif

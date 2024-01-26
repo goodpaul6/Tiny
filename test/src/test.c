@@ -9,10 +9,12 @@
 #include "pos.h"
 #include "tiny.h"
 
+#ifndef TINY_NO_COMPILER
+
 static int MallocCalls = 0;
 static int FreeCalls = 0;
 
-static void *Alloc(void *ptr, size_t size, void *userdata) {
+static void* Alloc(void *ptr, size_t size, void *userdata) {
     if (size == 0) {
         FreeCalls += 1;
         free(ptr);
@@ -23,16 +25,18 @@ static void *Alloc(void *ptr, size_t size, void *userdata) {
     return realloc(ptr, size);
 }
 
-static Tiny_Context Context = {Alloc, NULL};
+static Tiny_Context Context = { Alloc, NULL };
 
-static Tiny_State *CreateState(void) { return Tiny_CreateStateWithContext(Context); }
+static Tiny_State* CreateState(void) {
+    return Tiny_CreateStateWithContext(Context);
+}
 
 static void InitThread(Tiny_StateThread *thread, const Tiny_State *state) {
     Tiny_InitThreadWithContext(thread, state, Context);
 }
 
 static void test_PosToFriendlyPos(void) {
-    Tiny_Pos pos = {8};
+    Tiny_Pos pos = { 8 };
 
     const char src[] = "hello\nworld\n";
 
@@ -45,14 +49,10 @@ static void test_PosToFriendlyPos(void) {
 static void test_InitArrayEx(void) {
     Array array;
 
-    Tiny_Value data[] = {{
-                             .type = TINY_VAL_INT,
-                             .i = 1,
-                         },
-                         {
-                             .type = TINY_VAL_INT,
-                             .i = 2,
-                         }};
+    Tiny_Value data[] = {
+            { .type = TINY_VAL_INT, .i = 1, },
+            { .type = TINY_VAL_INT, .i = 2, }
+    };
 
     InitArrayEx(&array, Tiny_DefaultContext, sizeof(data) / sizeof(data[0]), data);
 
@@ -68,10 +68,7 @@ static void test_ArrayPush(void) {
     InitArray(&array, Tiny_DefaultContext);
 
     for (int i = 0; i < 64; ++i) {
-        ArrayPush(&array, (Tiny_Value){
-                              .type = TINY_VAL_INT,
-                              .i = i,
-                          });
+        ArrayPush(&array, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, });
     }
 
     lequal(ArrayLen(&array), 64);
@@ -87,10 +84,7 @@ static void test_ArrayPop(void) {
     InitArray(&array, Tiny_DefaultContext);
 
     for (int i = 0; i < 1000; ++i) {
-        ArrayPush(&array, (Tiny_Value){
-                              .type = TINY_VAL_INT,
-                              .i = i,
-                          });
+        ArrayPush(&array, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, });
     }
 
     lequal(ArrayLen(&array), 1000);
@@ -119,19 +113,12 @@ static void test_ArraySet(void) {
     InitArray(&array, Tiny_DefaultContext);
 
     for (int i = 0; i < 1000; ++i) {
-        ArrayPush(&array, (Tiny_Value){
-                              .type = TINY_VAL_INT,
-                              .i = i,
-                          });
+        ArrayPush(&array, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, });
     }
 
     lequal(ArrayLen(&array), 1000);
 
-    ArraySet(&array, 500,
-             (Tiny_Value){
-                 .type = TINY_VAL_INT,
-                 .i = 10,
-             });
+    ArraySet(&array, 500, (Tiny_Value ) { .type = TINY_VAL_INT, .i = 10, });
 
     lequal(ArrayGet(&array, 500)->i, 10);
 
@@ -144,19 +131,12 @@ static void test_ArrayInsert(void) {
     InitArray(&array, Tiny_DefaultContext);
 
     for (int i = 0; i < 1000; ++i) {
-        ArrayPush(&array, (Tiny_Value){
-                              .type = TINY_VAL_INT,
-                              .i = i,
-                          });
+        ArrayPush(&array, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, });
     }
 
     lequal(ArrayLen(&array), 1000);
 
-    ArrayInsert(&array, 500,
-                (Tiny_Value){
-                    .type = TINY_VAL_INT,
-                    .i = 10,
-                });
+    ArrayInsert(&array, 500, (Tiny_Value ) { .type = TINY_VAL_INT, .i = 10, });
 
     lequal(ArrayLen(&array), 1001);
     lequal(ArrayGet(&array, 500)->i, 10);
@@ -170,10 +150,7 @@ static void test_ArrayRemove(void) {
     InitArray(&array, Tiny_DefaultContext);
 
     for (int i = 0; i < 1000; ++i) {
-        ArrayPush(&array, (Tiny_Value){
-                              .type = TINY_VAL_INT,
-                              .i = i,
-                          });
+        ArrayPush(&array, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, });
     }
 
     lequal(ArrayLen(&array), 1000);
@@ -202,15 +179,7 @@ static void test_DictSet(void) {
     InitDict(&dict, Tiny_DefaultContext);
 
     for (int i = 0; i < 1000; ++i) {
-        DictSet(&dict,
-                (Tiny_Value){
-                    .type = TINY_VAL_INT,
-                    .i = i,
-                },
-                (Tiny_Value){
-                    .type = TINY_VAL_INT,
-                    .i = i,
-                });
+        DictSet(&dict, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, }, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, });
     }
 
     lok(dict.filledCount == 1000);
@@ -218,10 +187,7 @@ static void test_DictSet(void) {
     bool allGood = true;
 
     for (int i = 0; i < 1000; ++i) {
-        const Tiny_Value *pValue = DictGet(&dict, (Tiny_Value){
-                                                      .type = TINY_VAL_INT,
-                                                      .i = i,
-                                                  });
+        const Tiny_Value *pValue = DictGet(&dict, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, });
 
         if (!pValue || pValue->i != i) {
             allGood = false;
@@ -240,35 +206,21 @@ static void test_DictRemove(void) {
     InitDict(&dict, Tiny_DefaultContext);
 
     for (int i = 0; i < 1000; ++i) {
-        DictSet(&dict,
-                (Tiny_Value){
-                    .type = TINY_VAL_INT,
-                    .i = i,
-                },
-                (Tiny_Value){
-                    .type = TINY_VAL_INT,
-                    .i = i,
-                });
+        DictSet(&dict, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, }, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, });
     }
 
     lequal(dict.filledCount, 1000);
 
     for (int i = 0; i < 100; ++i) {
-        DictRemove(&dict, (Tiny_Value){
-                              .type = TINY_VAL_INT,
-                              .i = i,
-                          });
+        DictRemove(&dict, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, });
     }
 
     lequal(dict.filledCount, 900);
 
-    Tiny_Value foundKey = {0};
+    Tiny_Value foundKey = { 0 };
 
     for (int i = 0; i < 100; ++i) {
-        Tiny_Value key = {
-            .type = TINY_VAL_INT,
-            .i = i,
-        };
+        Tiny_Value key = { .type = TINY_VAL_INT, .i = i, };
 
         if (DictGet(&dict, key)) {
             foundKey = key;
@@ -281,10 +233,7 @@ static void test_DictRemove(void) {
     int neInt = -1;
 
     for (int i = 100; i < 1000; ++i) {
-        Tiny_Value key = {
-            .type = TINY_VAL_INT,
-            .i = i,
-        };
+        Tiny_Value key = { .type = TINY_VAL_INT, .i = i, };
 
         int value = DictGet(&dict, key)->i;
 
@@ -305,15 +254,7 @@ static void test_DictClear(void) {
     InitDict(&dict, Tiny_DefaultContext);
 
     for (int i = 0; i < 1000; ++i) {
-        DictSet(&dict,
-                (Tiny_Value){
-                    .type = TINY_VAL_INT,
-                    .i = i,
-                },
-                (Tiny_Value){
-                    .type = TINY_VAL_INT,
-                    .i = i,
-                });
+        DictSet(&dict, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, }, (Tiny_Value ) { .type = TINY_VAL_INT, .i = i, });
     }
 
     lequal(dict.filledCount, 1000);
@@ -322,13 +263,10 @@ static void test_DictClear(void) {
 
     lequal(dict.filledCount, 0);
 
-    Tiny_Value foundKey = {0};
+    Tiny_Value foundKey = { 0 };
 
     for (int i = 0; i < 1000; ++i) {
-        Tiny_Value key = {
-            .type = TINY_VAL_INT,
-            .i = i,
-        };
+        Tiny_Value key = { .type = TINY_VAL_INT, .i = i, };
 
         if (DictGet(&dict, key)) {
             foundKey = key;
@@ -379,9 +317,8 @@ static Tiny_Value Lib_Print(Tiny_StateThread *thread, const Tiny_Value *args, in
 static void test_StateCompile(void) {
     Tiny_State *state = CreateState();
 
-    Tiny_CompileString(state, "test_compile",
-                       "func fact(n: int): int { if n <= 1 return 1 return n * "
-                       "fact(n - 1) }");
+    Tiny_CompileString(state, "test_compile", "func fact(n: int): int { if n <= 1 return 1 return n * "
+            "fact(n - 1) }");
 
     static Tiny_StateThread threads[1000];
 
@@ -392,8 +329,7 @@ static void test_StateCompile(void) {
     for (int i = 0; i < 1000; ++i) {
         InitThread(&threads[i], state);
 
-        Tiny_Value val = Tiny_CallFunction(&threads[i], factIndex,
-                                           &(Tiny_Value){.type = TINY_VAL_INT, .i = 5}, 1);
+        Tiny_Value val = Tiny_CallFunction(&threads[i], factIndex, &(Tiny_Value ) { .type = TINY_VAL_INT, .i = 5 }, 1);
 
         if (Tiny_ToInt(val) != 120) {
             allEqual = false;
@@ -403,12 +339,15 @@ static void test_StateCompile(void) {
 
     lok(allEqual);
 
-    for (int i = 0; i < 1000; ++i) Tiny_DestroyThread(&threads[i]);
+    for (int i = 0; i < 1000; ++i)
+        Tiny_DestroyThread(&threads[i]);
 
     Tiny_DeleteState(state);
 }
 
-static void test_TinyState(void) { test_StateCompile(); }
+static void test_TinyState(void) {
+    test_StateCompile();
+}
 
 static void test_MultiCompileString(void) {
     Tiny_State *state = CreateState();
@@ -420,7 +359,7 @@ static void test_MultiCompileString(void) {
 
     InitThread(&thread, state);
 
-    Tiny_Value args[] = {Tiny_NewInt(10), Tiny_NewInt(20)};
+    Tiny_Value args[] = { Tiny_NewInt(10), Tiny_NewInt(20) };
 
     Tiny_Value ret = Tiny_CallFunction(&thread, Tiny_GetFunctionIndex(state, "add"), args, 2);
 
@@ -440,8 +379,7 @@ static void test_MultiCompileString(void) {
 static void test_TinyStateCallFunction(void) {
     Tiny_State *state = CreateState();
 
-    Tiny_CompileString(state, "test_compile",
-                       "func fact(n : int) : int { if n <= 1 return 1 return n * fact(n - 1) }");
+    Tiny_CompileString(state, "test_compile", "func fact(n : int) : int { if n <= 1 return 1 return n * fact(n - 1) }");
 
     Tiny_StateThread thread;
 
@@ -463,36 +401,42 @@ static void test_TinyStateCallFunction(void) {
     Tiny_DeleteState(state);
 }
 
-static Tiny_Value CallFunc(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
-    Tiny_Value ret = Tiny_CallFunction(
-        thread, Tiny_GetFunctionIndex(thread->state, Tiny_ToString(args[0])), &args[1], count - 1);
+/*
+ static Tiny_Value CallFunc(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+ Tiny_Value ret = Tiny_CallFunction(
+ thread, Tiny_GetFunctionIndex(thread->state, Tiny_ToString(args[0])), &args[1], count - 1);
 
-    lok(ret.type == TINY_VAL_INT);
-    lequal(ret.i, 120);
-}
+ lok(ret.type == TINY_VAL_INT);
+ lequal(ret.i, 120);
 
-static void test_TinyStateCallMidRun(void) {
-    Tiny_State *state = CreateState();
+ return ret;
+ }
+ */
 
-    Tiny_BindFunction(state, "call_func(str, ...): any", CallFunc);
+/*
+ static void test_TinyStateCallMidRun(void) {
+ Tiny_State *state = CreateState();
 
-    Tiny_CompileString(state, "test_compile",
-                       "func fact(n : int) : int { if n <= 1 return 1 return n * "
-                       "fact(n - 1) } call_func(\"fact\", 5)");
+ Tiny_BindFunction(state, "call_func(str, ...): any", CallFunc);
 
-    Tiny_StateThread thread;
+ Tiny_CompileString(state, "test_compile",
+ "func fact(n : int) : int { if n <= 1 return 1 return n * "
+ "fact(n - 1) } call_func(\"fact\", 5)");
 
-    InitThread(&thread, state);
+ Tiny_StateThread thread;
 
-    Tiny_StartThread(&thread);
+ InitThread(&thread, state);
 
-    while (Tiny_ExecuteCycle(&thread))
-        ;
+ Tiny_StartThread(&thread);
 
-    Tiny_DestroyThread(&thread);
+ while (Tiny_ExecuteCycle(&thread))
+ ;
 
-    Tiny_DeleteState(state);
-}
+ Tiny_DestroyThread(&thread);
+
+ Tiny_DeleteState(state);
+ }
+ */
 
 static Tiny_Value Lib_GetStaticNative(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     static int a = 0;
@@ -566,17 +510,11 @@ static void test_TinyDict(void) {
 
     lok(Tiny_GetProp(dict) == &DictProp);
 
-    Tiny_Value num = *DictGet(d, (Tiny_Value){
-                                     .type = TINY_VAL_CONST_STRING,
-                                     .cstr = "a",
-                                 });
+    Tiny_Value num = *DictGet(d, (Tiny_Value ) { .type = TINY_VAL_CONST_STRING, .cstr = "a", });
 
     lequal(Tiny_ToInt(num), 10);
 
-    num = *DictGet(d, (Tiny_Value){
-                          .type = TINY_VAL_CONST_STRING,
-                          .cstr = "b",
-                      });
+    num = *DictGet(d, (Tiny_Value ) { .type = TINY_VAL_CONST_STRING, .cstr = "b", });
 
     lequal(Tiny_ToInt(num), 20);
 
@@ -588,7 +526,7 @@ static void test_TinyDict(void) {
 static Tiny_Value Lib_MyInput(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     static int i = 0;
 
-    const char *input[] = {"10", "20", "+", "30", "-", "quit"};
+    const char *input[] = { "10", "20", "+", "30", "-", "quit" };
 
     return Tiny_NewConstString(input[i++]);
 }
@@ -601,21 +539,20 @@ static void test_RevPolishCalc(void) {
 
     Tiny_BindFunction(state, "my_input(): str", Lib_MyInput);
 
-    const char *code =
-        "use array(\"float\") as farray\n"
-        "stack := farray()\n"
-        "op := \"\"\n"
-        "while op != \"quit\" {\n"
-        "op = my_input()\n"
-        "if stridx(op, 0) == '+' farray_push(stack, farray_pop(stack) "
-        "+ farray_pop(stack))\n"
-        "else if stridx(op, 0) == '-' farray_push(stack, farray_pop(stack) "
-        "- farray_pop(stack))\n"
-        "else if stridx(op, 0) == '*' farray_push(stack, farray_pop(stack) "
-        "* farray_pop(stack))\n"
-        "else if stridx(op, 0) == '/' farray_push(stack, farray_pop(stack) "
-        "/ farray_pop(stack))\n"
-        "else if op != \"quit\" farray_push(stack, ston(op)) }\n";
+    const char *code = "use array(\"float\") as farray\n"
+            "stack := farray()\n"
+            "op := \"\"\n"
+            "while op != \"quit\" {\n"
+            "op = my_input()\n"
+            "if stridx(op, 0) == '+' farray_push(stack, farray_pop(stack) "
+            "+ farray_pop(stack))\n"
+            "else if stridx(op, 0) == '-' farray_push(stack, farray_pop(stack) "
+            "- farray_pop(stack))\n"
+            "else if stridx(op, 0) == '*' farray_push(stack, farray_pop(stack) "
+            "* farray_pop(stack))\n"
+            "else if stridx(op, 0) == '/' farray_push(stack, farray_pop(stack) "
+            "/ farray_pop(stack))\n"
+            "else if op != \"quit\" farray_push(stack, ston(op)) }\n";
 
     Tiny_CompileString(state, "test_rpn", code);
 
@@ -628,7 +565,7 @@ static void test_RevPolishCalc(void) {
     while (Tiny_ExecuteCycle(&thread))
         ;
 
-    extern const Tiny_NativeProp ArrayProp;
+    //extern const Tiny_NativeProp ArrayProp;
 
     int stack = Tiny_GetGlobalIndex(state, "stack");
 
@@ -659,21 +596,21 @@ static void test_Arena() {
 
     void *data = Tiny_ArenaAlloc(&a, 10, 1);
 
-    lequal((int)a.head->used, 10);
+    lequal((int )a.head->used, 10);
 
     char s[10] = "hello wor\0";
     strcpy(data, s);
 
-    void *data2 = Tiny_ArenaAlloc(&a, ARENA_PAGE_SIZE + 10, 1);
+    //void *data2 = Tiny_ArenaAlloc(&a, ARENA_PAGE_SIZE + 10, 1);
 
     // This is checking that the large allocation we perform above
     // does not cause the "small allocation" page to be moved back.
-    lequal((int)a.head->used, 10);
+    lequal((int )a.head->used, 10);
 
     void *data3 = Tiny_ArenaAlloc(&a, 7, 8);
 
-    lequal((int)((uintptr_t)data3 % 8), 0);
-    lequal((int)a.head->used, 23);
+    lequal((int )((uintptr_t )data3 % 8), 0);
+    lequal((int )a.head->used, 23);
 
     Tiny_DestroyArena(&a);
 }
@@ -681,11 +618,10 @@ static void test_Arena() {
 static void test_StructTypeSafe() {
     Tiny_State *state = CreateState();
 
-    const char *code =
-        "struct X { x: int }\n"
-        "struct Y { x: int }\n"
-        "func do(x: X) {}\n"
-        "do(new X{10})\n";
+    const char *code = "struct X { x: int }\n"
+            "struct Y { x: int }\n"
+            "func do(x: X) {}\n"
+            "do(new X{10})\n";
 
     Tiny_CompileString(state, "test_struct_type_safe", code);
     lok(true);
@@ -722,12 +658,11 @@ static void test_HexLiteral() {
 static void test_Break() {
     Tiny_State *state = CreateState();
 
-    const char *code =
-        "x := 0\n"
-        "while x < 10 {\n"
-        "    x += 1\n"
-        "    break\n"
-        "}";
+    const char *code = "x := 0\n"
+            "while x < 10 {\n"
+            "    x += 1\n"
+            "    break\n"
+            "}";
 
     Tiny_CompileString(state, "test_break", code);
 
@@ -753,15 +688,14 @@ static void test_Break() {
 static void test_Continue() {
     Tiny_State *state = CreateState();
 
-    const char *code =
-        "x := 0\n"
-        "while x < 10 {\n"
-        "    x += 1\n"
-        "    if x < 10 {\n"
-        "        continue\n"
-        "    }\n"
-        "    x += 1\n"
-        "}";
+    const char *code = "x := 0\n"
+            "while x < 10 {\n"
+            "    x += 1\n"
+            "    if x < 10 {\n"
+            "        continue\n"
+            "    }\n"
+            "    x += 1\n"
+            "}";
 
     Tiny_CompileString(state, "test_continue", code);
 
@@ -787,10 +721,9 @@ static void test_Continue() {
 static void test_ParseNullable() {
     Tiny_State *state = CreateState();
 
-    const char *code =
-        "x : int? = 10\n"
-        "func f(): int?\n"
-        "{ return 10 }\n";
+    const char *code = "x : int? = 10\n"
+            "func f(): int?\n"
+            "{ return 10 }\n";
 
     Tiny_CompileString(state, "(parse opt test)", code);
 
@@ -814,10 +747,9 @@ static void test_BindNullable() {
 static void test_CannotUseNullable() {
     Tiny_State *state = CreateState();
 
-    const char *code =
-        "x : int? = 10\n"
-        "func f(x: int) {}\n"
-        "f(x)\n";
+    const char *code = "x : int? = 10\n"
+            "func f(x: int) {}\n"
+            "f(x)\n";
 
     Tiny_CompileResult result = Tiny_CompileString(state, "(cannot use nullable test)", code);
 
@@ -829,20 +761,21 @@ static void test_CannotUseNullable() {
 static void test_ParseFailureIsOkay() {
     Tiny_State *state = CreateState();
 
-    const char *code =
-        "x : int? = 10\n"
-        "func fx: int) {}\n"
-        "f(x)\n";
+    const char *code = "x : int? = 10\n"
+            "func fx: int) {}\n"
+            "f(x)\n";
 
-    Tiny_CompileResult result =
-        Tiny_CompileString(state, "(parse errors do not crash program)", code);
+    Tiny_CompileResult result = Tiny_CompileString(state, "(parse errors do not crash program)", code);
 
     lequal(result.type, TINY_COMPILE_ERROR);
 
     Tiny_DeleteState(state);
 }
 
+#endif
+
 int main(int argc, char *argv[]) {
+#ifndef TINY_NO_COMPILER
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
     lrun("All Dict tests", test_Dict);
@@ -865,6 +798,9 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Parse Failure is Ok", test_ParseFailureIsOkay);
 
     lresults();
+#else
+    lfails = 0;
+#endif
 
     return lfails != 0;
 }

@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TINY_ARRAY_H
+#define TINY_ARRAY_H
 
 #include <stddef.h>
 
@@ -30,3 +31,5 @@ void ArraySet(Array *array, int index, Tiny_Value value);
 Tiny_Value *ArrayGet(Array *array, int index);
 
 void DestroyArray(Array *array);
+
+#endif

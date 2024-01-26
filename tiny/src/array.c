@@ -1,9 +1,10 @@
-#include "array.h"
+#ifndef TINY_NO_COMPILER
 
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include "array.h"
 #include "stretchy_buffer.h"
 
 void InitArray(Array *array, Tiny_Context ctx) {
@@ -91,3 +92,5 @@ Tiny_Value *ArrayGet(Array *array, int index) {
 }
 
 void DestroyArray(Array *array) { sb_free(&array->ctx, array->data); }
+
+#endif

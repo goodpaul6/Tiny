@@ -1,4 +1,5 @@
-#pragma once
+#ifndef TINY_OPCODES_H
+#define TINY_OPCODES_H
 
 enum {
     TINY_OP_PUSH_NULL,
@@ -70,3 +71,5 @@ enum {
 
     TINY_OP_MISALIGNED_INSTRUCTION
 } Tiny_Opcode;
+
+#endif
