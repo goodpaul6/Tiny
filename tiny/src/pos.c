@@ -1,4 +1,4 @@
-#ifndef NO_TINY_COMPILER
+#ifndef TINY_NO_COMPILER
 
 #include <assert.h>
 #include <string.h>

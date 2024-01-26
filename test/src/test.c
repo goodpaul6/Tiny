@@ -9,7 +9,7 @@
 #include "pos.h"
 #include "tiny.h"
 
-#ifndef NO_TINY_COMPILER
+#ifndef TINY_NO_COMPILER
 
 static int MallocCalls = 0;
 static int FreeCalls = 0;
@@ -775,7 +775,7 @@ static void test_ParseFailureIsOkay() {
 #endif
 
 int main(int argc, char *argv[]) {
-#ifndef NO_TINY_COMPILER
+#ifndef TINY_NO_COMPILER
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
     lrun("All Dict tests", test_Dict);

@@ -25,7 +25,7 @@
 
 const Tiny_Value Tiny_Null = {TINY_VAL_NULL};
 
-#ifndef NO_TINY_COMPILER
+#ifndef TINY_NO_COMPILER
 
 #ifndef UCHAR_MAX
 #define UCHAR_MAX 255
@@ -3617,7 +3617,7 @@ const Tiny_Symbol *Tiny_FindFuncSymbol(Tiny_State *state, const char *name) {
 
 //////////////////////////// VM UTILS FUNCTIONS ////////////////////////////
 
-#ifndef NO_TINY_VM_UTILS
+#ifndef TINY_NO_VM_UTILS
 static void DeleteObject(Tiny_Context *ctx, Tiny_Object *obj);
 inline static bool ExecuteCycle(Tiny_StateThread *thread);
 
