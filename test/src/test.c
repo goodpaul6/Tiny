@@ -842,6 +842,20 @@ static void test_ParseFailureIsOkay() {
     Tiny_DeleteState(state);
 }
 
+static void test_CannotAssignNull() {
+    Tiny_State *state = CreateState();
+
+    const char *code =
+        "x : int = null\n";
+
+    Tiny_CompileResult result =
+        Tiny_CompileString(state, "(cannot assign null to int)", code);
+
+    lequal(result.type, TINY_COMPILE_ERROR);
+
+    Tiny_DeleteState(state);
+}
+
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
@@ -863,6 +877,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Bind Nullable Types in Fn", test_BindNullable);
     lrun("Tiny Check Cannot Use Nullable", test_CannotUseNullable);
     lrun("Tiny Parse Failure is Ok", test_ParseFailureIsOkay);
+    lrun("Tiny Cannot Assign Null to Non-Nullable", test_CannotAssignNull);
 
     lresults();
 
