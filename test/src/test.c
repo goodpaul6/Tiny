@@ -856,6 +856,27 @@ static void test_CannotAssignNull() {
     Tiny_DeleteState(state);
 }
 
+static void test_DisasmOne() {
+    Tiny_State* state = CreateState();
+
+    const char* code =
+        "x := 10 + 20\n";
+
+    Tiny_CompileResult result =
+        Tiny_CompileString(state, "(disasm)", code);
+
+    lequal(result.type, TINY_COMPILE_SUCCESS);
+
+    char buf[256];
+    int pc = 0;
+
+    Tiny_DisasmOne(state, &pc, buf, sizeof(buf));
+
+    lsequal(buf, "0 ((disasm):1)\tPUSH_INT 10");
+
+    Tiny_DeleteState(state);
+}
+
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
@@ -878,6 +899,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Check Cannot Use Nullable", test_CannotUseNullable);
     lrun("Tiny Parse Failure is Ok", test_ParseFailureIsOkay);
     lrun("Tiny Cannot Assign Null to Non-Nullable", test_CannotAssignNull);
+    lrun("Tiny Test DisasmOne", test_DisasmOne);
 
     lresults();
 
