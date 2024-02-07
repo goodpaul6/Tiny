@@ -45,3 +45,11 @@ I wrote all the buffer manipulation and graphics code in C and then exposed an i
 I created a webserver which is capable of handling a large amount of concurrent connections with a variety of web application
 development utilities (async processing, routing, templating). Have a look at `examples/server`. I followed golang's
 "Writing Web Applications" tutorial which guides users through making a wiki and replicated that in tiny.
+
+### Advent of Code
+
+I used Tiny to [solve Day 19 of Advent of Code 2023](https://github.com/goodpaul6/advent/blob/master/2023/day19.tiny). It went surprisingly
+well. I did some other days as well; you can check out the `advent` repo to find out.
+
+You can run the solution by building `terp` in the examples and then running `tiny_terp day19.tiny` and putting the input in `inputs/day19.txt`
+in your working directory.
