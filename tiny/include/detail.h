@@ -6,7 +6,6 @@
 #include "lexer.h"
 #include "tiny.h"
 
-#define MAX_NUMBERS 512
 #define MAX_STRINGS 1024
 
 typedef unsigned char Word;

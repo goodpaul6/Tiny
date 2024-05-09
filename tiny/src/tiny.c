@@ -4279,3 +4279,21 @@ const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name) {
 const Tiny_Symbol *Tiny_FindFuncSymbol(Tiny_State *state, const char *name) {
     return ReferenceFunction(state, name);
 }
+
+const Tiny_Symbol *Tiny_FindConstSymbol(Tiny_State *state, const char *name) {
+    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        Tiny_Symbol *sym = state->globalSymbols[i];
+
+        if (sym->type == TINY_SYM_CONST) {
+            if (strcmp(sym->name, name) == 0) return sym;
+        }
+    }
+
+    return NULL;
+}
+
+const char *Tiny_GetStringFromConstIndex(Tiny_State *state, int sIndex) {
+    assert(sIndex >= 0 && sIndex < state->numStrings);
+
+    return state->strings[sIndex];
+}

@@ -513,7 +513,10 @@ size_t Tiny_SymbolArrayCount(Tiny_Symbol *const *arr);
 
 const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name);
 const Tiny_Symbol *Tiny_FindFuncSymbol(Tiny_State *state, const char *name);
+const Tiny_Symbol *Tiny_FindConstSymbol(Tiny_State *state, const char *name);
 
-// TODO(Apaar): Tiny_FindFuncSymbol, Tiny_FindConstSymbol, etc
+// You can use this to retrieve the underlying string from `constant.sIndex` above.
+// Assumes that `sIndex` is valid.
+const char *Tiny_GetStringFromConstIndex(Tiny_State *state, int sIndex);
 
 #endif

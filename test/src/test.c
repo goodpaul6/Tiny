@@ -9,6 +9,22 @@
 #include "pos.h"
 #include "tiny.h"
 
+#define lok_print_return(test, ...)   \
+    do {                              \
+        lok_print(test, __VA_ARGS__); \
+        if (!(test)) {                \
+            return;                   \
+        }                             \
+    } while (0)
+
+#define lequal_return(a, b) \
+    do {                    \
+        lequal(a, b);       \
+        if ((a) != (b)) {   \
+            return;         \
+        }                   \
+    } while (0)
+
 static int MallocCalls = 0;
 static int FreeCalls = 0;
 
@@ -845,11 +861,9 @@ static void test_ParseFailureIsOkay() {
 static void test_CannotAssignNull() {
     Tiny_State *state = CreateState();
 
-    const char *code =
-        "x : int = null\n";
+    const char *code = "x : int = null\n";
 
-    Tiny_CompileResult result =
-        Tiny_CompileString(state, "(cannot assign null to int)", code);
+    Tiny_CompileResult result = Tiny_CompileString(state, "(cannot assign null to int)", code);
 
     lequal(result.type, TINY_COMPILE_ERROR);
 
@@ -857,13 +871,11 @@ static void test_CannotAssignNull() {
 }
 
 static void test_DisasmOne() {
-    Tiny_State* state = CreateState();
+    Tiny_State *state = CreateState();
 
-    const char* code =
-        "x := 10 + 20\n";
+    const char *code = "x := 10 + 20\n";
 
-    Tiny_CompileResult result =
-        Tiny_CompileString(state, "(disasm)", code);
+    Tiny_CompileResult result = Tiny_CompileString(state, "(disasm)", code);
 
     lequal(result.type, TINY_COMPILE_SUCCESS);
 
@@ -873,6 +885,30 @@ static void test_DisasmOne() {
     Tiny_DisasmOne(state, &pc, buf, sizeof(buf));
 
     lsequal(buf, "0 ((disasm):1)\tPUSH_INT 10");
+
+    Tiny_DeleteState(state);
+}
+
+static void test_GetStringConst() {
+    Tiny_State *state = CreateState();
+
+    const char *code = "x :: \"str\"";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(string const)", code);
+
+    lequal_return(result.type, TINY_COMPILE_SUCCESS);
+
+    const Tiny_Symbol *c = Tiny_FindConstSymbol(state, "x");
+
+    lok_print_return(c, "Constant 'x' not found");
+    lequal_return(c->type, TINY_SYM_CONST);
+    lequal_return(c->constant.tag->type, TINY_SYM_TAG_STR);
+
+    const char *str = Tiny_GetStringFromConstIndex(state, c->constant.sIndex);
+
+    lok_print_return(str, "Couldn't get string from 'x'");
+
+    lsequal(str, "str");
 
     Tiny_DeleteState(state);
 }
@@ -888,7 +924,6 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Equality", test_TinyEquality);
     lrun("Tiny Stdlib Dict", test_TinyDict);
     lrun("Tiny RPN", test_RevPolishCalc);
-    lrun("Tests Allocations Occur", test_CheckMallocs);
     lrun("Test Arena Allocator", test_Arena);
     lrun("Tiny Struct Type Safe", test_StructTypeSafe);
     lrun("Tiny Hex Literal", test_HexLiteral);
@@ -900,6 +935,9 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Parse Failure is Ok", test_ParseFailureIsOkay);
     lrun("Tiny Cannot Assign Null to Non-Nullable", test_CannotAssignNull);
     lrun("Tiny Test DisasmOne", test_DisasmOne);
+    lrun("Tiny Test GetStringConstant", test_GetStringConst);
+
+    lrun("Tests Allocations Occur", test_CheckMallocs);
 
     lresults();
 
