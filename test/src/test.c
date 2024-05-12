@@ -324,22 +324,17 @@ static void test_DictRemove(void) {
                     .type = TINY_VAL_INT,
                     .i = i,
                 });
+
+        if (i % 2 == 0) {
+            DictRemove(&dict, (Tiny_Value){.type = TINY_VAL_INT, .i = i / 2});
+        }
     }
 
-    lequal(dict.filledCount, 1000);
-
-    for (int i = 0; i < 100; ++i) {
-        DictRemove(&dict, (Tiny_Value){
-                              .type = TINY_VAL_INT,
-                              .i = i,
-                          });
-    }
-
-    lequal(dict.filledCount, 900);
+    lequal_return(dict.filledCount, 500);
 
     Tiny_Value foundKey = {0};
 
-    for (int i = 0; i < 100; ++i) {
+    for (int i = 0; i < 500; ++i) {
         Tiny_Value key = {
             .type = TINY_VAL_INT,
             .i = i,
@@ -351,11 +346,11 @@ static void test_DictRemove(void) {
         }
     }
 
-    lok_print(Tiny_IsNull(foundKey), "key=%d", foundKey.i);
+    lok_print_return(Tiny_IsNull(foundKey), "A key that was expected to be deleted was found\n");
 
     int neInt = -1;
 
-    for (int i = 100; i < 1000; ++i) {
+    for (int i = 500; i < 1000; ++i) {
         Tiny_Value key = {
             .type = TINY_VAL_INT,
             .i = i,
@@ -369,7 +364,7 @@ static void test_DictRemove(void) {
         }
     }
 
-    lok_print(neInt == -1, "i=%d", neInt);
+    lequal_return(neInt, -1);
 
     DestroyDict(&dict);
 }
