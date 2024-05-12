@@ -167,7 +167,7 @@ void DictRemove(Dict *dict, Tiny_Value key) {
             ArraySet(&dict->keys, index, Tiny_Null);
 
             dict->filledCount -= 1;
-        } else if ((HashValue(keyHere) % dict->bucketCount) < index) {
+        } else if ((HashValue(keyHere) % dict->bucketCount) != index) {
             // NOTE(Apaar): I'm amazed that I knew how to avoid tombstones in
             // a linear-probed hash table way back in the day! The code below
             // is mostly from 2017 and it is now 2023 (almost 2024)
@@ -181,8 +181,8 @@ void DictRemove(Dict *dict, Tiny_Value key) {
             const Tiny_Value *value = ArrayGet(&dict->values, index);
 
             ArraySet(&dict->keys, index, Tiny_Null);
-
             dict->filledCount -= 1;
+
             DictSet(dict, keyHere, *value);
         }
 

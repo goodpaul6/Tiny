@@ -1,8 +1,11 @@
 #include <assert.h>
 #include <stdlib.h>
 
+#define B_STACKTRACE_IMPL
+
 #include "arena.h"
 #include "array.h"
+#include "b_stacktrace.h"
 #include "detail.h"
 #include "dict.h"
 #include "minctest.h"
@@ -25,18 +28,74 @@
         }                   \
     } while (0)
 
-static int MallocCalls = 0;
-static int FreeCalls = 0;
+static Dict AllocDict;
+
+typedef struct AllocInfo {
+    size_t size;
+    char *stackTrace;
+} AllocInfo;
 
 static void *Alloc(void *ptr, size_t size, void *userdata) {
     if (size == 0) {
-        FreeCalls += 1;
-        free(ptr);
+        if (ptr) {
+            free(ptr);
+
+            const Tiny_Value key = Tiny_NewLightNative(ptr);
+
+            const Tiny_Value *value = DictGet(&AllocDict, key);
+
+            assert(value);
+
+            AllocInfo *info = Tiny_ToAddr(*value);
+
+            DictRemove(&AllocDict, key);
+
+            free(info->stackTrace);
+            free(info);
+        }
+
         return NULL;
     }
 
-    MallocCalls += 1;
-    return realloc(ptr, size);
+    if (!AllocDict.bucketCount) {
+        // Initialize with default context which just goes straight to realloc/free
+        InitDict(&AllocDict, Tiny_DefaultContext);
+    }
+
+    void *res = realloc(ptr, size);
+    AllocInfo *info = NULL;
+
+    if (ptr == NULL) {
+        info = malloc(sizeof(AllocInfo));
+
+        info->size = size;
+#ifdef TINY_TEST_ENABLE_BACKTRACE
+        info->stackTrace = b_stacktrace_get_string();
+#else
+        info->stackTrace = NULL;
+#endif
+    } else {
+        // Update the existing entry
+        const Tiny_Value key = Tiny_NewLightNative(ptr);
+
+        const Tiny_Value *value = DictGet(&AllocDict, key);
+        assert(value);
+
+        info = Tiny_ToAddr(*value);
+
+        if (info->size != size) {
+            info->size = size;
+        }
+
+        if (res != ptr) {
+            // Since the pointer moved, remove the old entry, we'll re-add the new one below
+            DictRemove(&AllocDict, key);
+        }
+    }
+
+    DictSet(&AllocDict, Tiny_NewLightNative(res), Tiny_NewLightNative(info));
+
+    return res;
 }
 
 static Tiny_Context Context = {Alloc, NULL};
@@ -664,8 +723,26 @@ static void test_RevPolishCalc(void) {
 }
 
 static void test_CheckMallocs() {
-    lok(MallocCalls > 0);
-    lok(FreeCalls > 0);
+    lequal(AllocDict.filledCount, 0);
+
+    if (AllocDict.filledCount == 0) {
+        return;
+    }
+
+    for (int i = 0; i < AllocDict.bucketCount; ++i) {
+        Tiny_Value key = *ArrayGet(&AllocDict.keys, i);
+
+        if (Tiny_IsNull(key)) {
+            continue;
+        }
+
+        Tiny_Value value = *ArrayGet(&AllocDict.values, i);
+
+        AllocInfo *info = Tiny_ToAddr(value);
+
+        printf("Leaked %zu bytes. Stack trace:\n", info->size);
+        printf("%s\n", info->stackTrace);
+    }
 }
 
 static void test_Arena() {
@@ -937,7 +1014,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Test DisasmOne", test_DisasmOne);
     lrun("Tiny Test GetStringConstant", test_GetStringConst);
 
-    lrun("Tests Allocations Occur", test_CheckMallocs);
+    lrun("Check no leak in tests", test_CheckMallocs);
 
     lresults();
 
