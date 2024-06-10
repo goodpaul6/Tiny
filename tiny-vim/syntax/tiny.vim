@@ -30,7 +30,9 @@ syntax region tinyString start=/"/ skip=/\\"/ end=/"/ oneline
 
 syntax match tinyOperator "\V<+\|-\|*\|/\|%\|=\|:=\|::\|+=\|-=\|*=\|/=\|%=>"
 
-syntax match tinyComment "\v\/\/.*"
+syntax region tinyComment start="//" end="$" oneline
+
+syntax region tinyChar start=+'+ end=+'+ oneline
 
 highlight default link tinyTodos Todo
 highlight default link tinyKeywords Keyword
@@ -40,3 +42,4 @@ highlight default link tinyBoolean Boolean
 highlight default link tinyOperator Operator
 highlight default link tinyTypeIdent Type
 highlight default link tinyComment Comment
+highlight default link tinyChar Character
