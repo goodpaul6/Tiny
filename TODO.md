@@ -128,8 +128,7 @@ func test(): int {}
 - BAD No 64-bit integers
 - BAD No char type
 - BAD No polymorphism of any kind
-
-- Pass in alignment to used provided allocation function
+* BAD We don't pass in alignment to user-provided allocation function
 
 - Refactor VM from compiler
 

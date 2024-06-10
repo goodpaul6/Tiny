@@ -749,7 +749,7 @@ static void test_Arena() {
 
     lequal((int)a.head->used, 10);
 
-    char s[10] = "hello wor\0";
+    const char *s = "hello wor\0";
     strcpy(data, s);
 
     void *data2 = Tiny_ArenaAlloc(&a, ARENA_PAGE_SIZE + 10, 1);
@@ -942,6 +942,45 @@ static void test_CannotAssignNull() {
     Tiny_DeleteState(state);
 }
 
+static void test_AssignNullToAny() {
+    Tiny_State *state = CreateState();
+
+    const char *code = "x : any = null\n";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(can assign null to any)", code);
+
+    lequal(result.type, TINY_COMPILE_SUCCESS);
+
+    Tiny_DeleteState(state);
+}
+
+static void test_AssignValueToNullable() {
+    Tiny_State *state = CreateState();
+
+    const char *code = "x : int? = 10\n";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(can assign 10 to int?)", code);
+
+    lequal(result.type, TINY_COMPILE_SUCCESS);
+
+    Tiny_DeleteState(state);
+}
+
+static void test_CantAssignNullableToNonNullable() {
+    Tiny_State *state = CreateState();
+
+    const char *code =
+        "x: int? = 10\n"
+        "y: int = x\n";
+
+    Tiny_CompileResult result =
+        Tiny_CompileString(state, "(can't assign nullable to non-nullable)", code);
+
+    lequal(result.type, TINY_COMPILE_ERROR);
+
+    Tiny_DeleteState(state);
+}
+
 static void test_DisasmOne() {
     Tiny_State *state = CreateState();
 
@@ -1006,6 +1045,9 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Check Cannot Use Nullable", test_CannotUseNullable);
     lrun("Tiny Parse Failure is Ok", test_ParseFailureIsOkay);
     lrun("Tiny Cannot Assign Null to Non-Nullable", test_CannotAssignNull);
+    lrun("Tiny Can Assign Null to Any", test_AssignNullToAny);
+    lrun("Tiny Can Assign Value to Nullable", test_AssignValueToNullable);
+    lrun("Tiny Can't Assign Nullable to Non-Nullable", test_CantAssignNullableToNonNullable);
     lrun("Tiny Test DisasmOne", test_DisasmOne);
     lrun("Tiny Test GetStringConstant", test_GetStringConst);
 
