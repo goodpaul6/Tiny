@@ -8,7 +8,7 @@ static Tiny_MacroResult ImportModuleFunction(Tiny_State* state, char* const* arg
     if (nargs != 1) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "Expected exactly 1 argument to 'import'",
+            .error.msg = "Expected exactly 1 argument to 'import'",
         };
     }
 
@@ -20,9 +20,18 @@ static Tiny_MacroResult ImportModuleFunction(Tiny_State* state, char* const* arg
         return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
     }
 
-    Tiny_RegisterType(state, buf);
+    Tiny_CompileResult compileResult = Tiny_CompileFile(state, args[0]);
 
-    Tiny_CompileFile(state, args[0]);
+    if (compileResult.type != TINY_COMPILE_SUCCESS) {
+        Tiny_MacroResult macroResult = {.type = TINY_MACRO_ERROR};
+
+        snprintf(macroResult.error.msg, sizeof(macroResult.error.msg),
+                 "Failed to compile imported file: %s", compileResult.error.msg);
+
+        return macroResult;
+    }
+
+    Tiny_RegisterType(state, buf);
 
     return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
 }
@@ -51,7 +60,12 @@ int main(int argc, char** argv) {
 
     Tiny_BindMacro(state, "import", ImportModuleFunction);
 
-    Tiny_CompileFile(state, argv[1]);
+    Tiny_CompileResult compileResult = Tiny_CompileFile(state, argv[1]);
+
+    if (compileResult.type != TINY_COMPILE_SUCCESS) {
+        fprintf(stderr, "%s\n", compileResult.error.msg);
+        return 1;
+    }
 
     if (dis) {
         char buf[1024];

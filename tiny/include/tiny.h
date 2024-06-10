@@ -18,6 +18,20 @@
 #define TINY_MAX_COMPILE_ERR_MSG_SZ 1024
 #endif
 
+#ifndef TINY_MAX_MACRO_RESULT_ERR_MSG_SZ
+#define TINY_MAX_MACRO_RESULT_ERR_MSG_SZ 1024
+#endif
+
+// I use setjmp/longjmp internally to handle compile errors.
+// This means I have to store an array of jmp_buf to handle
+// errors in nested compile calls without clobbering previous
+// ones. This is because you can't safely copy jmp_buf.
+//
+// Anyways, here's the nesting limit.
+#ifndef TINY_MAX_NESTED_COMPILE_CALLS
+#define TINY_MAX_NESTED_COMPILE_CALLS 16
+#endif
+
 // This function should be able to handle all of `malloc`,
 // `realloc`, and `free`:
 //
@@ -396,7 +410,10 @@ typedef enum Tiny_MacroResultType {
 
 typedef struct Tiny_MacroResult {
     Tiny_MacroResultType type;
-    const char *errorMessage;
+
+    struct {
+        char msg[TINY_MAX_MACRO_RESULT_ERR_MSG_SZ];
+    } error;
 } Tiny_MacroResult;
 
 // This function is called for each instance of the `use` statement in Tiny code.

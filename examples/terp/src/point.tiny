@@ -3,4 +3,15 @@ struct Point {
     y: int
 }
 
-use json("Point")
+p := new Point{10, 20}
+
+struct PointPoints {
+    x: Point
+    y: Point
+}
+
+pp := new PointPoints{p, p}
+
+use json("PointPoints")
+
+printf("%q\n", PointPoints_to_json(pp))

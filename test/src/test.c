@@ -1000,6 +1000,41 @@ static void test_DisasmOne() {
     Tiny_DeleteState(state);
 }
 
+static TINY_MACRO_FUNCTION(CompileStringMacro) {
+    if (nargs != 1) {
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
+            .error.msg = "compile_string requires one arg",
+        };
+    }
+
+    Tiny_CompileResult compileResult =
+        Tiny_CompileString(state, "(compile_string macro code)", args[0]);
+
+    if (compileResult.type != TINY_COMPILE_SUCCESS) {
+        Tiny_MacroResult mr = {.type = TINY_MACRO_ERROR};
+
+        snprintf(mr.error.msg, sizeof(mr.error.msg), "%s", compileResult.error.msg);
+        return mr;
+    }
+
+    return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
+}
+
+static void test_NestCompileFailPropagates() {
+    Tiny_State *state = CreateState();
+
+    Tiny_BindMacro(state, "compile_string", CompileStringMacro);
+
+    const char *code = "use compile_string(\"x: int = null\")";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(macro fail)", code);
+
+    lequal_return(result.type, TINY_COMPILE_ERROR);
+
+    Tiny_DeleteState(state);
+}
+
 static void test_GetStringConst() {
     Tiny_State *state = CreateState();
 
@@ -1050,6 +1085,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Can't Assign Nullable to Non-Nullable", test_CantAssignNullableToNonNullable);
     lrun("Tiny Test DisasmOne", test_DisasmOne);
     lrun("Tiny Test GetStringConstant", test_GetStringConst);
+    lrun("Tiny Nested Compile Error Propagates", test_NestCompileFailPropagates);
 
     lrun("Check no leak in tests", test_CheckMallocs);
 

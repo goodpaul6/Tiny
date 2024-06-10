@@ -82,8 +82,9 @@ typedef struct Tiny_State {
     Tiny_Arena parserArena;
 
     // If there's an error while compiling a string or a file, we reset
-    // back to this jump buffer
-    jmp_buf compileErrorJmpBuf;
+    // back to this jump buffer.
+    jmp_buf compileErrorJmpBufs[TINY_MAX_NESTED_COMPILE_CALLS];
+    int compileCallNestCount;
 
     // In case there was a compile error, it gets put in
     // here.

@@ -86,63 +86,58 @@ static TINY_FOREIGN_FUNCTION(CallWaitUnsafe) {
 }
 
 static TINY_MACRO_FUNCTION(CallWaitMacro) {
-    if(nargs != 1) {
-        return (Tiny_MacroResult){
-            .type = TINY_MACRO_ERROR,
-            .errorMessage = "'call_wait' macro expects exactly 1 argument."
-        };
+    if (nargs != 1) {
+        return (Tiny_MacroResult){.type = TINY_MACRO_ERROR,
+                                  .error.msg = "'call_wait' macro expects exactly 1 argument."};
     }
 
-    if(!asName) {
-        return (Tiny_MacroResult){
-            .type = TINY_MACRO_ERROR,
-            .errorMessage = "'call_wait' macro requires an 'as' name."
-        };
+    if (!asName) {
+        return (Tiny_MacroResult){.type = TINY_MACRO_ERROR,
+                                  .error.msg = "'call_wait' macro requires an 'as' name."};
     }
 
     const Tiny_Symbol* func = Tiny_FindFuncSymbol(state, args[0]);
 
-    if(!func) {
+    if (!func) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "Function supplied to 'call_wait' macro does not exist."
-        };
+            .error.msg = "Function supplied to 'call_wait' macro does not exist."};
     }
 
-    char sigbuf[1024] = { 0 };
+    char sigbuf[1024] = {0};
     int sigused = 0;
 
     sigused += snprintf(sigbuf, sizeof(sigbuf), "func %s(", asName);
-    
-    char argsbuf[512] = { 0 };
+
+    char argsbuf[512] = {0};
     int argsused = 0;
 
     for (int i = 0; i < Tiny_SymbolArrayCount(func->func.args); ++i) {
         const Tiny_Symbol* arg = func->func.args[i];
 
-        if(i > 0) {
+        if (i > 0) {
             sigused += snprintf(sigbuf + sigused, sizeof(sigbuf) - sigused, ", ");
             argsused += snprintf(argsbuf + argsused, sizeof(argsbuf) - argsused, ", ");
         }
 
-        sigused += snprintf(sigbuf + sigused, sizeof(sigbuf) - sigused,
-            "a%i: %s", i, arg->var.tag->name);
+        sigused +=
+            snprintf(sigbuf + sigused, sizeof(sigbuf) - sigused, "a%i: %s", i, arg->var.tag->name);
 
-        argsused += snprintf(argsbuf + argsused, sizeof(argsbuf) - argsused,
-            "a%i", i);
+        argsused += snprintf(argsbuf + argsused, sizeof(argsbuf) - argsused, "a%i", i);
     }
 
-    if(func->func.returnTag->type != TINY_SYM_TAG_VOID) {
-        sigused += snprintf(sigbuf + sigused, sizeof(sigbuf) - sigused, "): %s { return call_wait_unsafe(\"%s\", %s) }",
-            func->func.returnTag->name, args[0], argsbuf);
+    if (func->func.returnTag->type != TINY_SYM_TAG_VOID) {
+        sigused += snprintf(sigbuf + sigused, sizeof(sigbuf) - sigused,
+                            "): %s { return call_wait_unsafe(\"%s\", %s) }",
+                            func->func.returnTag->name, args[0], argsbuf);
     } else {
-        sigused += snprintf(sigbuf + sigused, sizeof(sigbuf) - sigused, ") { call_wait_unsafe(\"%s\", %s) }", 
-            args[0], argsbuf);
+        sigused += snprintf(sigbuf + sigused, sizeof(sigbuf) - sigused,
+                            ") { call_wait_unsafe(\"%s\", %s) }", args[0], argsbuf);
     }
 
     Tiny_CompileString(state, "(call_wait macro code)", sigbuf);
 
-    return (Tiny_MacroResult){ .type = TINY_MACRO_SUCCESS };
+    return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
 }
 
 static TINY_FOREIGN_FUNCTION(Sends) {
@@ -200,8 +195,8 @@ static TINY_FOREIGN_FUNCTION(Sendf) {
 
                     Tiny_GetExecutingFileLine(thread, &fileName, &line);
 
-                    fprintf(stderr, "%s(%i): Invalid format specifier '%%%c' in sendf.\n",
-                            fileName, line, *s);
+                    fprintf(stderr, "%s(%i): Invalid format specifier '%%%c' in sendf.\n", fileName,
+                            line, *s);
                 } break;
             }
 

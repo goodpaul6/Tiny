@@ -51,7 +51,7 @@ static void ReportErrorL(Tiny_State *state, Tiny_Lexer *l, const char *s, ...) {
 
     va_end(args);
 
-    longjmp(state->compileErrorJmpBuf, 1);
+    longjmp(state->compileErrorJmpBufs[state->compileCallNestCount - 1], 1);
 }
 
 static void ReportErrorSL(Tiny_State *state, const char *s, ...) {
@@ -66,7 +66,7 @@ static void ReportErrorSL(Tiny_State *state, const char *s, ...) {
 
     va_end(args);
 
-    longjmp(state->compileErrorJmpBuf, 1);
+    longjmp(state->compileErrorJmpBufs[state->compileCallNestCount - 1], 1);
 }
 
 static char *CloneString(Tiny_Context *ctx, const char *str) {
@@ -457,6 +457,8 @@ Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx) {
     state->globalSymbols = NULL;
 
     state->pcToFileLine = NULL;
+
+    state->compileCallNestCount = 0;
 
     Tiny_BindFunction(state, "int(float): int", Lib_ToInt);
     Tiny_BindFunction(state, "float(int): float", Lib_ToFloat);
@@ -1514,7 +1516,7 @@ static void ReportErrorE(Tiny_State *state, const Tiny_Expr *exp, const char *s,
 
     va_end(args);
 
-    longjmp(state->compileErrorJmpBuf, 1);
+    longjmp(state->compileErrorJmpBufs[state->compileCallNestCount - 1], 1);
 }
 
 static void ReportErrorS(Tiny_State *state, const Tiny_Symbol *sym, const char *s, ...) {
@@ -1529,7 +1531,7 @@ static void ReportErrorS(Tiny_State *state, const Tiny_Symbol *sym, const char *
 
     va_end(args);
 
-    longjmp(state->compileErrorJmpBuf, 1);
+    longjmp(state->compileErrorJmpBufs[state->compileCallNestCount - 1], 1);
 }
 
 static void ExpectTokenL(Tiny_State *state, Tiny_Lexer *l, Tiny_TokenKind tok, const char *msg) {
@@ -3875,6 +3877,8 @@ static void CompileState(Tiny_State *state, Tiny_Expr *progHead) {
 }
 
 Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const char *string) {
+    assert(state->compileCallNestCount < TINY_MAX_NESTED_COMPILE_CALLS);
+
     // In order to make this function re-entrant, we save the lexer/parser arena on the stack
     Tiny_Lexer prevLexer = state->l;
     Tiny_Arena prevParserArena = state->parserArena;
@@ -3885,7 +3889,11 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
     int firstSymIndex = sb_count(state->globalSymbols);
     int startCodeLen = sb_count(state->program);
 
-    int jmpCode = setjmp(state->compileErrorJmpBuf);
+    // We have to do this _before_ setjmp because it'll get
+    // incremented again if it jumps back and we put it after
+    state->compileCallNestCount += 1;
+
+    int jmpCode = setjmp(state->compileErrorJmpBufs[state->compileCallNestCount - 1]);
 
     if (jmpCode) {
         // Free all stuff allocated since the start of compilation
@@ -3908,6 +3916,7 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
 
         state->l = prevLexer;
         state->parserArena = prevParserArena;
+        --state->compileCallNestCount;
 
         return state->compileErrorResult;
     }
@@ -3946,9 +3955,8 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
                                exp->use.asName ? exp->use.asName->value : NULL);
 
                 if (result.type != TINY_MACRO_SUCCESS) {
-                    ReportErrorE(
-                        state, exp, "'use' module '%s' failed: %s", exp->use.moduleName,
-                        result.errorMessage ? result.errorMessage : "(no error message produced)");
+                    ReportErrorE(state, exp, "'use' macro '%s' failed: %s",
+                                 exp->use.moduleName->value, result.error.msg);
                 }
 
                 found = true;
@@ -3983,6 +3991,7 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
 
     state->l = prevLexer;
     state->parserArena = prevParserArena;
+    --state->compileCallNestCount;
 
     return (Tiny_CompileResult){.type = TINY_COMPILE_SUCCESS};
 }
@@ -4013,11 +4022,11 @@ Tiny_CompileResult Tiny_CompileFile(Tiny_State *state, const char *filename) {
 
     fclose(file);
 
-    Tiny_CompileString(state, filename, s);
+    Tiny_CompileResult result = Tiny_CompileString(state, filename, s);
 
     TFree(&state->ctx, s);
 
-    return (Tiny_CompileResult){.type = TINY_COMPILE_SUCCESS};
+    return result;
 }
 
 bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen) {

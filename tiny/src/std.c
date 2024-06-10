@@ -735,7 +735,16 @@ static Tiny_MacroResult BindJsonSerializerForType(Tiny_State *state, const Tiny_
 
     used += snprintf(buf + used, sizeof(buf) - used, ",\n\t\"}\")\n}");
 
-    Tiny_CompileString(state, "(json mod)", buf);
+    Tiny_CompileResult compileResult = Tiny_CompileString(state, "(json mod)", buf);
+
+    if (compileResult.type != TINY_COMPILE_SUCCESS) {
+        Tiny_MacroResult macroResult = {.type = TINY_MACRO_ERROR};
+
+        snprintf(macroResult.error.msg, sizeof(macroResult.error.msg),
+                 "Failed to compile JSON code: %s", compileResult.error.msg);
+
+        return macroResult;
+    }
 
     return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
 }
@@ -744,7 +753,7 @@ static TINY_MACRO_FUNCTION(JsonMacroFunction) {
     if (nargs != 1) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "Must specify exactly 1 argument to 'use json'",
+            .error.msg = "Must specify exactly 1 argument to 'use json'",
         };
     }
 
@@ -753,7 +762,7 @@ static TINY_MACRO_FUNCTION(JsonMacroFunction) {
     if (sym->type != TINY_SYM_TAG_STRUCT) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "Must specify struct type as argument to 'use json_mod'",
+            .error.msg = "Must specify struct type as argument to 'use json_mod'",
         };
     }
 
@@ -764,21 +773,21 @@ static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
     if (nargs != 1) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "Must specify exactly 1 argument to 'use array'",
+            .error.msg = "Must specify exactly 1 argument to 'use array'",
         };
     }
 
     if (!asName) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "Must specify an 'as' name when doing 'use array'",
+            .error.msg = "Must specify an 'as' name when doing 'use array'",
         };
     }
 
     if (!Tiny_FindTypeSymbol(state, args[0])) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "The array element type you specified does not exist",
+            .error.msg = "The array element type you specified does not exist",
         };
     }
 
@@ -902,14 +911,14 @@ static TINY_MACRO_FUNCTION(DelegateMacroFunction) {
     if (nargs != 1) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "Must specify exactly 1 argument to 'use delegate'",
+            .error.msg = "Must specify exactly 1 argument to 'use delegate'",
         };
     }
 
     if (!asName) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
-            .errorMessage = "Must specify an 'as' name when doing 'use delegate'",
+            .error.msg = "Must specify an 'as' name when doing 'use delegate'",
         };
     }
 
