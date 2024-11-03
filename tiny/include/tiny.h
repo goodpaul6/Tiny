@@ -33,13 +33,26 @@
 #endif
 
 // You define these to override the integer and float types used by Tiny_Value.
+#ifndef TINY_INT_TYPE
 typedef int32_t Tiny_Int;
-typedef float Tiny_Float;
+#else
+typedef TINY_INT_TYPE Tiny_Int;
+#endif
 
+#ifndef TINY_FLOAT_TYPE
+typedef float Tiny_Float;
+#else
+typedef TINY_FLOAT_TYPE Tiny_Float;
+#endif
+
+#ifndef TINY_CONSTANT_INDEX_TYPE
 // This is the integer type used for indexes in the bytecode. For example, if
 // we're pushing a string and we're referencing string at index 1240, this is the
 // integer that's written into the bytecode stream.
 typedef uint32_t Tiny_ConstantIndex;
+#else
+typedef TINY_CONSTANT_INDEX_TYPE Tiny_ConstantIndex;
+#endif
 
 // This function should be able to handle all of `malloc`,
 // `realloc`, and `free`:
