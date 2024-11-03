@@ -1423,10 +1423,10 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
         case TINY_OP_CALL: {
             ++thread->pc;
             Word nargs = thread->state->program[thread->pc++];
-            Tiny_Int pcIdx = ReadInteger(thread);
+            Tiny_ConstantIndex funcIdx = ReadConstIndex(thread);
 
             DoPushIndir(thread, nargs);
-            thread->pc = state->functionPcs[pcIdx];
+            thread->pc = state->functionPcs[funcIdx];
         } break;
 
         case TINY_OP_RETURN: {
@@ -2530,6 +2530,12 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
     if (exp->tag) return;
 
     switch (exp->type) {
+        case TINY_EXP_BREAK:
+        case TINY_EXP_CONTINUE:
+        case TINY_EXP_USE:
+            exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
+            break;
+
         case TINY_EXP_NULL:
             exp->tag = GetPrimTag(TINY_SYM_TAG_ANY);
             break;
@@ -4095,7 +4101,7 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
             Tiny_Int i = 0;
             READ_VALUE_AT(state, &pc, &i);
 
-            snprintf(buf, maxlen, "PUSH_INT %d", i);
+            snprintf(buf, maxlen, "PUSH_INT %lld", i);
         } break;
 
         case TINY_OP_PUSH_FLOAT: {
@@ -4104,7 +4110,7 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
             Tiny_Float f = 0;
             READ_VALUE_AT(state, &pc, &f);
 
-            snprintf(buf, maxlen, "PUSH_FLOAT %f", f);
+            snprintf(buf, maxlen, "PUSH_FLOAT %g", f);
         } break;
 
         case TINY_OP_PUSH_STRING: {

@@ -34,7 +34,7 @@
 
 // You define these to override the integer and float types used by Tiny_Value.
 #ifndef TINY_INT_TYPE
-typedef int32_t Tiny_Int;
+typedef int64_t Tiny_Int;
 #else
 typedef TINY_INT_TYPE Tiny_Int;
 #endif
