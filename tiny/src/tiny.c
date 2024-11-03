@@ -3384,12 +3384,16 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
                 case TINY_TOK_MINUS: {
                     if (exp->unary.exp->type == TINY_EXP_INT) {
                         GenerateCode(state, TINY_OP_PUSH_INT);
-                        GenerateInt(state, -exp->unary.exp->iValue);
+
+                        Tiny_Int iValue = -exp->unary.exp->iValue;
+                        GEN_VALUE_NOPOS(state, &iValue);
                     } else {
                         CompileExpr(state, exp->unary.exp);
 
                         GenerateCode(state, TINY_OP_PUSH_INT);
-                        GenerateInt(state, -1);
+                        Tiny_Int iValue = -1;
+                        GEN_VALUE_NOPOS(state, &iValue);
+
                         GenerateCode(state, TINY_OP_MUL);
                     }
                 } break;
@@ -3459,7 +3463,7 @@ static void PatchBreakContinue(Tiny_State *state, Tiny_Expr *body, int breakPC, 
                     "A break statement does not make sense here. It must be inside a loop.");
             }
 
-            GenerateIntAt(state, breakPC, body->breakContinue.patchLoc);
+            PatchJumpLoc(state, body->breakContinue.patchLoc, breakPC);
         } break;
 
         case TINY_EXP_CONTINUE: {
@@ -3469,7 +3473,7 @@ static void PatchBreakContinue(Tiny_State *state, Tiny_Expr *body, int breakPC, 
                              "inside a loop.");
             }
 
-            GenerateIntAt(state, continuePC, body->breakContinue.patchLoc);
+            PatchJumpLoc(state, body->breakContinue.patchLoc, continuePC);
         } break;
 
         default:
@@ -3657,10 +3661,10 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
 
                             if (exp->binary.lhs->id.sym->type == TINY_SYM_GLOBAL) {
                                 GenerateCode(state, TINY_OP_SET);
-                                GenerateInt(state, exp->binary.lhs->id.sym->var.index);
+                                GEN_VALUE_NOPOS(state, &exp->binary.lhs->id.sym->var.index);
                             } else if (exp->binary.lhs->id.sym->type == TINY_SYM_LOCAL) {
                                 GenerateCode(state, TINY_OP_SETLOCAL);
-                                GenerateInt(state, exp->binary.lhs->id.sym->var.index);
+                                GEN_VALUE_NOPOS(state, &exp->binary.lhs->id.sym->var.index);
                             } else  // Probably a constant, can't change it
                             {
                                 ReportErrorE(state, exp, "Cannot assign to id '%s'.\n",
@@ -3770,8 +3774,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
 
             CompileStatement(state, exp->forx.step);
 
-            GenerateCode(state, TINY_OP_GOTO);
-            GenerateInt(state, condPc);
+            GenerateJump(state, TINY_OP_GOTO, condPc);
 
             PatchJumpLoc(state, skipBodyLoc, sb_count(state->program));
 
