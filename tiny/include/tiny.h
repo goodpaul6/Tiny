@@ -40,7 +40,7 @@ typedef TINY_INT_TYPE Tiny_Int;
 #endif
 
 #ifndef TINY_FLOAT_TYPE
-typedef float Tiny_Float;
+typedef double Tiny_Float;
 #else
 typedef TINY_FLOAT_TYPE Tiny_Float;
 #endif
