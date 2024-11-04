@@ -684,7 +684,7 @@ static Tiny_Value Lib_I64MulMany(Tiny_StateThread *thread, const Tiny_Value *arg
 static Tiny_Value Lib_I64ToString(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     char buf[32] = {0};
 
-    int len = snprintf(buf, sizeof(buf), "%ld", (int64_t)(intptr_t)Tiny_ToAddr(args[0]));
+    int len = snprintf(buf, sizeof(buf), "%lld", (int64_t)(intptr_t)Tiny_ToAddr(args[0]));
 
     return Tiny_NewStringCopy(thread, buf, len);
 }

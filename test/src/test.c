@@ -539,6 +539,8 @@ static Tiny_Value CallFunc(Tiny_StateThread *thread, const Tiny_Value *args, int
 
     lok(ret.type == TINY_VAL_INT);
     lequal(ret.i, 120);
+
+    return ret;
 }
 
 static void test_TinyStateCallMidRun(void) {
@@ -556,8 +558,7 @@ static void test_TinyStateCallMidRun(void) {
 
     Tiny_StartThread(&thread);
 
-    while (Tiny_ExecuteCycle(&thread))
-        ;
+    while (Tiny_ExecuteCycle(&thread));
 
     Tiny_DestroyThread(&thread);
 
@@ -587,8 +588,7 @@ static void test_TinyEquality(void) {
 
     Tiny_StartThread(&thread);
 
-    while (Tiny_ExecuteCycle(&thread))
-        ;
+    while (Tiny_ExecuteCycle(&thread));
 
     int ag = Tiny_GetGlobalIndex(state, "a");
     int bg = Tiny_GetGlobalIndex(state, "b");
@@ -623,8 +623,7 @@ static void test_TinyDict(void) {
 
     Tiny_StartThread(&thread);
 
-    while (Tiny_ExecuteCycle(&thread))
-        ;
+    while (Tiny_ExecuteCycle(&thread));
 
     int dg = Tiny_GetGlobalIndex(state, "d");
 
@@ -695,8 +694,7 @@ static void test_RevPolishCalc(void) {
 
     Tiny_StartThread(&thread);
 
-    while (Tiny_ExecuteCycle(&thread))
-        ;
+    while (Tiny_ExecuteCycle(&thread));
 
     extern const Tiny_NativeProp ArrayProp;
 
@@ -795,8 +793,7 @@ static void test_HexLiteral() {
     Tiny_InitThread(&thread, state);
 
     Tiny_StartThread(&thread);
-    while (Tiny_ExecuteCycle(&thread))
-        ;
+    while (Tiny_ExecuteCycle(&thread));
 
     int x = Tiny_ToInt(Tiny_GetGlobal(&thread, idx));
 
@@ -826,8 +823,7 @@ static void test_Break() {
     Tiny_InitThread(&thread, state);
 
     Tiny_StartThread(&thread);
-    while (Tiny_ExecuteCycle(&thread))
-        ;
+    while (Tiny_ExecuteCycle(&thread));
 
     int x = Tiny_ToInt(Tiny_GetGlobal(&thread, idx));
 
@@ -860,8 +856,7 @@ static void test_Continue() {
     Tiny_InitThread(&thread, state);
 
     Tiny_StartThread(&thread);
-    while (Tiny_ExecuteCycle(&thread))
-        ;
+    while (Tiny_ExecuteCycle(&thread));
 
     int x = Tiny_ToInt(Tiny_GetGlobal(&thread, idx));
 
