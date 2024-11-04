@@ -55,8 +55,7 @@ static Entity* AddEnt(int hp, float x, float y, EntityType type) {
             // Run it once to initialize globals and such
             Tiny_StartThread(&Ents[i].thread);
 
-            while (Tiny_ExecuteCycle(&Ents[i].thread))
-                ;
+            while (Tiny_ExecuteCycle(&Ents[i].thread));
 
             return &Ents[i];
         }
@@ -255,6 +254,8 @@ int main(int argc, char** argv) {
     const char* scripts[] = {"scripts/player.tiny",  "scripts/chaser.tiny", "scripts/bullet.tiny",
                              "scripts/spawner.tiny", "scripts/hud.tiny",    "scripts/powerup.tiny"};
 
+    bool compileFailed = false;
+
     for (int i = 0; i < NUM_ENTITY_TYPES; ++i) {
         EntityStates[i] = Tiny_CreateState();
 
@@ -288,7 +289,16 @@ int main(int argc, char** argv) {
         Tiny_BindFunction(EntityStates[i], "draw_text", DrawText);
         Tiny_BindFunction(EntityStates[i], "rand(): int", LibRand);
 
-        Tiny_CompileFile(EntityStates[i], scripts[i]);
+        Tiny_CompileResult result = Tiny_CompileFile(EntityStates[i], scripts[i]);
+
+        if (result.type != TINY_COMPILE_SUCCESS) {
+            fprintf(stderr, "Failed to compile %s: %s", scripts[i], result.error.msg);
+            compileFailed = true;
+        }
+    }
+
+    if (compileFailed) {
+        return 1;
     }
 
     AddEnt(10, -100, -100, ENT_HUD);
@@ -300,7 +310,8 @@ int main(int argc, char** argv) {
     AddEnt(1, 300, 220, ENT_SPAWNER);
     AddEnt(1, 20, 220, ENT_SPAWNER);
 
-    float lastTime = tigrTime();
+    tigrTime();
+
     float acc = 0;
 
     const float timePerFrame = 1.0f / 60.0f;
@@ -310,7 +321,7 @@ int main(int argc, char** argv) {
     while (!tigrClosed(Screen)) {
         tigrClear(Screen, tigrRGB(20, 20, 20));
 
-        acc += tigrTime() - lastTime;
+        acc += tigrTime();
 
         while (acc >= timePerFrame) {
             acc -= timePerFrame;
@@ -393,6 +404,8 @@ int main(int argc, char** argv) {
                     }
                 }
             }
+
+            tigrUpdate(Screen);
         }
 
         tigrUpdate(Screen);
