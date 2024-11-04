@@ -319,12 +319,13 @@ int main(int argc, char** argv) {
     tigrSetPostFX(Screen, 2, 2, 0.5f, 1);
 
     while (!tigrClosed(Screen)) {
-        tigrClear(Screen, tigrRGB(20, 20, 20));
-
         acc += tigrTime();
 
         while (acc >= timePerFrame) {
             acc -= timePerFrame;
+
+            // Only clear when we're about to draw
+            tigrClear(Screen, tigrRGB(20, 20, 20));
 
             for (int i = 0; i < MAX_ENTITIES; ++i) {
                 if (Ents[i].hp <= 0) continue;
@@ -404,8 +405,6 @@ int main(int argc, char** argv) {
                     }
                 }
             }
-
-            tigrUpdate(Screen);
         }
 
         tigrUpdate(Screen);
