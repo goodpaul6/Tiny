@@ -126,7 +126,7 @@ static int lfails = 0;
     } while (0)
 
 /* Assert two integers are equal. */
-#define lequal(a, b) lequal_base((a) == (b), a, b, "%d")
+#define lequal(a, b) lequal_base((a) == (b), (int64_t)(a), (int64_t)(b), "%lld")
 
 /* Assert two floats are equal (Within LTEST_FLOAT_TOLERANCE). */
 #define lfequal(a, b)                                                                   \

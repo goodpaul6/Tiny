@@ -837,7 +837,15 @@ static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
     snprintf(sigbuf, sizeof(sigbuf), "%s_get(%s, int): %s", asName, asName, args[0]);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayGet);
 
+    // Conform to the array index syntax
+    snprintf(sigbuf, sizeof(sigbuf), "%s_get_index(%s, int): %s", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayGet);
+
     snprintf(sigbuf, sizeof(sigbuf), "%s_set(%s, int, %s): void", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArraySet);
+
+    // Conform to the array index syntax
+    snprintf(sigbuf, sizeof(sigbuf), "%s_set_index(%s, int, %s): void", asName, asName, args[0]);
     Tiny_BindFunction(state, sigbuf, Lib_ArraySet);
 
     snprintf(sigbuf, sizeof(sigbuf), "%s_len(%s): int", asName, asName);

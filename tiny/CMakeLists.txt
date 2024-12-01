@@ -18,4 +18,6 @@ if(UNIX)
     target_link_libraries(tiny PRIVATE m)
 endif()
 
+target_compile_options(tiny PRIVATE -Wno-gnu-alignof-expression)
+
 target_include_directories(tiny PUBLIC include)

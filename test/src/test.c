@@ -406,7 +406,7 @@ static void test_DictClear(void) {
         }
     }
 
-    lok_print(Tiny_IsNull(foundKey), "key=%d", foundKey.i);
+    lok_print(Tiny_IsNull(foundKey), "key=%lld", (int64_t)foundKey.i);
 
     DestroyDict(&dict);
 }
@@ -430,7 +430,7 @@ static Tiny_Value Lib_Print(Tiny_StateThread *thread, const Tiny_Value *args, in
             puts(val.boolean ? "true\n" : "false\n");
             break;
         case TINY_VAL_INT:
-            printf("%d\n", val.i);
+            printf("%lld\n", val.i);
             break;
         case TINY_VAL_FLOAT:
             printf("%f\n", val.f);
@@ -1054,6 +1054,55 @@ static void test_GetStringConst() {
     Tiny_DeleteState(state);
 }
 
+static void test_IndexSyntax() {
+    Tiny_State *state = CreateState();
+
+    Tiny_BindStandardArray(state);
+
+    const char *code =
+        "use array(\"int\") as aint\n"
+        "a := aint(0)\n"
+        "zero := a[0]\n"
+        "a[0] = 2\n"
+        "two := a[0]";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(index syntax)", code);
+
+    lequal_return(result.type, TINY_COMPILE_SUCCESS);
+
+    int pc = 0;
+
+    for (;;) {
+        char buf[256];
+
+        if (!Tiny_DisasmOne(state, &pc, buf, sizeof(buf))) {
+            break;
+        }
+
+        printf("\n%s\n", buf);
+    }
+
+    int zeroIdx = Tiny_GetGlobalIndex(state, "zero");
+    int twoIdx = Tiny_GetGlobalIndex(state, "two");
+
+    Tiny_StateThread thread;
+
+    Tiny_InitThread(&thread, state);
+
+    Tiny_StartThread(&thread);
+    while (Tiny_ExecuteCycle(&thread));
+
+    Tiny_Value zv = Tiny_GetGlobal(&thread, zeroIdx);
+    lequal_return(zv.type, TINY_VAL_INT);
+    lequal_return(zv.i, 0);
+
+    Tiny_Value tv = Tiny_GetGlobal(&thread, twoIdx);
+    lequal_return(tv.type, TINY_VAL_INT);
+    lequal_return(tv.i, 2);
+
+    Tiny_DeleteState(state);
+}
+
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
@@ -1081,6 +1130,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Test DisasmOne", test_DisasmOne);
     lrun("Tiny Test GetStringConstant", test_GetStringConst);
     lrun("Tiny Nested Compile Error Propagates", test_NestCompileFailPropagates);
+    lrun("Tiny Index Syntax Works", test_IndexSyntax);
 
     lrun("Check no leak in tests", test_CheckMallocs);
 

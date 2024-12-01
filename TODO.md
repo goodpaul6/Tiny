@@ -1,5 +1,7 @@
 # TODO
 
+- BAD No array syntax, no way to iterate arrays
+
 - BAD All types are nullable?
 - BAD No debugger of any kind
 - BAD No slices! I think the quickest way to support indexing arbitrary sequences is to allow them to produce a slice
@@ -7,29 +9,33 @@
   - Actually this may not be that great after all because this necessitates having generic types (e.g. one for slice)
   - What if I just allow native values to be indexable (along with string)? Just add `getIndex` and `setIndex` to `Tiny_NativeProp`
   - Alternatively (and this works better with our macro system) allow for operator overloading (maybe just the indexing operator)
+
     - Something like `func __index_str(s: str, i: int) { return stridx(s, i) }`, nothin fancy
-        - `"hello"[0] -> stridx("hello", 0)`
-        ```
-        module M = struct 
-            let ( a + b ) = add a b
-        end
 
-        open M
+      - `"hello"[0] -> stridx("hello", 0)`
 
-        let open M in
-        10 + 10
-        ```
+      ```
+      module M = struct
+          let ( a + b ) = add a b
+      end
 
-        ```
-        array_push(a, 10)
+      open M
 
-        a->array_push(10) // turns 
-        ```
+      let open M in
+      10 + 10
+      ```
+
+      ```
+      array_push(a, 10)
+
+      a->array_push(10) // turns
+      ```
+
     - Would be nice if we inlined these (a function that just consists of returning the result of another function)
     - Maybe for now only allow adding operator overloads in C (but they should be `BindFunction`, not via `NativeProp`; maybe `BindOperator`)
     - In order to make it explicit that you're calling an overloaded operator, we can have them be like
-    `str.[0]` (note the `.`). We can do this for `+` and `-` so `a .+ b` (this could also solve the problem
-    of which side we get the operator from like `+.` would mean grab the overload from the rhs, and so on)
+      `str.[0]` (note the `.`). We can do this for `+` and `-` so `a .+ b` (this could also solve the problem
+      of which side we get the operator from like `+.` would mean grab the overload from the rhs, and so on)
 
 - BAD No language server
 
@@ -128,6 +134,7 @@ func test(): int {}
 - BAD No 64-bit integers
 - BAD No char type
 - BAD No polymorphism of any kind
+
 * BAD We don't pass in alignment to user-provided allocation function
 
 - Refactor VM from compiler
@@ -219,6 +226,7 @@ Tiny_BindFunction(state, "get(array($t), int): t");
     - Just need the function name, nothing else
 - BAD No ternary operator
 - IDEA Rescript style pipe operator
+
 ```
 arr := array_int()
 
@@ -228,7 +236,6 @@ arr->array_int_push(20)
 
 arr->array_int_get(10)
 ```
-
 
 - BAD Cannot do `.` subscript on cast expression values
 - BAD No designated struct init
