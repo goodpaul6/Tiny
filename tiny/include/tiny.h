@@ -32,6 +32,28 @@
 #define TINY_MAX_NESTED_COMPILE_CALLS 16
 #endif
 
+// You define these to override the integer and float types used by Tiny_Value.
+#ifndef TINY_INT_TYPE
+typedef int64_t Tiny_Int;
+#else
+typedef TINY_INT_TYPE Tiny_Int;
+#endif
+
+#ifndef TINY_FLOAT_TYPE
+typedef double Tiny_Float;
+#else
+typedef TINY_FLOAT_TYPE Tiny_Float;
+#endif
+
+#ifndef TINY_CONSTANT_INDEX_TYPE
+// This is the integer type used for indexes in the bytecode. For example, if
+// we're pushing a string and we're referencing string at index 1240, this is the
+// integer that's written into the bytecode stream.
+typedef uint32_t Tiny_ConstantIndex;
+#else
+typedef TINY_CONSTANT_INDEX_TYPE Tiny_ConstantIndex;
+#endif
+
 // This function should be able to handle all of `malloc`,
 // `realloc`, and `free`:
 //
@@ -102,8 +124,8 @@ typedef enum {
 typedef struct Tiny_Value {
     union {
         bool boolean;
-        int i;
-        float f;
+        Tiny_Int i;
+        Tiny_Float f;
         const char *cstr;  // for TINY_VAL_CONST_STRING
         void *addr;        // for TINY_VAL_LIGHT_NATIVE
         Tiny_Object *obj;
@@ -478,15 +500,15 @@ typedef struct Tiny_Symbol {
             struct Tiny_Symbol *tag;
 
             union {
-                bool bValue;   // for bool
-                int iValue;    // for char/int
-                float fValue;  // for float
-                int sIndex;    // for string
+                bool bValue;                // for bool
+                int iValue;                 // for char/int
+                float fValue;               // for float
+                Tiny_ConstantIndex sIndex;  // for string
             };
         } constant;
 
         struct {
-            int index;
+            Tiny_ConstantIndex index;
 
             struct Tiny_Symbol **args;    // array
             struct Tiny_Symbol **locals;  // array
@@ -495,7 +517,7 @@ typedef struct Tiny_Symbol {
         } func;
 
         struct {
-            int index;
+            Tiny_ConstantIndex index;
 
             // nargs = sb_count
             struct Tiny_Symbol **argTags;  // array
@@ -534,6 +556,6 @@ const Tiny_Symbol *Tiny_FindConstSymbol(Tiny_State *state, const char *name);
 
 // You can use this to retrieve the underlying string from `constant.sIndex` above.
 // Assumes that `sIndex` is valid.
-const char *Tiny_GetStringFromConstIndex(Tiny_State *state, int sIndex);
+const char *Tiny_GetStringFromConstIndex(Tiny_State *state, Tiny_ConstantIndex sIndex);
 
 #endif

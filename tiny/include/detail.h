@@ -8,7 +8,7 @@
 
 #define MAX_STRINGS 1024
 
-typedef unsigned char Word;
+typedef uint8_t Word;
 
 typedef struct Tiny_Object {
     bool marked;

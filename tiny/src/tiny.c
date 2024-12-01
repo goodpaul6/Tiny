@@ -3,6 +3,7 @@
 
 #include <assert.h>
 #include <ctype.h>
+#include <stdalign.h>
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdio.h>
@@ -602,8 +603,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const 
     DoPushIndir(thread, count);
 
     // Keep executing until the indir stack is restored (i.e. function is done)
-    while (thread->fc > fc && ExecuteCycle(thread))
-        ;
+    while (thread->fc > fc && ExecuteCycle(thread));
 
     Tiny_Value newRetVal = thread->retVal;
 
@@ -619,10 +619,7 @@ Tiny_Value Tiny_CallFunction(Tiny_StateThread *thread, int functionIndex, const 
 
 bool Tiny_ExecuteCycle(Tiny_StateThread *thread) { return ExecuteCycle(thread); }
 
-void Tiny_Run(Tiny_StateThread *thread) {
-    while (ExecuteCycle(thread))
-        ;
-}
+void Tiny_Run(Tiny_StateThread *thread) { while (ExecuteCycle(thread)); }
 
 void Tiny_DestroyThread(Tiny_StateThread *thread) {
     thread->pc = -1;
@@ -653,33 +650,44 @@ static void GenerateCode(Tiny_State *state, Word inst) {
     sb_push(&state->ctx, state->program, inst);
 }
 
-static int GenerateInt(Tiny_State *state, int value) {
-    // TODO(Apaar): Don't hardcode alignment of int
-    int padding = (sb_count(state->program) % 4 == 0) ? 0 : (4 - sb_count(state->program) % 4);
+// Tiny_State* state, const T* value, int* pPos
+//
+// Pads the bytecode until we are aligned for T, then writes out the bytes for T,
+// storing starting pos in pPos.
+#define GEN_VALUE(state, pValue, pPos)                                   \
+    do {                                                                 \
+        size_t align_minus_one = alignof(*pValue) - 1;                   \
+        int count = sb_count(state->program);                            \
+        int padded_count = (count + align_minus_one) & ~align_minus_one; \
+        for (int i = 0; i < padded_count - count; ++i) {                 \
+            GenerateCode(state, TINY_OP_MISALIGNED_INSTRUCTION);         \
+        }                                                                \
+        *pPos = sb_count(state->program);                                \
+        Word *wp = (Word *)pValue;                                       \
+        for (int i = 0; i < sizeof(*pValue); ++i) {                      \
+            GenerateCode(state, *wp++);                                  \
+        }                                                                \
+    } while (0)
 
-    for (int i = 0; i < padding; ++i) {
-        GenerateCode(state, TINY_OP_MISALIGNED_INSTRUCTION);
-    }
+// Same as GEN_VALUE but ignore position
+#define GEN_VALUE_NOPOS(state, pValue)  \
+    do {                                \
+        int pos = 0;                    \
+        GEN_VALUE(state, pValue, &pos); \
+    } while (0)
 
-    int pos = sb_count(state->program);
-
-    Word *wp = (Word *)(&value);
-    for (int i = 0; i < sizeof(int); ++i) {
-        GenerateCode(state, *wp++);
-    }
-
-    return pos;
-}
-
-static void GenerateIntAt(Tiny_State *state, int value, int pc) {
-    // Must be aligned
-    assert(pc % 4 == 0);
-
-    Word *wp = (Word *)(&value);
-    for (int i = 0; i < 4; ++i) {
-        state->program[pc + i] = *wp++;
-    }
-}
+// Tiny_State* state, const T* pValue, int pc
+//
+// Writes out the value stored in pValue to bytecode stream at pc
+// asserting that pc is aligned for the value before doing so
+#define GEN_VALUE_AT(state, pValue, pc)             \
+    do {                                            \
+        assert(pc % alignof(*pValue) == 0);         \
+        Word *wp = (Word *)pValue;                  \
+        for (int i = 0; i < sizeof(*pValue); ++i) { \
+            state->program[pc + i] = *wp++;         \
+        }                                           \
+    } while (0)
 
 static int RegisterString(Tiny_State *state, const char *string) {
     for (int i = 0; i < state->numStrings; ++i) {
@@ -1087,31 +1095,40 @@ void Tiny_BindConstString(Tiny_State *state, const char *name, const char *strin
         RegisterString(state, string);
 }
 
-inline static int ReadIntegerAt(const Tiny_State *state, int *pc) {
-    // Move PC up to the next 4 aligned thing
-    *pc = (*pc + 3) & ~3;
+// const Tiny_State* state, int* pPC, T* pDest
+//
+// Aligns pPC for T and then reads T
+#define READ_VALUE_AT(state, pPC, pDest)                      \
+    do {                                                      \
+        size_t align_minus_one = alignof(*pDest) - 1;         \
+        *pPC = (*pPC + align_minus_one) & ~align_minus_one;   \
+        memcpy(pDest, state->program + *pPC, sizeof(*pDest)); \
+        *pPC += sizeof(*pDest) / sizeof(Word);                \
+    } while (0)
 
-    int val = *(int *)(&state->program[*pc]);
-    *pc += sizeof(int) / sizeof(Word);
+static Tiny_Int ReadInteger(Tiny_StateThread *thread) {
+    Tiny_Int val = 0;
 
-    return val;
-}
-
-static int ReadInteger(Tiny_StateThread *thread) {
-    return ReadIntegerAt(thread->state, &thread->pc);
-}
-
-inline static float ReadFloatAt(const Tiny_State *state, int *pc) {
-    // Move PC up to the next 4 aligned thing
-    *pc = (*pc + 3) & ~3;
-
-    float val = *(float *)(&state->program[*pc]);
-    *pc += sizeof(float) / sizeof(Word);
+    READ_VALUE_AT(thread->state, &thread->pc, &val);
 
     return val;
 }
 
-static float ReadFloat(Tiny_StateThread *thread) { return ReadFloatAt(thread->state, &thread->pc); }
+static Tiny_ConstantIndex ReadConstIndex(Tiny_StateThread *thread) {
+    Tiny_ConstantIndex val = 0;
+
+    READ_VALUE_AT(thread->state, &thread->pc, &val);
+
+    return val;
+}
+
+static Tiny_Float ReadFloat(Tiny_StateThread *thread) {
+    Tiny_Float val = 0;
+
+    READ_VALUE_AT(thread->state, &thread->pc, &val);
+
+    return val;
+}
 
 static void DoPush(Tiny_StateThread *thread, Tiny_Value value) {
     thread->stack[thread->sp++] = value;
@@ -1217,7 +1234,7 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
         case TINY_OP_PUSH_STRING: {
             ++thread->pc;
 
-            int stringIndex = ReadInteger(thread);
+            Tiny_Int stringIndex = ReadInteger(thread);
 
             DoPush(thread, Tiny_NewConstString(thread->state->strings[stringIndex]));
         } break;
@@ -1378,25 +1395,25 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
 
         case TINY_OP_SET: {
             ++thread->pc;
-            int varIdx = ReadInteger(thread);
+            Tiny_ConstantIndex varIdx = ReadConstIndex(thread);
             thread->globalVars[varIdx] = DoPop(thread);
         } break;
 
         case TINY_OP_GET: {
             ++thread->pc;
-            int varIdx = ReadInteger(thread);
+            Tiny_ConstantIndex varIdx = ReadConstIndex(thread);
             DoPush(thread, thread->globalVars[varIdx]);
         } break;
 
         case TINY_OP_GOTO: {
             ++thread->pc;
-            int newPc = ReadInteger(thread);
+            Tiny_ConstantIndex newPc = ReadConstIndex(thread);
             thread->pc = newPc;
         } break;
 
         case TINY_OP_GOTOZ: {
             ++thread->pc;
-            int newPc = ReadInteger(thread);
+            Tiny_ConstantIndex newPc = ReadConstIndex(thread);
 
             Tiny_Value val = DoPop(thread);
 
@@ -1406,10 +1423,10 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
         case TINY_OP_CALL: {
             ++thread->pc;
             Word nargs = thread->state->program[thread->pc++];
-            int pcIdx = ReadInteger(thread);
+            Tiny_ConstantIndex funcIdx = ReadConstIndex(thread);
 
             DoPushIndir(thread, nargs);
-            thread->pc = state->functionPcs[pcIdx];
+            thread->pc = state->functionPcs[funcIdx];
         } break;
 
         case TINY_OP_RETURN: {
@@ -1427,7 +1444,7 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
             ++thread->pc;
 
             Word nargs = thread->state->program[thread->pc++];
-            int fIdx = ReadInteger(thread);
+            Tiny_ConstantIndex fIdx = ReadConstIndex(thread);
 
             // the state of the stack prior to the function arguments being pushed
             int prevSize = thread->sp - nargs;
@@ -1440,7 +1457,7 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
 
         case TINY_OP_GETLOCAL: {
             ++thread->pc;
-            int localIdx = ReadInteger(thread);
+            Tiny_ConstantIndex localIdx = ReadConstIndex(thread);
             DoPush(thread, thread->stack[thread->fp + localIdx]);
         } break;
 
@@ -1452,7 +1469,7 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
 
         case TINY_OP_SETLOCAL: {
             ++thread->pc;
-            int localIdx = ReadInteger(thread);
+            Tiny_ConstantIndex localIdx = ReadConstIndex(thread);
             Tiny_Value val = DoPop(thread);
             thread->stack[thread->fp + localIdx] = val;
         } break;
@@ -2513,6 +2530,12 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
     if (exp->tag) return;
 
     switch (exp->type) {
+        case TINY_EXP_BREAK:
+        case TINY_EXP_CONTINUE:
+        case TINY_EXP_USE:
+            exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
+            break;
+
         case TINY_EXP_NULL:
             exp->tag = GetPrimTag(TINY_SYM_TAG_ANY);
             break;
@@ -3010,7 +3033,22 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
 static void CompileProgram(Tiny_State *state, Tiny_Expr *program);
 
-static void GeneratePushInt(Tiny_State *state, int iValue) {
+static Tiny_ConstantIndex GenerateJump(Tiny_State *state, Word op, Tiny_ConstantIndex dest) {
+    assert(op == TINY_OP_GOTO || op == TINY_OP_GOTOZ);
+
+    GenerateCode(state, op);
+
+    int pos = 0;
+    GEN_VALUE(state, &dest, &pos);
+
+    return pos;
+}
+
+static void PatchJumpLoc(Tiny_State *state, Tiny_ConstantIndex pos, Tiny_ConstantIndex patchValue) {
+    GEN_VALUE_AT(state, &patchValue, pos);
+}
+
+static void GeneratePushInt(Tiny_State *state, Tiny_Int iValue) {
     if (iValue == 0) {
         GenerateCode(state, TINY_OP_PUSH_0);
     } else if (iValue == 1) {
@@ -3018,31 +3056,24 @@ static void GeneratePushInt(Tiny_State *state, int iValue) {
     } else {
         // TODO(Apaar): Add small integer optimization
         GenerateCode(state, TINY_OP_PUSH_INT);
-        GenerateInt(state, iValue);
+        GEN_VALUE_NOPOS(state, &iValue);
     }
 }
 
-static void GeneratePushFloat(Tiny_State *state, float fValue) {
+static void GeneratePushFloat(Tiny_State *state, Tiny_Float fValue) {
     GenerateCode(state, TINY_OP_PUSH_FLOAT);
 
-    union {
-        float f;
-        int i;
-    } value;
-
-    value.f = fValue;
-
-    // We reinterpret the bits of the float as an int
-    GenerateInt(state, value.i);
+    int pos = 0;
+    GEN_VALUE(state, &fValue, &pos);
 }
 
-static void GeneratePushString(Tiny_State *state, int sIndex) {
+static void GeneratePushString(Tiny_State *state, Tiny_ConstantIndex sIndex) {
     if (sIndex <= 0xff) {
         GenerateCode(state, TINY_OP_PUSH_STRING_FF);
         GenerateCode(state, (Word)sIndex);
     } else {
         GenerateCode(state, TINY_OP_PUSH_STRING);
-        GenerateInt(state, sIndex);
+        GEN_VALUE_NOPOS(state, &sIndex);
     }
 }
 
@@ -3059,11 +3090,11 @@ static void CompileGetIdOrDot(Tiny_State *state, Tiny_Expr *exp) {
         if (exp->id.sym->type != TINY_SYM_CONST) {
             if (exp->id.sym->type == TINY_SYM_GLOBAL) {
                 GenerateCode(state, TINY_OP_GET);
-                GenerateInt(state, exp->id.sym->var.index);
+                GEN_VALUE_NOPOS(state, &exp->id.sym->var.index);
             } else if (exp->id.sym->type == TINY_SYM_LOCAL) {
                 if (exp->id.sym->var.index < 0 || exp->id.sym->var.index > 0xff) {
                     GenerateCode(state, TINY_OP_GETLOCAL);
-                    GenerateInt(state, exp->id.sym->var.index);
+                    GEN_VALUE_NOPOS(state, &exp->id.sym->var.index);
                 } else {
                     GenerateCode(state, TINY_OP_GETLOCAL_W);
                     GenerateCode(state, (Word)exp->id.sym->var.index);
@@ -3134,11 +3165,11 @@ static void CompileCall(Tiny_State *state, Tiny_Expr *exp) {
         }
 
         GenerateCode(state, (Word)nargs);
-        GenerateInt(state, sym->foreignFunc.index);
+        GEN_VALUE_NOPOS(state, &sym->foreignFunc.index);
     } else {
         GenerateCode(state, TINY_OP_CALL);
         GenerateCode(state, (Word)nargs);
-        GenerateInt(state, sym->func.index);
+        GEN_VALUE_NOPOS(state, &sym->func.index);
     }
 }
 
@@ -3310,42 +3341,38 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
                     CompileExpr(state, exp->binary.lhs);
 
                     // Don't even bother running the RHS of the &&
-                    GenerateCode(state, TINY_OP_GOTOZ);
-                    int shortCircuitLoc = GenerateInt(state, 0);
+                    Tiny_ConstantIndex shortCircuitLoc = GenerateJump(state, TINY_OP_GOTOZ, 0);
 
                     // If we here here, the top of the stack will be whatever the result of this
                     // final call was, which fine
                     CompileExpr(state, exp->binary.rhs);
 
                     // Skip over the "push false"
-                    GenerateCode(state, TINY_OP_GOTO);
-                    int exitLoc = GenerateInt(state, 0);
-
+                    Tiny_ConstantIndex exitLoc = GenerateJump(state, TINY_OP_GOTO, 0);
                     // We push a false in the event
-                    GenerateIntAt(state, sb_count(state->program), shortCircuitLoc);
+
+                    PatchJumpLoc(state, shortCircuitLoc, sb_count(state->program));
                     GenerateCode(state, TINY_OP_PUSH_FALSE);
 
-                    GenerateIntAt(state, sb_count(state->program), exitLoc);
+                    PatchJumpLoc(state, exitLoc, sb_count(state->program));
                 } break;
 
                 case TINY_TOK_LOG_OR: {
                     CompileExpr(state, exp->binary.lhs);
 
                     // Skip over to the RHS
-                    GenerateCode(state, TINY_OP_GOTOZ);
-                    int nextExprLoc = GenerateInt(state, 0);
+                    Tiny_ConstantIndex nextExprLoc = GenerateJump(state, TINY_OP_GOTOZ, 0);
 
                     // Otherwise push true and jump out
                     GenerateCode(state, TINY_OP_PUSH_TRUE);
 
-                    GenerateCode(state, TINY_OP_GOTO);
-                    int exitPatchLoc = GenerateInt(state, 0);
+                    int exitLoc = GenerateJump(state, TINY_OP_GOTO, 0);
 
-                    GenerateIntAt(state, sb_count(state->program), nextExprLoc);
+                    PatchJumpLoc(state, nextExprLoc, sb_count(state->program));
 
                     CompileExpr(state, exp->binary.rhs);
 
-                    GenerateIntAt(state, sb_count(state->program), exitPatchLoc);
+                    PatchJumpLoc(state, exitLoc, sb_count(state->program));
                 } break;
 
                 default:
@@ -3363,12 +3390,16 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
                 case TINY_TOK_MINUS: {
                     if (exp->unary.exp->type == TINY_EXP_INT) {
                         GenerateCode(state, TINY_OP_PUSH_INT);
-                        GenerateInt(state, -exp->unary.exp->iValue);
+
+                        Tiny_Int iValue = -exp->unary.exp->iValue;
+                        GEN_VALUE_NOPOS(state, &iValue);
                     } else {
                         CompileExpr(state, exp->unary.exp);
 
                         GenerateCode(state, TINY_OP_PUSH_INT);
-                        GenerateInt(state, -1);
+                        Tiny_Int iValue = -1;
+                        GEN_VALUE_NOPOS(state, &iValue);
+
                         GenerateCode(state, TINY_OP_MUL);
                     }
                 } break;
@@ -3388,21 +3419,18 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
         case TINY_EXP_IF_TERNARY: {
             CompileExpr(state, exp->ifx.cond);
 
-            GenerateCode(state, TINY_OP_GOTOZ);
-            int elsePcLoc = GenerateInt(state, 0);
+            Tiny_ConstantIndex elseLoc = GenerateJump(state, TINY_OP_GOTOZ, 0);
 
             CompileExpr(state, exp->ifx.body);
 
-            GenerateCode(state, TINY_OP_GOTO);
-            int exitPcLoc = GenerateInt(state, 0);
+            Tiny_ConstantIndex exitLoc = GenerateJump(state, TINY_OP_GOTO, 0);
 
-            GenerateIntAt(state, sb_count(state->program), elsePcLoc);
-
+            PatchJumpLoc(state, elseLoc, sb_count(state->program));
             assert(exp->ifx.alt);
 
             CompileExpr(state, exp->ifx.alt);
 
-            GenerateIntAt(state, sb_count(state->program), exitPcLoc);
+            PatchJumpLoc(state, exitLoc, sb_count(state->program));
         } break;
 
         default:
@@ -3441,7 +3469,7 @@ static void PatchBreakContinue(Tiny_State *state, Tiny_Expr *body, int breakPC, 
                     "A break statement does not make sense here. It must be inside a loop.");
             }
 
-            GenerateIntAt(state, breakPC, body->breakContinue.patchLoc);
+            PatchJumpLoc(state, body->breakContinue.patchLoc, breakPC);
         } break;
 
         case TINY_EXP_CONTINUE: {
@@ -3451,7 +3479,7 @@ static void PatchBreakContinue(Tiny_State *state, Tiny_Expr *body, int breakPC, 
                              "inside a loop.");
             }
 
-            GenerateIntAt(state, continuePC, body->breakContinue.patchLoc);
+            PatchJumpLoc(state, body->breakContinue.patchLoc, continuePC);
         } break;
 
         default:
@@ -3639,10 +3667,10 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
 
                             if (exp->binary.lhs->id.sym->type == TINY_SYM_GLOBAL) {
                                 GenerateCode(state, TINY_OP_SET);
-                                GenerateInt(state, exp->binary.lhs->id.sym->var.index);
+                                GEN_VALUE_NOPOS(state, &exp->binary.lhs->id.sym->var.index);
                             } else if (exp->binary.lhs->id.sym->type == TINY_SYM_LOCAL) {
                                 GenerateCode(state, TINY_OP_SETLOCAL);
-                                GenerateInt(state, exp->binary.lhs->id.sym->var.index);
+                                GEN_VALUE_NOPOS(state, &exp->binary.lhs->id.sym->var.index);
                             } else  // Probably a constant, can't change it
                             {
                                 ReportErrorE(state, exp, "Cannot assign to id '%s'.\n",
@@ -3680,8 +3708,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
         } break;
 
         case TINY_EXP_PROC: {
-            GenerateCode(state, TINY_OP_GOTO);
-            int skipGotoPc = GenerateInt(state, 0);
+            int skipFuncBodyLoc = GenerateJump(state, TINY_OP_GOTO, 0);
 
             state->functionPcs[exp->proc.decl->func.index] = sb_count(state->program);
 
@@ -3700,28 +3727,27 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
             }
 
             GenerateCode(state, TINY_OP_RETURN);
-            GenerateIntAt(state, sb_count(state->program), skipGotoPc);
+
+            PatchJumpLoc(state, skipFuncBodyLoc, sb_count(state->program));
         } break;
 
         case TINY_EXP_IF: {
             CompileExpr(state, exp->ifx.cond);
-            GenerateCode(state, TINY_OP_GOTOZ);
 
-            int skipGotoPc = GenerateInt(state, 0);
+            int skipBodyLoc = GenerateJump(state, TINY_OP_GOTOZ, 0);
 
             if (exp->ifx.body) CompileStatement(state, exp->ifx.body);
 
             if (exp->ifx.alt) {
-                GenerateCode(state, TINY_OP_GOTO);
-                int exitGotoPc = GenerateInt(state, 0);
+                int exitLoc = GenerateJump(state, TINY_OP_GOTO, 0);
 
-                GenerateIntAt(state, sb_count(state->program), skipGotoPc);
+                PatchJumpLoc(state, skipBodyLoc, sb_count(state->program));
 
                 CompileStatement(state, exp->ifx.alt);
 
-                GenerateIntAt(state, sb_count(state->program), exitGotoPc);
+                PatchJumpLoc(state, exitLoc, sb_count(state->program));
             } else {
-                GenerateIntAt(state, sb_count(state->program), skipGotoPc);
+                PatchJumpLoc(state, skipBodyLoc, sb_count(state->program));
             }
         } break;
 
@@ -3730,16 +3756,13 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
 
             CompileExpr(state, exp->whilex.cond);
 
-            GenerateCode(state, TINY_OP_GOTOZ);
-            int skipGotoPc = GenerateInt(state, 0);
+            int skipBodyLoc = GenerateJump(state, TINY_OP_GOTOZ, 0);
 
             if (exp->whilex.body) CompileStatement(state, exp->whilex.body);
 
-            GenerateCode(state, TINY_OP_GOTO);
-            GenerateInt(state, condPc);
+            GenerateJump(state, TINY_OP_GOTO, condPc);
 
-            GenerateIntAt(state, sb_count(state->program), skipGotoPc);
-
+            PatchJumpLoc(state, skipBodyLoc, sb_count(state->program));
             PatchBreakContinue(state, exp->whilex.body, sb_count(state->program), condPc);
         } break;
 
@@ -3749,8 +3772,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
             int condPc = sb_count(state->program);
             CompileExpr(state, exp->forx.cond);
 
-            GenerateCode(state, TINY_OP_GOTOZ);
-            int skipGotoPc = GenerateInt(state, 0);
+            int skipBodyLoc = GenerateJump(state, TINY_OP_GOTOZ, 0);
 
             if (exp->forx.body) CompileStatement(state, exp->forx.body);
 
@@ -3758,10 +3780,9 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
 
             CompileStatement(state, exp->forx.step);
 
-            GenerateCode(state, TINY_OP_GOTO);
-            GenerateInt(state, condPc);
+            GenerateJump(state, TINY_OP_GOTO, condPc);
 
-            GenerateIntAt(state, sb_count(state->program), skipGotoPc);
+            PatchJumpLoc(state, skipBodyLoc, sb_count(state->program));
 
             PatchBreakContinue(state, exp->forx.body, sb_count(state->program), stepPc);
         } break;
@@ -3777,8 +3798,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
 
         case TINY_EXP_BREAK:
         case TINY_EXP_CONTINUE: {
-            GenerateCode(state, TINY_OP_GOTO);
-            exp->breakContinue.patchLoc = GenerateInt(state, 0);
+            exp->breakContinue.patchLoc = GenerateJump(state, TINY_OP_GOTO, 0);
         } break;
 
         case TINY_EXP_USE:
@@ -4078,23 +4098,27 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
         case TINY_OP_PUSH_INT: {
             ++pc;
 
-            int i = ReadIntegerAt(state, &pc);
+            Tiny_Int i = 0;
+            READ_VALUE_AT(state, &pc, &i);
 
-            snprintf(buf, maxlen, "PUSH_INT %d", i);
+            snprintf(buf, maxlen, "PUSH_INT %lld", i);
         } break;
 
         case TINY_OP_PUSH_FLOAT: {
             ++pc;
 
-            float f = ReadFloatAt(state, &pc);
+            Tiny_Float f = 0;
+            READ_VALUE_AT(state, &pc, &f);
 
-            snprintf(buf, maxlen, "PUSH_FLOAT %f", f);
+            snprintf(buf, maxlen, "PUSH_FLOAT %g", f);
         } break;
 
         case TINY_OP_PUSH_STRING: {
             ++pc;
 
-            int stringIndex = ReadIntegerAt(state, &pc);
+            Tiny_ConstantIndex stringIndex = 0;
+
+            READ_VALUE_AT(state, &pc, &stringIndex);
 
             snprintf(buf, maxlen, "PUSH_STRING %d (\"%s\")", stringIndex,
                      state->strings[stringIndex]);
@@ -4161,7 +4185,9 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
 
         case TINY_OP_SET: {
             ++pc;
-            int varIdx = ReadIntegerAt(state, &pc);
+
+            Tiny_ConstantIndex varIdx = 0;
+            READ_VALUE_AT(state, &pc, &varIdx);
 
             // TODO(Apaar): Be helpful by searching global
             // symbols for this vars name.
@@ -4171,21 +4197,27 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
 
         case TINY_OP_GET: {
             ++pc;
-            int varIdx = ReadIntegerAt(state, &pc);
+
+            Tiny_ConstantIndex varIdx = 0;
+            READ_VALUE_AT(state, &pc, &varIdx);
 
             snprintf(buf, maxlen, "GET %d", varIdx);
         } break;
 
         case TINY_OP_GOTO: {
             ++pc;
-            int newPC = ReadIntegerAt(state, &pc);
+
+            Tiny_ConstantIndex newPC = 0;
+            READ_VALUE_AT(state, &pc, &newPC);
 
             snprintf(buf, maxlen, "GOTO %d", newPC);
         } break;
 
         case TINY_OP_GOTOZ: {
             ++pc;
-            int newPC = ReadIntegerAt(state, &pc);
+
+            Tiny_ConstantIndex newPC = 0;
+            READ_VALUE_AT(state, &pc, &newPC);
 
             snprintf(buf, maxlen, "GOTOZ %d", newPC);
         } break;
@@ -4193,11 +4225,13 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
         case TINY_OP_CALL: {
             ++pc;
             Word nargs = state->program[pc++];
-            int pcIdx = ReadIntegerAt(state, &pc);
+
+            Tiny_ConstantIndex funcIdx = 0;
+            READ_VALUE_AT(state, &pc, &funcIdx);
 
             // TODO(Apaar): Print function name too
 
-            snprintf(buf, maxlen, "CALL %d %d (%d)", nargs, pcIdx, state->functionPcs[pcIdx]);
+            snprintf(buf, maxlen, "CALL %d %d (%d)", nargs, funcIdx, state->functionPcs[funcIdx]);
         } break;
 
             OP_NO_ARGS(RETURN)
@@ -4206,18 +4240,22 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
         case TINY_OP_CALLF: {
             ++pc;
             Word nargs = state->program[pc++];
-            int fIdx = ReadIntegerAt(state, &pc);
+
+            Tiny_ConstantIndex funcIdx = 0;
+            READ_VALUE_AT(state, &pc, &funcIdx);
 
             // TODO(Apaar): Print function name too
 
             // Can't print fptr with %p because that's only for
             // data pointers.
-            snprintf(buf, maxlen, "CALLF %d %d", nargs, fIdx);
+            snprintf(buf, maxlen, "CALLF %d %d", nargs, funcIdx);
         } break;
 
         case TINY_OP_GETLOCAL: {
             ++pc;
-            int varIdx = ReadIntegerAt(state, &pc);
+
+            Tiny_ConstantIndex varIdx = 0;
+            READ_VALUE_AT(state, &pc, &varIdx);
 
             snprintf(buf, maxlen, "GETLOCAL %d", varIdx);
         } break;
@@ -4231,7 +4269,9 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
 
         case TINY_OP_SETLOCAL: {
             ++pc;
-            int varIdx = ReadIntegerAt(state, &pc);
+
+            Tiny_ConstantIndex varIdx = 0;
+            READ_VALUE_AT(state, &pc, &varIdx);
 
             snprintf(buf, maxlen, "SETLOCAL %d", varIdx);
         } break;
@@ -4303,7 +4343,7 @@ const Tiny_Symbol *Tiny_FindConstSymbol(Tiny_State *state, const char *name) {
     return NULL;
 }
 
-const char *Tiny_GetStringFromConstIndex(Tiny_State *state, int sIndex) {
+const char *Tiny_GetStringFromConstIndex(Tiny_State *state, Tiny_ConstantIndex sIndex) {
     assert(sIndex >= 0 && sIndex < state->numStrings);
 
     return state->strings[sIndex];
