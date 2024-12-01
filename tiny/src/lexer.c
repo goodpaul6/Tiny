@@ -123,6 +123,8 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
     MATCH(')', CLOSEPAREN);
     MATCH('{', OPENCURLY);
     MATCH('}', CLOSECURLY);
+    MATCH('[', OPENSQUARE);
+    MATCH(']', CLOSESQUARE);
     MATCH('+', PLUS);
     MATCH('-', MINUS);
     MATCH('*', STAR);

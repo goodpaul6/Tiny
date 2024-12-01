@@ -537,7 +537,7 @@ static void Print(Tiny_Value val, bool repr) {
             printf("<null>");
             break;
         case TINY_VAL_INT:
-            printf("%i", val.i);
+            printf("%lld", (int64_t)val.i);
             break;
         case TINY_VAL_FLOAT:
             printf("%f", val.f);
@@ -615,7 +615,7 @@ static Tiny_Value Lib_Printf(Tiny_StateThread *thread, const Tiny_Value *args, i
             ++fmt;
             switch (*fmt) {
                 case 'i':
-                    printf("%d", args[arg].i);
+                    printf("%lld", (int64_t)args[arg].i);
                     break;
                 case 'f':
                     printf("%f", args[arg].f);
@@ -624,7 +624,7 @@ static Tiny_Value Lib_Printf(Tiny_StateThread *thread, const Tiny_Value *args, i
                     printf("%.*s", (int)Tiny_StringLen(args[arg]), Tiny_ToString(args[arg]));
                     break;
                 case 'c':
-                    printf("%c", args[arg].i);
+                    printf("%c", (char)args[arg].i);
                     break;
 
                 case 'q':
@@ -837,7 +837,15 @@ static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
     snprintf(sigbuf, sizeof(sigbuf), "%s_get(%s, int): %s", asName, asName, args[0]);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayGet);
 
+    // Conform to the array index syntax
+    snprintf(sigbuf, sizeof(sigbuf), "%s_get_index(%s, int): %s", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayGet);
+
     snprintf(sigbuf, sizeof(sigbuf), "%s_set(%s, int, %s): void", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArraySet);
+
+    // Conform to the array index syntax
+    snprintf(sigbuf, sizeof(sigbuf), "%s_set_index(%s, int, %s): void", asName, asName, args[0]);
     Tiny_BindFunction(state, sigbuf, Lib_ArraySet);
 
     snprintf(sigbuf, sizeof(sigbuf), "%s_len(%s): int", asName, asName);
@@ -879,6 +887,10 @@ void Tiny_BindStandardDict(Tiny_State *state) {
     Tiny_BindFunction(state, "dict_remove(dict, str): void", Lib_DictRemove);
     Tiny_BindFunction(state, "dict_keys(dict): array_str", Lib_DictKeys);
     Tiny_BindFunction(state, "dict_clear(dict): void", Lib_DictClear);
+
+    // Conform to index protocol
+    Tiny_BindFunction(state, "dict_get_index(dict, str): any", Lib_DictGet);
+    Tiny_BindFunction(state, "dict_set_index(dict, str, any): void", Lib_DictPut);
 
     Tiny_RegisterType(state, "dict_str_int");
 
@@ -1055,6 +1067,9 @@ void Tiny_BindStandardLib(Tiny_State *state) {
     Tiny_BindFunction(state, "strchr(str, int): int", Strchr);
     Tiny_BindFunction(state, "strcat(str, str, ...): str", Strcat);
     Tiny_BindFunction(state, "substr(str, int, int): str", Lib_Substr);
+
+    // Conform to array indexing protocol
+    Tiny_BindFunction(state, "str_get_index(str, int): int", Stridx);
 
     Tiny_BindFunction(state, "ston(str): float", Lib_Ston);
     Tiny_BindFunction(state, "str_to_int(str): int", Lib_Stoi);

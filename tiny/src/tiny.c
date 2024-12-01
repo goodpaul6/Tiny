@@ -2117,10 +2117,29 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
     return NULL;
 }
 
-static Tiny_Expr *ParseArrowOrDot(Tiny_State *state, Tiny_Expr *lhs) {
+static Tiny_Expr *ParseSuffix(Tiny_State *state, Tiny_Expr *lhs) {
     Tiny_Expr *exp = lhs;
 
-    while (state->l.lastTok == TINY_TOK_DOT || state->l.lastTok == TINY_TOK_ARROW) {
+    while (state->l.lastTok == TINY_TOK_DOT || state->l.lastTok == TINY_TOK_ARROW ||
+           state->l.lastTok == TINY_TOK_OPENSQUARE) {
+        if (state->l.lastTok == TINY_TOK_OPENSQUARE) {
+            // This is the "index" operator. Unlike the arrow operator below, we can't just
+            // rewrite it as we're going here because it relies on the type of the expression
+            // to generate the code correctly.
+            GetNextToken(state);
+
+            Tiny_Expr *e = Expr_create(TINY_EXP_INDEX, state);
+
+            e->index.arr = exp;
+            e->index.elem = ParseExpr(state);
+
+            ExpectTokenSL(state, TINY_TOK_CLOSESQUARE, "Expected ']' after '[' and expression");
+            GetNextToken(state);
+
+            exp = e;
+            continue;
+        }
+
         if (state->l.lastTok == TINY_TOK_ARROW) {
             // There is always a call on the rhs of an arrow.
             GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after ->");
@@ -2164,7 +2183,7 @@ static Tiny_Expr *ParseArrowOrDot(Tiny_State *state, Tiny_Expr *lhs) {
 
 static Tiny_Expr *ParseFactor(Tiny_State *state) {
     Tiny_Expr *exp = ParseValue(state);
-    return ParseArrowOrDot(state, exp);
+    return ParseSuffix(state, exp);
 }
 
 static int GetTokenPrec(int tok) {
@@ -3028,6 +3047,44 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
             exp->tag = exp->ifx.body->tag;
         } break;
+
+        case TINY_EXP_INDEX: {
+            ResolveTypes(state, exp->index.arr);
+            ResolveTypes(state, exp->index.elem);
+
+            const char *arrTypeName = GetTagName(exp->index.arr->tag);
+
+            // TODO(Apaar): Allow for longer names??
+            char buf[256] = {0};
+            snprintf(buf, sizeof(buf), "%s_get_index", arrTypeName);
+
+            // This better exist (registered or otherwise)
+            const Tiny_Symbol *getIndexFunc = ReferenceFunction(state, buf);
+
+            if (!getIndexFunc) {
+                ReportErrorE(state, exp->index.arr,
+                             "In order to use [] you must define %s, but no such function exists",
+                             buf);
+            }
+
+            Tiny_Symbol *getIndexReturnType = getIndexFunc->type == TINY_SYM_FOREIGN_FUNCTION
+                                                  ? getIndexFunc->foreignFunc.returnTag
+                                                  : getIndexFunc->func.returnTag;
+
+            // TODO(Apaar): Check that the argument count of getIndexFunc is 2 and also that it
+            // receives the correct argument types.
+
+            exp->tag = getIndexReturnType;
+
+            snprintf(buf, sizeof(buf), "%s_set_index", arrTypeName);
+
+            // This one may or may not exist. Only matters if used.
+            // TODO(Apaar): If it does exist, we should ensure it is symmetric with the getIndexFunc
+            const Tiny_Symbol *setIndexFunc = ReferenceFunction(state, buf);
+
+            exp->index.getIndexFunc = getIndexFunc;
+            exp->index.setIndexFunc = setIndexFunc;
+        } break;
     }
 }
 
@@ -3079,7 +3136,30 @@ static void GeneratePushString(Tiny_State *state, Tiny_ConstantIndex sIndex) {
 
 static void CompileExpr(Tiny_State *state, Tiny_Expr *exp);
 
-static void CompileGetIdOrDot(Tiny_State *state, Tiny_Expr *exp) {
+static void CompileCallSymbolWithArgsPrepared(Tiny_State *state, Word nargs, const Tiny_Symbol *fn,
+                                              Tiny_Expr *errorExp) {
+    assert(fn->type == TINY_SYM_FOREIGN_FUNCTION || fn->type == TINY_SYM_FUNCTION);
+
+    if (fn->type == TINY_SYM_FOREIGN_FUNCTION) {
+        GenerateCode(state, TINY_OP_CALLF);
+
+        int fNargs = sb_count(fn->foreignFunc.argTags);
+
+        if (!(fn->foreignFunc.varargs && nargs >= fNargs) && fNargs != nargs) {
+            ReportErrorE(state, errorExp, "Function '%s' expects %s%d args but you supplied %d.\n",
+                         fn->name, fn->foreignFunc.varargs ? "at least " : "", fNargs, nargs);
+        }
+
+        GenerateCode(state, (Word)nargs);
+        GEN_VALUE_NOPOS(state, &fn->foreignFunc.index);
+    } else {
+        GenerateCode(state, TINY_OP_CALL);
+        GenerateCode(state, (Word)nargs);
+        GEN_VALUE_NOPOS(state, &fn->func.index);
+    }
+}
+
+static void CompileGetLHS(Tiny_State *state, Tiny_Expr *exp) {
     if (exp->type == TINY_EXP_ID) {
         if (!exp->id.sym)
             ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name);
@@ -3114,6 +3194,16 @@ static void CompileGetIdOrDot(Tiny_State *state, Tiny_Expr *exp) {
                 assert(0);
             }
         }
+    } else if (exp->type == TINY_EXP_INDEX) {
+        // Types should be resolved, so this should exist already
+        assert(exp->index.getIndexFunc);
+
+        // Push arr, elem onto the stack
+        CompileExpr(state, exp->index.arr);
+        CompileExpr(state, exp->index.elem);
+
+        CompileCallSymbolWithArgsPrepared(state, 2, exp->index.getIndexFunc, exp);
+        GenerateCode(state, TINY_OP_GET_RETVAL);
     } else {
         assert(exp->type == TINY_EXP_DOT);
 
@@ -3153,24 +3243,14 @@ static void CompileCall(Tiny_State *state, Tiny_Expr *exp) {
                      exp->call.calleeName);
     }
 
-    if (sym->type == TINY_SYM_FOREIGN_FUNCTION) {
-        GenerateCode(state, TINY_OP_CALLF);
-
-        int fNargs = sb_count(sym->foreignFunc.argTags);
-
-        if (!(sym->foreignFunc.varargs && nargs >= fNargs) && fNargs != nargs) {
-            ReportErrorE(state, exp, "Function '%s' expects %s%d args but you supplied %d.\n",
-                         exp->call.calleeName, sym->foreignFunc.varargs ? "at least " : "", fNargs,
-                         nargs);
-        }
-
-        GenerateCode(state, (Word)nargs);
-        GEN_VALUE_NOPOS(state, &sym->foreignFunc.index);
-    } else {
-        GenerateCode(state, TINY_OP_CALL);
-        GenerateCode(state, (Word)nargs);
-        GEN_VALUE_NOPOS(state, &sym->func.index);
+    if (nargs > UCHAR_MAX) {
+        ReportErrorE(state, exp,
+                     "Attempted to call function '%s' with %d args. Tiny supports calling "
+                     "functions with %d args at most.",
+                     exp->call.calleeName, nargs, UCHAR_MAX);
     }
+
+    CompileCallSymbolWithArgsPrepared(state, (Word)nargs, sym, exp);
 }
 
 static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
@@ -3180,8 +3260,9 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
         } break;
 
         case TINY_EXP_ID:
-        case TINY_EXP_DOT: {
-            CompileGetIdOrDot(state, exp);
+        case TINY_EXP_DOT:
+        case TINY_EXP_INDEX: {
+            CompileGetLHS(state, exp);
         } break;
 
         case TINY_EXP_BOOL: {
@@ -3595,109 +3676,130 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
                 case TINY_TOK_PERCENTEQUAL:
                 case TINY_TOK_ANDEQUAL:
                 case TINY_TOK_OREQUAL: {
-                    if (exp->binary.lhs->type == TINY_EXP_ID ||
-                        exp->binary.lhs->type == TINY_EXP_DOT) {
-                        switch (exp->binary.op) {
-                            case TINY_TOK_PLUSEQUAL: {
-                                CompileGetIdOrDot(state, exp->binary.lhs);
+                    if (exp->binary.lhs->type != TINY_EXP_ID &&
+                        exp->binary.lhs->type != TINY_EXP_DOT &&
+                        exp->binary.lhs->type != TINY_EXP_INDEX) {
+                        ReportErrorE(state, exp,
+                                     "LHS of assignment operation must be a variable, dot, or "
+                                     "index expression");
+                    }
 
-                                if (exp->binary.rhs->type == TINY_EXP_INT &&
-                                    exp->binary.rhs->iValue == 1) {
-                                    GenerateCode(state, TINY_OP_ADD1);
-                                } else {
-                                    CompileExpr(state, exp->binary.rhs);
-                                    GenerateCode(state, TINY_OP_ADD);
-                                }
-                            } break;
+                    if (exp->binary.lhs->type == TINY_EXP_INDEX) {
+                        // When we call _set_index we need to ensure the array, and index
+                        // are on the stack in that order before the value.
+                        // Hence we compile them here.
+                        CompileExpr(state, exp->binary.lhs->index.arr);
+                        CompileExpr(state, exp->binary.lhs->index.elem);
+                    }
 
-                            case TINY_TOK_MINUSEQUAL: {
-                                CompileGetIdOrDot(state, exp->binary.lhs);
+                    switch (exp->binary.op) {
+                        case TINY_TOK_PLUSEQUAL: {
+                            CompileGetLHS(state, exp->binary.lhs);
 
-                                if (exp->binary.rhs->type == TINY_EXP_INT &&
-                                    exp->binary.rhs->iValue == 1) {
-                                    GenerateCode(state, TINY_OP_SUB1);
-                                } else {
-                                    CompileExpr(state, exp->binary.rhs);
-                                    GenerateCode(state, TINY_OP_SUB);
-                                }
-                            } break;
-
-                            case TINY_TOK_STAREQUAL: {
-                                CompileGetIdOrDot(state, exp->binary.lhs);
+                            if (exp->binary.rhs->type == TINY_EXP_INT &&
+                                exp->binary.rhs->iValue == 1) {
+                                GenerateCode(state, TINY_OP_ADD1);
+                            } else {
                                 CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, TINY_OP_MUL);
-                            } break;
+                                GenerateCode(state, TINY_OP_ADD);
+                            }
+                        } break;
 
-                            case TINY_TOK_SLASHEQUAL: {
-                                CompileGetIdOrDot(state, exp->binary.lhs);
-                                CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, TINY_OP_DIV);
-                            } break;
+                        case TINY_TOK_MINUSEQUAL: {
+                            CompileGetLHS(state, exp->binary.lhs);
 
-                            case TINY_TOK_PERCENTEQUAL: {
-                                CompileGetIdOrDot(state, exp->binary.lhs);
+                            if (exp->binary.rhs->type == TINY_EXP_INT &&
+                                exp->binary.rhs->iValue == 1) {
+                                GenerateCode(state, TINY_OP_SUB1);
+                            } else {
                                 CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, TINY_OP_MOD);
-                            } break;
+                                GenerateCode(state, TINY_OP_SUB);
+                            }
+                        } break;
 
-                            case TINY_TOK_ANDEQUAL: {
-                                CompileGetIdOrDot(state, exp->binary.lhs);
-                                CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, TINY_OP_AND);
-                            } break;
+                        case TINY_TOK_STAREQUAL: {
+                            CompileGetLHS(state, exp->binary.lhs);
+                            CompileExpr(state, exp->binary.rhs);
+                            GenerateCode(state, TINY_OP_MUL);
+                        } break;
 
-                            case TINY_TOK_OREQUAL: {
-                                CompileGetIdOrDot(state, exp->binary.lhs);
-                                CompileExpr(state, exp->binary.rhs);
-                                GenerateCode(state, TINY_OP_OR);
-                            } break;
+                        case TINY_TOK_SLASHEQUAL: {
+                            CompileGetLHS(state, exp->binary.lhs);
+                            CompileExpr(state, exp->binary.rhs);
+                            GenerateCode(state, TINY_OP_DIV);
+                        } break;
 
-                            default:
-                                CompileExpr(state, exp->binary.rhs);
-                                break;
+                        case TINY_TOK_PERCENTEQUAL: {
+                            CompileGetLHS(state, exp->binary.lhs);
+                            CompileExpr(state, exp->binary.rhs);
+                            GenerateCode(state, TINY_OP_MOD);
+                        } break;
+
+                        case TINY_TOK_ANDEQUAL: {
+                            CompileGetLHS(state, exp->binary.lhs);
+                            CompileExpr(state, exp->binary.rhs);
+                            GenerateCode(state, TINY_OP_AND);
+                        } break;
+
+                        case TINY_TOK_OREQUAL: {
+                            CompileGetLHS(state, exp->binary.lhs);
+                            CompileExpr(state, exp->binary.rhs);
+                            GenerateCode(state, TINY_OP_OR);
+                        } break;
+
+                        default:
+                            CompileExpr(state, exp->binary.rhs);
+                            break;
+                    }
+
+                    if (exp->binary.lhs->type == TINY_EXP_ID) {
+                        if (!exp->binary.lhs->id.sym) {
+                            // The variable being referenced doesn't exist
+                            ReportErrorE(state, exp, "Assigning to undeclared identifier '%s'.\n",
+                                         exp->binary.lhs->id.name);
                         }
 
-                        if (exp->binary.lhs->type == TINY_EXP_ID) {
-                            if (!exp->binary.lhs->id.sym) {
-                                // The variable being referenced doesn't exist
-                                ReportErrorE(state, exp,
-                                             "Assigning to undeclared identifier '%s'.\n",
-                                             exp->binary.lhs->id.name);
-                            }
-
-                            if (exp->binary.lhs->id.sym->type == TINY_SYM_GLOBAL) {
-                                GenerateCode(state, TINY_OP_SET);
-                                GEN_VALUE_NOPOS(state, &exp->binary.lhs->id.sym->var.index);
-                            } else if (exp->binary.lhs->id.sym->type == TINY_SYM_LOCAL) {
-                                GenerateCode(state, TINY_OP_SETLOCAL);
-                                GEN_VALUE_NOPOS(state, &exp->binary.lhs->id.sym->var.index);
-                            } else  // Probably a constant, can't change it
-                            {
-                                ReportErrorE(state, exp, "Cannot assign to id '%s'.\n",
-                                             exp->binary.lhs->id.name);
-                            }
-
-                            exp->binary.lhs->id.sym->var.initialized = true;
-                        } else {
-                            assert(exp->binary.lhs->type == TINY_EXP_DOT);
-                            assert(exp->binary.lhs->dot.lhs->tag->type == TINY_SYM_TAG_STRUCT);
-
-                            int idx;
-
-                            GetFieldTag(exp->binary.lhs->dot.lhs->tag,
-                                        exp->binary.lhs->dot.field->value, &idx);
-
-                            assert(idx >= 0 && idx <= UCHAR_MAX);
-
-                            CompileExpr(state, exp->binary.lhs->dot.lhs);
-
-                            GenerateCode(state, TINY_OP_STRUCT_SET);
-                            GenerateCode(state, (Word)idx);
+                        if (exp->binary.lhs->id.sym->type == TINY_SYM_GLOBAL) {
+                            GenerateCode(state, TINY_OP_SET);
+                            GEN_VALUE_NOPOS(state, &exp->binary.lhs->id.sym->var.index);
+                        } else if (exp->binary.lhs->id.sym->type == TINY_SYM_LOCAL) {
+                            GenerateCode(state, TINY_OP_SETLOCAL);
+                            GEN_VALUE_NOPOS(state, &exp->binary.lhs->id.sym->var.index);
+                        } else  // Probably a constant, can't change it
+                        {
+                            ReportErrorE(state, exp, "Cannot assign to id '%s'.\n",
+                                         exp->binary.lhs->id.name);
                         }
+
+                        exp->binary.lhs->id.sym->var.initialized = true;
+                    } else if (exp->binary.lhs->type == TINY_EXP_INDEX) {
+                        const Tiny_Symbol *setIndexFunc = exp->binary.lhs->index.setIndexFunc;
+
+                        if (!setIndexFunc) {
+                            ReportErrorE(state, exp->binary.lhs,
+                                         "There is no %s_set_index function so you can't use this "
+                                         "on the left hand side of an assignment",
+                                         GetTagName(exp->binary.lhs->index.arr->tag));
+                        }
+
+                        // See above: we already have arr, elem, and rhs on the stack, so
+                        // now we just call
+                        CompileCallSymbolWithArgsPrepared(state, 3, setIndexFunc, exp);
                     } else {
-                        ReportErrorE(
-                            state, exp,
-                            "LHS of assignment operation must be a variable or dot expr\n");
+                        assert(exp->binary.lhs->type == TINY_EXP_DOT);
+                        assert(exp->binary.lhs->dot.lhs->tag->type == TINY_SYM_TAG_STRUCT);
+
+                        int idx;
+
+                        GetFieldTag(exp->binary.lhs->dot.lhs->tag,
+                                    exp->binary.lhs->dot.field->value, &idx);
+
+                        assert(idx >= 0 && idx <= UCHAR_MAX);
+
+                        CompileExpr(state, exp->binary.lhs->dot.lhs);
+
+                        GenerateCode(state, TINY_OP_STRUCT_SET);
+                        GenerateCode(state, (Word)idx);
                     }
                 } break;
 
@@ -3986,7 +4088,7 @@ Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const
 
         if (!found) {
             ReportErrorE(state, exp, "Attempted to reference undefined macro '%s'",
-                         exp->use.moduleName);
+                         exp->use.moduleName->value);
         }
     }
 
@@ -4052,7 +4154,10 @@ Tiny_CompileResult Tiny_CompileFile(Tiny_State *state, const char *filename) {
 bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen) {
     int pc = *ppc;
 
-    assert(pc >= 0 && pc < sb_count(state->program));
+    if (pc < 0 || pc >= sb_count(state->program)) {
+        snprintf(buf, maxlen, "PC out of bounds");
+        return false;
+    }
 
     const char *fname = NULL;
     int line = 0;
@@ -4062,7 +4167,7 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
     int used = snprintf(buf, maxlen, "%d (%s:%d)\t", pc, fname, line);
 
     if (used >= maxlen) {
-        return -1;
+        return false;
     }
 
     buf += used;
@@ -4244,11 +4349,20 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
             Tiny_ConstantIndex funcIdx = 0;
             READ_VALUE_AT(state, &pc, &funcIdx);
 
-            // TODO(Apaar): Print function name too
+            const char *name = NULL;
+
+            for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+                Tiny_Symbol *sym = state->globalSymbols[i];
+
+                if (sym->type == TINY_SYM_FOREIGN_FUNCTION && sym->foreignFunc.index == funcIdx) {
+                    name = sym->name;
+                    break;
+                }
+            }
 
             // Can't print fptr with %p because that's only for
             // data pointers.
-            snprintf(buf, maxlen, "CALLF %d %d", nargs, funcIdx);
+            snprintf(buf, maxlen, "CALLF %s(%d)", name, nargs);
         } break;
 
         case TINY_OP_GETLOCAL: {

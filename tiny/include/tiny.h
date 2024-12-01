@@ -423,6 +423,8 @@ void Tiny_DestroyThread(Tiny_StateThread *thread);
 // write an appropriate message into the buffer and return false.
 // You can choose how you respond to that (e.g. just increment PC and
 // continue disassembling).
+//
+// Once it reaches the end, it sets `pc` to -1.
 bool Tiny_DisasmOne(const Tiny_State *state, int *pc, char *buf, size_t maxlen);
 
 typedef enum Tiny_MacroResultType {

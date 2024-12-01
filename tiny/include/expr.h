@@ -146,5 +146,23 @@ typedef struct Tiny_Expr {
             Tiny_StringNode *argsHead;
             Tiny_StringNode *asName;
         } use;
+
+        // Indexing into an array-like thing. This will get compiled as if you're calling a function
+        // {type}_get_index(arr, elem).
+        //
+        // If it's the left hand side of an assignment expression, then it will be compiled as
+        // {type}_set_index(arr, elem, rhs).
+        struct {
+            struct Tiny_Expr *arr;
+            struct Tiny_Expr *elem;
+
+            // Once the types are resolved, this is set to {type(arr)}_get_index. The
+            // overall type of this expression will be the return type of the get index func.
+            // This makes the type checking for the assignment (set_index) trivial assuming
+            // set_index receives the type returned by get_index (which it should in any reasonable
+            // interface).
+            const Tiny_Symbol *getIndexFunc;
+            const Tiny_Symbol *setIndexFunc;
+        } index;
     };
 } Tiny_Expr;
