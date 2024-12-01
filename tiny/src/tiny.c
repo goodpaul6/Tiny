@@ -4404,7 +4404,7 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
 
     if (pc >= sb_count(state->program)) {
         *ppc = -1;
-        return false;
+        return true;
     }
 
     *ppc = pc;
