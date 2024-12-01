@@ -284,6 +284,24 @@ static TINY_FOREIGN_FUNCTION(Lib_ArrayRemove) {
     return Tiny_Null;
 }
 
+static int CompareInts(const void *aRaw, const void *bRaw) {
+    const Tiny_Value *a = aRaw;
+    const Tiny_Value *b = bRaw;
+
+    assert(a->type == TINY_VAL_INT);
+    assert(b->type == TINY_VAL_INT);
+
+    return a->i - b->i;
+}
+
+static TINY_FOREIGN_FUNCTION(Lib_ArraySortInt) {
+    Array *array = Tiny_ToAddr(args[0]);
+
+    qsort(array->data, ArrayLen(array), sizeof(Tiny_Value), CompareInts);
+
+    return Tiny_Null;
+}
+
 static void DictProtectFromGC(void *p) {
     Dict *d = p;
 
@@ -684,7 +702,7 @@ static Tiny_Value Lib_I64MulMany(Tiny_StateThread *thread, const Tiny_Value *arg
 static Tiny_Value Lib_I64ToString(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     char buf[32] = {0};
 
-    int len = snprintf(buf, sizeof(buf), "%ld", (int64_t)(intptr_t)Tiny_ToAddr(args[0]));
+    int len = snprintf(buf, sizeof(buf), "%lld", (int64_t)(intptr_t)Tiny_ToAddr(args[0]));
 
     return Tiny_NewStringCopy(thread, buf, len);
 }
@@ -784,7 +802,9 @@ static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
         };
     }
 
-    if (!Tiny_FindTypeSymbol(state, args[0])) {
+    const Tiny_Symbol *elemType = Tiny_FindTypeSymbol(state, args[0]);
+
+    if (!elemType) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
             .error.msg = "The array element type you specified does not exist",
@@ -824,6 +844,12 @@ static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
 
     snprintf(sigbuf, sizeof(sigbuf), "%s_remove(%s, int): void", asName, asName);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayRemove);
+
+    if (elemType->type == TINY_SYM_TAG_INT) {
+        // TODO(Apaar): Add functions to sort other types
+        snprintf(sigbuf, sizeof(sigbuf), "%s_sort(%s): void", asName, asName);
+        Tiny_BindFunction(state, sigbuf, Lib_ArraySortInt);
+    }
 
     return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
 }
