@@ -479,6 +479,16 @@ static Tiny_Value Lib_Ntos(Tiny_StateThread *thread, const Tiny_Value *args, int
     return Tiny_NewStringCopy(thread, buf, c);
 }
 
+static TINY_FOREIGN_FUNCTION(Lib_IntToStr) {
+    Tiny_Int i = Tiny_ToInt(args[0]);
+
+    char buf[32] = {0};
+
+    int len = snprintf(buf, sizeof(buf), "%lld", (int64_t)i);
+
+    return Tiny_NewStringCopy(thread, buf, len);
+}
+
 static Tiny_Value Lib_Time(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     return Tiny_NewInt((int)time(NULL));
 }
@@ -1009,7 +1019,7 @@ static TINY_MACRO_FUNCTION(DelegateMacroFunction) {
                  "func %s(): %s { return cast(get_function_index(\"%s\"), %s) }", asName, typeBuf,
                  args[0], typeBuf);
 
-        Tiny_CompileString(state, "(delegate create function", createBuf);
+        Tiny_CompileString(state, "(delegate create function)", createBuf);
     }
 
     return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
@@ -1048,6 +1058,7 @@ void Tiny_BindStandardLib(Tiny_State *state) {
 
     Tiny_BindFunction(state, "ston(str): float", Lib_Ston);
     Tiny_BindFunction(state, "str_to_int(str): int", Lib_Stoi);
+    Tiny_BindFunction(state, "int_to_str(int): str", Lib_IntToStr);
     Tiny_BindFunction(state, "ntos(...): str", Lib_Ntos);
 
     Tiny_BindFunction(state, "stoi(str, int): int", Lib_Stoi);
