@@ -1070,27 +1070,17 @@ static void test_IndexSyntax() {
 
     lequal_return(result.type, TINY_COMPILE_SUCCESS);
 
-    int pc = 0;
-
-    for (;;) {
-        char buf[256];
-
-        if (!Tiny_DisasmOne(state, &pc, buf, sizeof(buf))) {
-            break;
-        }
-
-        printf("\n%s\n", buf);
-    }
-
     int zeroIdx = Tiny_GetGlobalIndex(state, "zero");
     int twoIdx = Tiny_GetGlobalIndex(state, "two");
+
+    lequal_return(twoIdx, 2);
 
     Tiny_StateThread thread;
 
     Tiny_InitThread(&thread, state);
 
     Tiny_StartThread(&thread);
-    while (Tiny_ExecuteCycle(&thread));
+    Tiny_Run(&thread);
 
     Tiny_Value zv = Tiny_GetGlobal(&thread, zeroIdx);
     lequal_return(zv.type, TINY_VAL_INT);

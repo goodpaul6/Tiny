@@ -3203,6 +3203,7 @@ static void CompileGetLHS(Tiny_State *state, Tiny_Expr *exp) {
         CompileExpr(state, exp->index.elem);
 
         CompileCallSymbolWithArgsPrepared(state, 2, exp->index.getIndexFunc, exp);
+        GenerateCode(state, TINY_OP_GET_RETVAL);
     } else {
         assert(exp->type == TINY_EXP_DOT);
 
