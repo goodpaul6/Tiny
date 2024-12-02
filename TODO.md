@@ -1,5 +1,16 @@
 # TODO
 
+- BAD No function pointers
+    - Allow specifying types like `func(int, int) void` which just get turned into `func__int__int__void` in line with the simple flat type system
+    - You can then use functions like values
+    - No closures for now; this means that function pointers can be unboxed
+    - Only non-ellipsis foreign functions can be used as values
+    - We can add boxed functions (with closures) on top of this easily later
+        - Maybe separate syntax for closures though; functions without names maybe? `func()`
+        - How would the upvalues work? In some other languages, all upvalues work as though they were created in the same
+          scope as the closure, so you can have things like a counter in the outer scope
+        - Golang deals with this by allocating the upvalues on the heap; we may have to box upvalues too to make this work
+
 - BAD All types are nullable?
 - BAD No debugger of any kind
 - BAD No language server
@@ -60,7 +71,7 @@ x := {
 - BAD `Tiny_Value` is 16 bytes because we store type tag even though technically we can get away
   with only boxing "any" or reference types (see the `snow-common` branch)
   - Likely a big performance win
-  - Will need typed
+  - Will need typed bytecode
 - BAD Cannot cast reference types to any
 - BAD Accessing null values causes segfault
 - BAD No type aliases (strong)
@@ -76,7 +87,7 @@ func test(): int {}
 - BAD No error types/error info
   - Add "error" primitive type which is just an error code (int? string? it's own primitive type)
     and a pointer to a context object
-- BAD No runtime type information on struct object (could probably stuff a uint16_t struct ID somewhere at least?)
+- BAD No runtime type information on struct object (could probably stuff a `uint16_t` struct ID somewhere at least?)
   - Could even just get rid of teh `nfields` since I think that's only used for pretty printing
     and debug checks
 - BAD No interface to allocate/deallocate using the thread's context allocator
