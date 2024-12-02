@@ -37,22 +37,22 @@ typedef struct {
 } TPixel;
 
 // Window flags.
-#define TIGR_FIXED      0   // window's bitmap is a fixed size (default)
-#define TIGR_AUTO       1   // window's bitmap is scaled with the window
-#define TIGR_2X         2   // always enforce (at least) 2X pixel scale
-#define TIGR_3X         4   // always enforce (at least) 3X pixel scale
-#define TIGR_4X         8   // always enforce (at least) 4X pixel scale
-#define TIGR_RETINA     16  // enable retina support on OS X
-#define TIGR_NOCURSOR   32  // hide cursor
+#define TIGR_FIXED 0        // window's bitmap is a fixed size (default)
+#define TIGR_AUTO 1         // window's bitmap is scaled with the window
+#define TIGR_2X 2           // always enforce (at least) 2X pixel scale
+#define TIGR_3X 4           // always enforce (at least) 3X pixel scale
+#define TIGR_4X 8           // always enforce (at least) 4X pixel scale
+#define TIGR_RETINA 16      // enable retina support on OS X
+#define TIGR_NOCURSOR 32    // hide cursor
 #define TIGR_FULLSCREEN 64  // start in full-screen mode
 
 // A Tigr bitmap.
 typedef struct Tigr {
-    int w, h;           // width/height (unscaled)
-    int cx, cy, cw, ch; // clip rect
-    TPixel *pix;        // pixel data
-    void *handle;       // OS window handle, NULL for off-screen bitmaps.
-    int blitMode;       // Target bitmap blit mode
+    int w, h;            // width/height (unscaled)
+    int cx, cy, cw, ch;  // clip rect
+    TPixel *pix;         // pixel data
+    void *handle;        // OS window handle, NULL for off-screen bitmaps.
+    int blitMode;        // Target bitmap blit mode
 } Tigr;
 
 // Creates a new empty window with a given bitmap size.
@@ -92,7 +92,7 @@ int tigrBeginOpenGL(Tigr *bmp);
 
 // Sets post shader for a window.
 // This replaces the built-in post-FX shader.
-void tigrSetPostShader(Tigr *bmp, const char* code, int size);
+void tigrSetPostShader(Tigr *bmp, const char *code, int size);
 
 // Sets post-FX properties for a window.
 //
@@ -102,7 +102,6 @@ void tigrSetPostShader(Tigr *bmp, const char* code, int size);
 // p3: scanlines - CRT scanlines effect (0-1)
 // p4: contrast - contrast boost (1 = no change, 2 = 2X contrast, etc)
 void tigrSetPostFX(Tigr *bmp, float p1, float p2, float p3, float p4);
-
 
 // Drawing ----------------------------------------------------------------
 
@@ -179,7 +178,8 @@ void tigrBlit(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w, int 
 // Blit mode == TIGR_BLEND_ALPHA:
 // Adest = Asrc * Ablend + Adest * (1 - Ablend)
 // Clips and blends.
-void tigrBlitAlpha(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w, int h, float alpha);
+void tigrBlitAlpha(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w, int h,
+                   float alpha);
 
 // Same as tigrBlit, but tints the source bitmap with a color
 // and alpha blends the resulting source with the destination.
@@ -200,25 +200,32 @@ void tigrBlitAlpha(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w,
 void tigrBlitTint(Tigr *dest, Tigr *src, int dx, int dy, int sx, int sy, int w, int h, TPixel tint);
 
 enum TIGRBlitMode {
-    TIGR_KEEP_ALPHA = 0,    // Keep destination alpha value
-    TIGR_BLEND_ALPHA = 1,   // Blend destination alpha (default)
+    TIGR_KEEP_ALPHA = 0,   // Keep destination alpha value
+    TIGR_BLEND_ALPHA = 1,  // Blend destination alpha (default)
 };
 
 // Set destination bitmap blend mode for blit operations.
 void tigrBlitMode(Tigr *dest, int mode);
 
 // Helper for making colors.
-TIGR_INLINE TPixel tigrRGB(unsigned char r, unsigned char g, unsigned char b)
-{
-    TPixel p; p.r = r; p.g = g; p.b = b; p.a = 0xff; return p;
+TIGR_INLINE TPixel tigrRGB(unsigned char r, unsigned char g, unsigned char b) {
+    TPixel p;
+    p.r = r;
+    p.g = g;
+    p.b = b;
+    p.a = 0xff;
+    return p;
 }
 
 // Helper for making colors.
-TIGR_INLINE TPixel tigrRGBA(unsigned char r, unsigned char g, unsigned char b, unsigned char a)
-{
-    TPixel p; p.r = r; p.g = g; p.b = b; p.a = a; return p;
+TIGR_INLINE TPixel tigrRGBA(unsigned char r, unsigned char g, unsigned char b, unsigned char a) {
+    TPixel p;
+    p.r = r;
+    p.g = g;
+    p.b = b;
+    p.a = a;
+    return p;
 }
-
 
 // Font printing ----------------------------------------------------------
 
@@ -232,11 +239,7 @@ typedef struct {
     TigrGlyph *glyphs;
 } TigrFont;
 
-typedef enum {
-    TCP_ASCII = 0,
-    TCP_1252 = 1252,
-    TCP_UTF32 = 12001
-} TCodepage;
+typedef enum { TCP_ASCII = 0, TCP_1252 = 1252, TCP_UTF32 = 12001 } TCodepage;
 
 // Loads a font.
 //
@@ -270,19 +273,79 @@ int tigrTextHeight(TigrFont *font, const char *text);
 // The built-in font.
 extern TigrFont *tfont;
 
-
 // User Input -------------------------------------------------------------
 
 // Key scancodes. For letters/numbers, use ASCII ('A'-'Z' and '0'-'9').
 typedef enum {
-    TK_PAD0=128,TK_PAD1,TK_PAD2,TK_PAD3,TK_PAD4,TK_PAD5,TK_PAD6,TK_PAD7,TK_PAD8,TK_PAD9,
-    TK_PADMUL,TK_PADADD,TK_PADENTER,TK_PADSUB,TK_PADDOT,TK_PADDIV,
-    TK_F1,TK_F2,TK_F3,TK_F4,TK_F5,TK_F6,TK_F7,TK_F8,TK_F9,TK_F10,TK_F11,TK_F12,
-    TK_BACKSPACE,TK_TAB,TK_RETURN,TK_SHIFT,TK_CONTROL,TK_ALT,TK_PAUSE,TK_CAPSLOCK,
-    TK_ESCAPE,TK_SPACE,TK_PAGEUP,TK_PAGEDN,TK_END,TK_HOME,TK_LEFT,TK_UP,TK_RIGHT,TK_DOWN,
-    TK_INSERT,TK_DELETE,TK_LWIN,TK_RWIN,TK_NUMLOCK,TK_SCROLL,TK_LSHIFT,TK_RSHIFT,
-    TK_LCONTROL,TK_RCONTROL,TK_LALT,TK_RALT,TK_SEMICOLON,TK_EQUALS,TK_COMMA,TK_MINUS,
-    TK_DOT,TK_SLASH,TK_BACKTICK,TK_LSQUARE,TK_BACKSLASH,TK_RSQUARE,TK_TICK
+    TK_PAD0 = 128,
+    TK_PAD1,
+    TK_PAD2,
+    TK_PAD3,
+    TK_PAD4,
+    TK_PAD5,
+    TK_PAD6,
+    TK_PAD7,
+    TK_PAD8,
+    TK_PAD9,
+    TK_PADMUL,
+    TK_PADADD,
+    TK_PADENTER,
+    TK_PADSUB,
+    TK_PADDOT,
+    TK_PADDIV,
+    TK_F1,
+    TK_F2,
+    TK_F3,
+    TK_F4,
+    TK_F5,
+    TK_F6,
+    TK_F7,
+    TK_F8,
+    TK_F9,
+    TK_F10,
+    TK_F11,
+    TK_F12,
+    TK_BACKSPACE,
+    TK_TAB,
+    TK_RETURN,
+    TK_SHIFT,
+    TK_CONTROL,
+    TK_ALT,
+    TK_PAUSE,
+    TK_CAPSLOCK,
+    TK_ESCAPE,
+    TK_SPACE,
+    TK_PAGEUP,
+    TK_PAGEDN,
+    TK_END,
+    TK_HOME,
+    TK_LEFT,
+    TK_UP,
+    TK_RIGHT,
+    TK_DOWN,
+    TK_INSERT,
+    TK_DELETE,
+    TK_LWIN,
+    TK_RWIN,
+    TK_NUMLOCK,
+    TK_SCROLL,
+    TK_LSHIFT,
+    TK_RSHIFT,
+    TK_LCONTROL,
+    TK_RCONTROL,
+    TK_LALT,
+    TK_RALT,
+    TK_SEMICOLON,
+    TK_EQUALS,
+    TK_COMMA,
+    TK_MINUS,
+    TK_DOT,
+    TK_SLASH,
+    TK_BACKTICK,
+    TK_LSQUARE,
+    TK_BACKSLASH,
+    TK_RSQUARE,
+    TK_TICK
 } TKey;
 
 // Returns mouse input for a window.
@@ -295,7 +358,7 @@ typedef struct {
 
 // Reads touch input for a window.
 // Returns number of touch points read.
-int tigrTouch(Tigr *bmp, TigrTouchPoint* points, int maxPoints);
+int tigrTouch(Tigr *bmp, TigrTouchPoint *points, int maxPoints);
 
 // Reads the keyboard for a window.
 // Returns non-zero if a key is pressed/held.
@@ -311,7 +374,6 @@ int tigrReadChar(Tigr *bmp);
 // (Only available on iOS / Android)
 void tigrShowKeyboard(int show);
 
-
 // Bitmap I/O -------------------------------------------------------------
 
 // Loads a PNG, from either a file or memory. (fileName is UTF-8)
@@ -322,7 +384,6 @@ Tigr *tigrLoadImageMem(const void *data, int length);
 // Saves a PNG to a file. (fileName is UTF-8)
 // On error, returns zero and sets errno.
 int tigrSaveImage(const char *fileName, Tigr *bmp);
-
 
 // Helpers ----------------------------------------------------------------
 

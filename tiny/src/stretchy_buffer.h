@@ -190,7 +190,7 @@
     (stb__sbmaybegrow((ctx), a, n), stb__sbn(a) += (n), &(a)[stb__sbn(a) - (n)])
 #define stb_sb_last(a) ((a)[stb__sbn(a) - 1])
 
-#define stb__sbraw(a) ((int *)(a)-2)
+#define stb__sbraw(a) ((int *)(a) - 2)
 #define stb__sbm(a) stb__sbraw(a)[0]
 #define stb__sbn(a) stb__sbraw(a)[1]
 

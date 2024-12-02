@@ -19,8 +19,7 @@ typedef struct {
 
 char Status[MAX_STATUS_LENGTH];
 
-#define RGB(r, g, b) \
-    { b, g, r, 255 }
+#define RGB(r, g, b) {b, g, r, 255}
 
 static TPixel TokenColors[NUM_TOKEN_TYPES] = {
     RGB(60, 60, 60),    RGB(200, 200, 200), RGB(40, 40, 150),  RGB(0, 0, 0),    RGB(40, 150, 40),

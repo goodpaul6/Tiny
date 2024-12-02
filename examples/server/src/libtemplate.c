@@ -62,9 +62,9 @@ static const Tiny_Value* ReadVar(const char* filename, int* line, FILE* f, Dict*
         var[i] = 0;
 
         val = DictGet(env, (Tiny_Value){
-            .type = TINY_VAL_CONST_STRING,
-            .cstr = var,
-        });
+                               .type = TINY_VAL_CONST_STRING,
+                               .cstr = var,
+                           });
     }
 
     return val;

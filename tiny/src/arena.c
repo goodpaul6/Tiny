@@ -16,7 +16,7 @@ static Tiny_ArenaPage* AllocPage(Tiny_Context* ctx, size_t size) {
 }
 
 static size_t NextMultipleOf(size_t value, size_t factor) {
-    if(factor == 1) {
+    if (factor == 1) {
         return value;
     }
 

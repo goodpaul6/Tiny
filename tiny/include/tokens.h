@@ -66,6 +66,7 @@ typedef enum {
     TINY_TOK_BREAK,
     TINY_TOK_CONTINUE,
     TINY_TOK_USE,
+    TINY_TOK_IN,
 
     TINY_TOK_ARROW,  // ->
     TINY_TOK_QUESTION,

@@ -1,15 +1,24 @@
 # TODO
 
+- BAD No for..in type thing
+    - Another protocol thing? Just anything that has a `_len` and a `_get_index` would work for now
+    - Could also do a true "iterator" thing where it expects a `_iter`, `_iter_next` to be defined and goes
+      from there?
+        - 90% of use cases should work with just an integer IMO; the iterator case should probably be explicit
+        - Nullable types could make it easier to do the `_iter_next` thing
+        - I could have an unboxed integer iterator easily by just stuffing it into a pointer (light native) or even literally just having it be
+          an integer at runtime (since `Tiny_Value` technically boxes it anyways)
+
 - BAD No function pointers
     - Allow specifying types like `func(int, int) void` which just get turned into `func__int__int__void` in line with the simple flat type system
     - You can then use functions like values
     - No closures for now; this means that function pointers can be unboxed
     - Only non-ellipsis foreign functions can be used as values
-    - We can add boxed functions (with closures) on top of this easily later
-        - Maybe separate syntax for closures though; functions without names maybe? `func()`
+    - We can add closures on top of this easily later
         - How would the upvalues work? In some other languages, all upvalues work as though they were created in the same
           scope as the closure, so you can have things like a counter in the outer scope
         - Golang deals with this by allocating the upvalues on the heap; we may have to box upvalues too to make this work
+        - Could stuff all upvalues into a single (anonymous?) struct and then have the function receive that as the first parameter
 
 - BAD All types are nullable?
 - BAD No debugger of any kind

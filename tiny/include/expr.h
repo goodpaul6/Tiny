@@ -31,6 +31,7 @@ typedef enum {
     TINY_EXP_USE,
     TINY_EXP_INDEX,
     TINY_EXP_IF_TERNARY,
+    TINY_EXP_FOR_IN,
 } Tiny_ExprType;
 
 // Node for a singly-linked list of strings.
@@ -164,5 +165,13 @@ typedef struct Tiny_Expr {
             const Tiny_Symbol *getIndexFunc;
             const Tiny_Symbol *setIndexFunc;
         } index;
+
+        struct {
+            // The name of the element variable
+            Tiny_StringNode *elemName;
+
+            // (Optional) name of the index variable
+            Tiny_StringNode *indexName;
+        } forIn;
     };
 } Tiny_Expr;

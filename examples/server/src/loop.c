@@ -584,8 +584,7 @@ int MainLoop(void* pServ) {
 
         deleteContext = deleteContext || thread->pc >= 0;
 
-        while (Tiny_ExecuteCycle(thread))
-            ;
+        while (Tiny_ExecuteCycle(thread));
 
         if (deleteContext) {
             DeleteContext(thread->userdata);

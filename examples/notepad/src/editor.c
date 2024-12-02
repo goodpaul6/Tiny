@@ -663,8 +663,7 @@ static void ReloadScripts(Editor* ed) {
 
     ed->thread.userdata = ed;
 
-    while (Tiny_ExecuteCycle(&ed->thread))
-        ;
+    while (Tiny_ExecuteCycle(&ed->thread));
 
     ed->updateFunction = Tiny_GetFunctionIndex(ed->state, "update");
 
@@ -747,8 +746,7 @@ void UpdateEditor(Editor* ed, Tigr* screen) {
             } else if (ch == 8) {
                 // Backspace
                 char* s = ed->cmd;
-                while (*s++)
-                    ;
+                while (*s++);
 
                 if (s > ed->cmd) {
                     s -= 2;
@@ -759,8 +757,7 @@ void UpdateEditor(Editor* ed, Tigr* screen) {
                 SetMode(ed, MODE_NORMAL);
             } else {
                 char* s = ed->cmd;
-                while (*s++)
-                    ;
+                while (*s++);
 
                 if (s >= ed->cmd + MAX_COMMAND_LENGTH) {
                     // It's is too long, just go back to normal mode

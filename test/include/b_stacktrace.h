@@ -114,9 +114,9 @@ B_STACKTRACE_API char* b_stacktrace_get_string(void);
 #define _GNU_SOURCE
 #endif
 
+#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <stdarg.h>
 
 typedef struct print_buf {
     char* buf;
@@ -125,11 +125,7 @@ typedef struct print_buf {
 } print_buf;
 
 static print_buf buf_init(void) {
-    print_buf ret = {
-        (char*) malloc(1024),
-        0,
-        1024
-    };
+    print_buf ret = {(char*)malloc(1024), 0, 1024};
     return ret;
 }
 
@@ -163,9 +159,9 @@ char* b_stacktrace_get_string(void) {
 #if defined(_WIN32)
 
 #define WIN32_LEAN_AND_MEAN
-#include <Windows.h>
-#include <TlHelp32.h>
 #include <DbgHelp.h>
+#include <TlHelp32.h>
+#include <Windows.h>
 
 #pragma comment(lib, "DbgHelp.lib")
 
@@ -184,7 +180,8 @@ b_stacktrace_handle b_stacktrace_get(void) {
     CONTEXT context;
     STACKFRAME64 frame; /* in/out stackframe */
     DWORD imageType;
-    b_stacktrace_entry* ret = (b_stacktrace_entry*)malloc(B_STACKTRACE_MAX_DEPTH * sizeof(b_stacktrace_entry));
+    b_stacktrace_entry* ret =
+        (b_stacktrace_entry*)malloc(B_STACKTRACE_MAX_DEPTH * sizeof(b_stacktrace_entry));
     int i = 0;
 
     if (!SymInitialize_called) {
@@ -222,7 +219,7 @@ b_stacktrace_handle b_stacktrace_get(void) {
     frame.AddrStack.Offset = context.IntSp;
     frame.AddrStack.Mode = AddrModeFlat;
 #else
-    #error "Platform not supported!"
+#error "Platform not supported!"
 #endif
 
     while (1) {
@@ -233,7 +230,8 @@ b_stacktrace_handle b_stacktrace_get(void) {
             break;
         }
 
-        if (!StackWalk64(imageType, process, thread, &frame, &context, NULL, SymFunctionTableAccess64, SymGetModuleBase64, NULL)) {
+        if (!StackWalk64(imageType, process, thread, &frame, &context, NULL,
+                         SymFunctionTableAccess64, SymGetModuleBase64, NULL)) {
             cur->AddrPC_Offset = frame.AddrPC.Offset;
             cur->AddrReturn_Offset = B_STACKTRACE_ERROR_FLAG; /* mark error */
             cur->AddrReturn_Offset |= GetLastError();
@@ -282,8 +280,7 @@ char* b_stacktrace_to_string(b_stacktrace_handle h) {
 
         if (SymGetSymFromAddr64(process, cur->AddrPC_Offset, &symOffset, symbol)) {
             buf_printf(&out, "%s\n", symbol->Name);
-        }
-        else {
+        } else {
             buf_printf(&out, " Unkown symbol @ %p\n", cur->AddrPC_Offset);
         }
 
@@ -298,9 +295,9 @@ char* b_stacktrace_to_string(b_stacktrace_handle h) {
 
 #elif defined(__APPLE__)
 
+#include <dlfcn.h>
 #include <execinfo.h>
 #include <unistd.h>
-#include <dlfcn.h>
 
 typedef struct b_stacktrace {
     void* trace[B_STACKTRACE_MAX_DEPTH];
@@ -329,11 +326,11 @@ char* b_stacktrace_to_string(b_stacktrace_handle h) {
 
 #elif defined(__linux__)
 
+#include <dlfcn.h>
 #include <execinfo.h>
+#include <string.h>
 #include <ucontext.h>
 #include <unistd.h>
-#include <dlfcn.h>
-#include <string.h>
 
 typedef struct b_stacktrace {
     void* trace[B_STACKTRACE_MAX_DEPTH];
@@ -371,7 +368,8 @@ char* b_stacktrace_to_string(b_stacktrace_handle h) {
             char line[2048];
 
             FILE* fp;
-            snprintf(cmd, 1024, "addr2line -e %s -f -C -p %p 2>/dev/null", messages[i], (void*)((char*)tracei - (char*)info.dli_fbase));
+            snprintf(cmd, 1024, "addr2line -e %s -f -C -p %p 2>/dev/null", messages[i],
+                     (void*)((char*)tracei - (char*)info.dli_fbase));
 
             fp = popen(cmd, "r");
             if (!fp) {
@@ -384,8 +382,7 @@ char* b_stacktrace_to_string(b_stacktrace_handle h) {
                 if (strstr(line, "?? ")) {
                     /* just output address if nothing can be found */
                     buf_printf(&out, "%p\n", tracei);
-                }
-                else {
+                } else {
                     buf_printf(&out, "%s", line);
                 }
             }
@@ -409,4 +406,3 @@ char* b_stacktrace_get_string(void) {
 
 #endif /* B_STACKTRACE_IMPL */
 #endif /* B_STACKTRACE_INCLUDED */
-

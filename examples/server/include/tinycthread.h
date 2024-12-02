@@ -176,8 +176,9 @@ int _tthread_timespec_get(struct timespec *ts, int base);
 #define thrd_busy                                                                           \
     3 /**< The requested operation failed because a tesource requested by a test and return \
          function is already in use */
-#define thrd_nomem 4 /**< The requested operation failed because it was unable to allocate memory \
-                      */
+#define thrd_nomem                                                                 \
+    4 /**< The requested operation failed because it was unable to allocate memory \
+       */
 
 /* Mutex types */
 #define mtx_plain 0
@@ -461,7 +462,9 @@ typedef struct {
     CRITICAL_SECTION lock;
 } once_flag;
 #define ONCE_FLAG_INIT \
-    { 0, }
+    {                  \
+        0,             \
+    }
 #else
 #define once_flag pthread_once_t
 #define ONCE_FLAG_INIT PTHREAD_ONCE_INIT

@@ -12,3 +12,4 @@ BraceWrapping:
     BeforeCatch:     true
     BeforeElse:      true
 AccessModifierOffset: -4
+LineEnding: LF
