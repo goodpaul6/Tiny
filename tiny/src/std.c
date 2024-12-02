@@ -226,7 +226,7 @@ static TINY_FOREIGN_FUNCTION(Lib_ArrayClear) {
 
 static TINY_FOREIGN_FUNCTION(Lib_ArrayResize) {
     Array *array = Tiny_ToAddr(args[0]);
-    ArrayResize(array, (int)Tiny_ToNumber(args[0]), Tiny_Null);
+    ArrayResize(array, (int)Tiny_ToNumber(args[1]), Tiny_Null);
 
     return Tiny_Null;
 }
