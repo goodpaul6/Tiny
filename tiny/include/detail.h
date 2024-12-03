@@ -36,6 +36,9 @@ typedef struct Tiny_Object {
             Word n;
             Tiny_Value fields[];
         } ostruct;
+
+        // Stretchy buffer
+        Tiny_Value* array;
     };
 } Tiny_Object;
 

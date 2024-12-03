@@ -1575,11 +1575,34 @@ static Tiny_Symbol *GetOrCreateNullable(Tiny_State *state, Tiny_Symbol *inner) {
     // FIXME(Apaar): Allow names longer than 256 chars
     char nameBuf[256] = {0};
 
-    snprintf(nameBuf, sizeof(nameBuf), "%s?", GetTagName(inner));
+    snprintf(nameBuf, sizeof(nameBuf), "?%s", GetTagName(inner));
 
     Tiny_Symbol *sym = Symbol_create(TINY_SYM_TAG_NULLABLE, nameBuf, state);
 
     sym->nullableTag = inner;
+
+    sb_push(&state->ctx, state->globalSymbols, sym);
+
+    return sym;
+}
+
+static Tiny_Symbol* GetOrCreateArrayTag(Tiny_State* state, Tiny_Symbol* inner) {
+    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
+        Tiny_Symbol *sym = state->globalSymbols[i];
+
+        if (sym->type == TINY_SYM_TAG_ARRAY && sym->arrayElemTag == inner) {
+            return sym;
+        }
+    }
+    
+    // FIXME(Apaar): Allow names longer than 256 chars
+    char nameBuf[256] = {0};
+
+    snprintf(nameBuf, sizeof(nameBuf), "[]%s", GetTagName(inner));
+
+    Tiny_Symbol *sym = Symbol_create(TINY_SYM_TAG_ARRAY, nameBuf, state);
+
+    sym->arrayElemTag = inner;
 
     sb_push(&state->ctx, state->globalSymbols, sym);
 
@@ -1607,6 +1630,35 @@ static Tiny_Symbol *GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
 static Tiny_TokenKind GetNextToken(Tiny_State *state) { return Tiny_GetToken(&state->l); }
 
 static Tiny_Symbol *ParseTypeL(Tiny_State *state, Tiny_Lexer *l) {
+    // Nullable type (more consistent if we prefix)
+    if (l->lastTok == TINY_TOK_QUESTION) {
+        Tiny_GetToken(l);
+
+        Tiny_Symbol* inner = ParseTypeL(state, l);
+
+        if (inner->type == TINY_SYM_TAG_VOID) {
+            ReportErrorL(state, l,
+                    "Attempted to make a nullable 'void' type which doesn't make any sense.");
+        }
+
+        return GetOrCreateNullable(state, inner);
+    }
+
+    // Array type
+    if(l->lastTok == TINY_TOK_OPENSQUARE) {
+        // Consume '['
+        Tiny_GetToken(l);
+
+        ExpectTokenL(state, l, TINY_TOK_CLOSESQUARE, "Expected ']' after '[' in array type.");
+
+        // Consume ']'
+        Tiny_GetToken(l);
+
+        Tiny_Symbol* inner = ParseTypeL(state, l);
+
+        return GetOrCreateArrayTag(state, inner);
+    }
+
     ExpectTokenL(state, l, TINY_TOK_IDENT, "Expected identifier for typename.");
 
     Tiny_Symbol *s = GetTagFromName(state, l->lexeme, true);
@@ -1616,16 +1668,6 @@ static Tiny_Symbol *ParseTypeL(Tiny_State *state, Tiny_Lexer *l) {
     }
 
     Tiny_GetToken(l);
-
-    if (l->lastTok == TINY_TOK_QUESTION) {
-        if (s->type == TINY_SYM_TAG_VOID) {
-            ReportErrorL(state, l,
-                         "Attempted to make a nullable 'void' type which doesn't make any sense.");
-        }
-
-        s = GetOrCreateNullable(state, s);
-        Tiny_GetToken(l);
-    }
 
     return s;
 }
