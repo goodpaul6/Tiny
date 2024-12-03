@@ -306,8 +306,8 @@ void Tiny_RegisterType(Tiny_State *state, const char *name);
 void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction func);
 
 void Tiny_BindConstBool(Tiny_State *state, const char *name, bool b);
-void Tiny_BindConstInt(Tiny_State *state, const char *name, int i);
-void Tiny_BindConstFloat(Tiny_State *state, const char *name, float f);
+void Tiny_BindConstInt(Tiny_State *state, const char *name, Tiny_Int i);
+void Tiny_BindConstFloat(Tiny_State *state, const char *name, Tiny_Float f);
 void Tiny_BindConstString(Tiny_State *state, const char *name, const char *value);
 
 Tiny_CompileResult Tiny_CompileString(Tiny_State *state, const char *name, const char *string);
@@ -503,8 +503,8 @@ typedef struct Tiny_Symbol {
 
             union {
                 bool bValue;                // for bool
-                int iValue;                 // for char/int
-                float fValue;               // for float
+                Tiny_Int iValue;            // for char/int
+                Tiny_Float fValue;          // for float
                 Tiny_ConstantIndex sIndex;  // for string
             };
         } constant;

@@ -432,7 +432,7 @@ static Tiny_Value Lib_ToInt(Tiny_StateThread *thread, const Tiny_Value *args, in
 }
 
 static Tiny_Value Lib_ToFloat(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
-    return Tiny_NewFloat((float)Tiny_ToInt(args[0]));
+    return Tiny_NewFloat((Tiny_Float)Tiny_ToInt(args[0]));
 }
 
 Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx) {
@@ -1082,11 +1082,11 @@ void Tiny_BindConstBool(Tiny_State *state, const char *name, bool b) {
     DeclareConst(state, name, GetPrimTag(TINY_SYM_TAG_BOOL))->constant.bValue = b;
 }
 
-void Tiny_BindConstInt(Tiny_State *state, const char *name, int i) {
+void Tiny_BindConstInt(Tiny_State *state, const char *name, Tiny_Int i) {
     DeclareConst(state, name, GetPrimTag(TINY_SYM_TAG_INT))->constant.iValue = i;
 }
 
-void Tiny_BindConstFloat(Tiny_State *state, const char *name, float f) {
+void Tiny_BindConstFloat(Tiny_State *state, const char *name, Tiny_Float f) {
     DeclareConst(state, name, GetPrimTag(TINY_SYM_TAG_FLOAT))->constant.fValue = f;
 }
 
@@ -1233,10 +1233,11 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
             assert(nFields > 0);
 
             Tiny_Object *obj = NewStructObject(thread, nFields);
-            memcpy(obj->ostruct.fields, &thread->stack[thread->sp - nFields], sizeof(Tiny_Value) * nFields);
+            memcpy(obj->ostruct.fields, &thread->stack[thread->sp - nFields],
+                   sizeof(Tiny_Value) * nFields);
             thread->sp -= nFields;
 
-            DoPush(thread, (Tiny_Value){.type=TINY_VAL_STRUCT, .obj=obj});
+            DoPush(thread, (Tiny_Value){.type = TINY_VAL_STRUCT, .obj = obj});
         } break;
 
         case TINY_OP_STRUCT_GET: {
@@ -1256,58 +1257,58 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
             vstruct.obj->ostruct.fields[i] = val;
         } break;
 
-#define BIN_OP(OP, operator)                                                \
-    case TINY_OP_##OP: {                                                    \
-        Tiny_Value *a = &thread->stack[thread->sp - 2];                     \
-        Tiny_Value b = thread->stack[--thread->sp];                         \
-        if (a->type == TINY_VAL_INT && b.type == TINY_VAL_INT) {            \
-            a->i = a->i operator b.i;                                       \
-        } else {                                                            \
-            if (a->type == TINY_VAL_INT) a->f = (float)a->i;                \
-            if (b.type == TINY_VAL_INT) b.f = (float)b.i;                   \
-            a->type = TINY_VAL_FLOAT;                                       \
-            a->f = a->f operator b.f;                                       \
-        }                                                                   \
-        ++thread->pc;                                                       \
+#define BIN_OP(OP, operator)                                      \
+    case TINY_OP_##OP: {                                          \
+        Tiny_Value *a = &thread->stack[thread->sp - 2];           \
+        Tiny_Value b = thread->stack[--thread->sp];               \
+        if (a->type == TINY_VAL_INT && b.type == TINY_VAL_INT) {  \
+            a->i = a->i operator b.i;                             \
+        } else {                                                  \
+            if (a->type == TINY_VAL_INT) a->f = (Tiny_Float)a->i; \
+            if (b.type == TINY_VAL_INT) b.f = (Tiny_Float)b.i;    \
+            a->type = TINY_VAL_FLOAT;                             \
+            a->f = a->f operator b.f;                             \
+        }                                                         \
+        ++thread->pc;                                             \
     } break;
 
-#define BIN_OP_INT(OP, operator)                                       \
-    case TINY_OP_##OP: {                                               \
-        Tiny_Value val2 = DoPop(thread);                               \
-        Tiny_Value val1 = DoPop(thread);                               \
-        DoPush(thread, Tiny_NewInt(val1.i operator val2.i));           \
-        ++thread->pc;                                                  \
+#define BIN_OP_INT(OP, operator)                             \
+    case TINY_OP_##OP: {                                     \
+        Tiny_Value val2 = DoPop(thread);                     \
+        Tiny_Value val1 = DoPop(thread);                     \
+        DoPush(thread, Tiny_NewInt(val1.i operator val2.i)); \
+        ++thread->pc;                                        \
     } break;
 
-#define REL_OP(OP, operator)                                            \
-    case TINY_OP_##OP: {                                                \
-        Tiny_Value *a = &thread->stack[thread->sp - 2];                 \
-        Tiny_Value b = thread->stack[--thread->sp];                     \
-        bool result;                                                    \
-        if (a->type == TINY_VAL_FLOAT || b.type == TINY_VAL_FLOAT) {    \
-            float af = (a->type == TINY_VAL_INT) ? (float)a->i : a->f;  \
-            float bf = (b.type == TINY_VAL_INT) ? (float)b.i : b.f;     \
-            result = af operator bf;                                    \
-        } else {                                                        \
-            result = a->i operator b.i;                                 \
-        }                                                               \
-        a->type = TINY_VAL_BOOL;                                        \
-        a->boolean = result;                                            \
-        ++thread->pc;                                                   \
+#define REL_OP(OP, operator)                                                     \
+    case TINY_OP_##OP: {                                                         \
+        Tiny_Value *a = &thread->stack[thread->sp - 2];                          \
+        Tiny_Value b = thread->stack[--thread->sp];                              \
+        bool result;                                                             \
+        if (a->type == TINY_VAL_FLOAT || b.type == TINY_VAL_FLOAT) {             \
+            Tiny_Float af = (a->type == TINY_VAL_INT) ? (Tiny_Float)a->i : a->f; \
+            Tiny_Float bf = (b.type == TINY_VAL_INT) ? (Tiny_Float)b.i : b.f;    \
+            result = af operator bf;                                             \
+        } else {                                                                 \
+            result = a->i operator b.i;                                          \
+        }                                                                        \
+        a->type = TINY_VAL_BOOL;                                                 \
+        a->boolean = result;                                                     \
+        ++thread->pc;                                                            \
     } break;
 
-        BIN_OP(ADD, +)
-        BIN_OP(SUB, -)
-        BIN_OP(MUL, *)
-        BIN_OP(DIV, /)
-        BIN_OP_INT(MOD, %)
-        BIN_OP_INT(OR, |)
-        BIN_OP_INT(AND, &)
+            BIN_OP(ADD, +)
+            BIN_OP(SUB, -)
+            BIN_OP(MUL, *)
+            BIN_OP(DIV, /)
+            BIN_OP_INT(MOD, %)
+            BIN_OP_INT(OR, |)
+            BIN_OP_INT(AND, &)
 
-        REL_OP(LT, <)
-        REL_OP(GT, >)
-        REL_OP(GTE, >=)
-        REL_OP(LTE, <=)
+            REL_OP(LT, <)
+            REL_OP(GT, >)
+            REL_OP(GTE, >=)
+            REL_OP(LTE, <=)
 
 #undef BIN_OP
 #undef BIN_OP_INT
