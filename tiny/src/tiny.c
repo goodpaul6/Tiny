@@ -1046,8 +1046,6 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
             varargs = true;
             Tiny_GetToken(&l);
         } else {
-            assert(l.lastTok == TINY_TOK_IDENT);
-
             Tiny_Symbol *s = ParseTypeL(state, &l);
 
             assert(s);
@@ -1064,8 +1062,6 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
 
     if (l.lastTok == TINY_TOK_COLON) {
         Tiny_GetToken(&l);
-
-        assert(l.lastTok == TINY_TOK_IDENT);
 
         returnTag = ParseTypeL(state, &l);
         assert(returnTag);
