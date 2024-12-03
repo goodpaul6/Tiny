@@ -31,7 +31,7 @@ typedef enum {
     TINY_EXP_USE,
     TINY_EXP_INDEX,
     TINY_EXP_IF_TERNARY,
-    TINY_EXP_FOR_IN,
+    TINY_EXP_FOREACH,
 } Tiny_ExprType;
 
 // Node for a singly-linked list of strings.
@@ -176,8 +176,15 @@ typedef struct Tiny_Expr {
             // The thing being iterated over
             struct Tiny_Expr *range;
 
+            // If true, then the user wrote `foreach something in_reverse arr`
+            // otherwise `foreach something in arr`.
+            //
+            // This just makes us look for a `{type}_make_reverse_iter` instead of
+            // `{type}_make_iter`
+            bool reverse;
+
             const Tiny_Symbol *makeIterFunc;
             const Tiny_Symbol *iterNextFunc;
-        } forIn;
+        } forEach;
     };
 } Tiny_Expr;

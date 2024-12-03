@@ -177,7 +177,7 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
         if (strcmp(l->lexeme, "break") == 0) return TINY_TOK_BREAK;
         if (strcmp(l->lexeme, "continue") == 0) return TINY_TOK_CONTINUE;
         if (strcmp(l->lexeme, "use") == 0) return TINY_TOK_USE;
-        if (strcmp(l->lexeme, "in") == 0) return TINY_TOK_IN;
+        if (strcmp(l->lexeme, "foreach") == 0) return TINY_TOK_FOREACH;
 
         return TINY_TOK_IDENT;
     }
