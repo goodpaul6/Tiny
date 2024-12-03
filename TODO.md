@@ -1,5 +1,7 @@
 # TODO
 
+- BAD No way to signal errors. Would be nice if we had _error_ in addition to options like `int!`
+
 - REFACTOR Unify symbol types for foreign and regular functions. Both of them have indices, argument types, and return types. The only difference is ellipsis
   and the way that the compiled code interacts with them
     - Actuallyyyyy, this is not that straightforward; foreign functions just track tags for their args, no names, for example

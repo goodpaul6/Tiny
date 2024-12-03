@@ -3,8 +3,7 @@
 
 #include "tiny.h"
 
-static Tiny_MacroResult ImportModuleFunction(Tiny_State* state, char* const* args, int nargs,
-                                             const char* asName) {
+static TINY_MACRO_FUNCTION(ImportModuleFunction) {
     if (nargs != 1) {
         return (Tiny_MacroResult){
             .type = TINY_MACRO_ERROR,
@@ -36,6 +35,55 @@ static Tiny_MacroResult ImportModuleFunction(Tiny_State* state, char* const* arg
     return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
 }
 
+static TINY_MACRO_FUNCTION(DefineResultFunction) {
+    if (nargs != 1) {
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
+            .error.msg = "Expected exactly 1 argument to 'result'",
+        };
+    }
+
+    if (!asName) {
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
+            .error.msg = "Must provide 'as' name for 'result'",
+        };
+    }
+
+    const Tiny_Symbol* okTypeTag = Tiny_FindTypeSymbol(state, args[0]);
+    if (!okTypeTag) {
+        return (Tiny_MacroResult){
+            .type = TINY_MACRO_ERROR,
+            .error.msg = "Could not find type passed into 'result' macro",
+        };
+    }
+
+    const char* resName = asName;
+
+    char buf[2048] = {0};
+    snprintf(buf, sizeof(buf),
+             "struct %s { value: %s error: any }\n"
+             "func %s_ok(value: %s): %s { return new %s{value, null} }\n"
+             "func %s_err(error: any): %s { return new %s{cast(null, %s), error} }\n"
+             "func %s_unwrap(r: %s): %s { if r.error != null { printf(\"unwrapped error: %%q\n\", "
+             "r.error) exit(1) } return r.value }\n",
+             resName, okTypeTag->name, resName, okTypeTag->name, resName, resName, resName, resName,
+             resName, okTypeTag->name, resName, resName, okTypeTag->name);
+
+    Tiny_CompileResult compileResult = Tiny_CompileString(state, "result", buf);
+
+    if (compileResult.type != TINY_COMPILE_SUCCESS) {
+        Tiny_MacroResult macroResult = {.type = TINY_MACRO_ERROR};
+
+        snprintf(macroResult.error.msg, sizeof(macroResult.error.msg),
+                 "Failed to compile result macro code: %s", compileResult.error.msg);
+
+        return macroResult;
+    }
+
+    return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
+}
+
 int main(int argc, char** argv) {
     if (argc < 2) {
         fprintf(stderr, "Usage: %s (path to tiny file)\n", argv[0]);
@@ -59,6 +107,7 @@ int main(int argc, char** argv) {
     Tiny_BindI64(state);
 
     Tiny_BindMacro(state, "import", ImportModuleFunction);
+    Tiny_BindMacro(state, "result", DefineResultFunction);
 
     Tiny_CompileResult compileResult = Tiny_CompileFile(state, argv[1]);
 

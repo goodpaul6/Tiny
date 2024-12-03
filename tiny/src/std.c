@@ -812,6 +812,11 @@ static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
         };
     }
 
+    const Tiny_Symbol *alreadyExists = Tiny_FindTypeSymbol(state, asName);
+    if (alreadyExists) {
+        return (Tiny_MacroResult){.type = TINY_MACRO_SUCCESS};
+    }
+
     const Tiny_Symbol *elemType = Tiny_FindTypeSymbol(state, args[0]);
 
     if (!elemType) {
