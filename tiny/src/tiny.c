@@ -3232,6 +3232,10 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
                     Tiny_StringNode *nameNode = exp->constructor.argNamesHead;
 
                     for (Tiny_Expr *node = exp->constructor.argsHead; node; node = node->next) {
+                        // The number of name nodes must match the number of argNames otherwise
+                        // there's an issue in the parser
+                        assert(nameNode);
+
                         if (strcmp(nameNode->value, fieldName) != 0) {
                             nameNode = nameNode->next;
                             continue;
