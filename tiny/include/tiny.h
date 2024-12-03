@@ -184,7 +184,7 @@ void Tiny_ProtectFromGC(Tiny_Value value);
 
 Tiny_Value Tiny_NewBool(bool value);
 Tiny_Value Tiny_NewInt(int i);
-Tiny_Value Tiny_NewFloat(float f);
+Tiny_Value Tiny_NewFloat(Tiny_Float f);
 Tiny_Value Tiny_NewConstString(const char *string);
 Tiny_Value Tiny_NewLightNative(void *ptr);
 
@@ -233,7 +233,7 @@ static inline float Tiny_ToNumber(const Tiny_Value value) {
     if (value.type == TINY_VAL_FLOAT) return value.f;
     if (value.type != TINY_VAL_INT) return 0;
 
-    return (float)value.i;
+    return (Tiny_Float)value.i;
 }
 
 // Returns NULL if the value isn't a string/const string

@@ -362,7 +362,7 @@ Tiny_Value Tiny_NewInt(int i) {
     return val;
 }
 
-Tiny_Value Tiny_NewFloat(float f) {
+Tiny_Value Tiny_NewFloat(Tiny_Float f) {
     Tiny_Value val;
 
     val.type = TINY_VAL_FLOAT;
@@ -1298,9 +1298,9 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
             a->f = a->f operator b.f;                                       \
         } else if (a->type == TINY_VAL_INT) {                               \
             a->type = TINY_VAL_FLOAT;                                       \
-            a->f = (float)a->i operator b.f;                                \
+            a->f = (Tiny_Float)a->i operator b.f;                           \
         } else {                                                            \
-            a->f = a->f operator(float) b.i;                                \
+            a->f = a->f operator(Tiny_Float) b.i;                           \
         }                                                                   \
         ++thread->pc;                                                       \
     } break;
@@ -1324,10 +1324,10 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
                 a->boolean = a->i <= b->i;
             } else if (a->type == TINY_VAL_INT) {
                 a->type = TINY_VAL_BOOL;
-                a->boolean = (float)a->i <= b->f;
+                a->boolean = (Tiny_Float)a->i <= b->f;
             } else {
                 a->type = TINY_VAL_BOOL;
-                a->boolean = a->f <= (float)b->i;
+                a->boolean = a->f <= (Tiny_Float)b->i;
             }
             ++thread->pc;
         } break;
@@ -1344,10 +1344,10 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
             a->boolean = a->i operator b.i;                             \
         } else if (a->type == TINY_VAL_INT) {                           \
             a->type = TINY_VAL_BOOL;                                    \
-            a->boolean = (float)a->i operator b.f;                      \
+            a->boolean = (Tiny_Float)a->i operator b.f;                 \
         } else {                                                        \
             a->type = TINY_VAL_BOOL;                                    \
-            a->boolean = a->f operator(float) b.i;                      \
+            a->boolean = a->f operator(Tiny_Float) b.i;                 \
         }                                                               \
         ++thread->pc;                                                   \
     } break;
