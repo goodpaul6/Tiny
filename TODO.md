@@ -1,5 +1,10 @@
 # TODO
 
+- REFACTOR Unify symbol types for foreign and regular functions. Both of them have indices, argument types, and return types. The only difference is ellipsis
+  and the way that the compiled code interacts with them
+    - Actuallyyyyy, this is not that straightforward; foreign functions just track tags for their args, no names, for example
+    - Could do with some simplifying helpers though
+
 - BAD No for..in type thing
     - Another protocol thing? Just anything that has a `_len` and a `_get_index` would work for now
     - Could also do a true "iterator" thing where it expects a `_iter`, `_iter_next` to be defined and goes

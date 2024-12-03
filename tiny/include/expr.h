@@ -172,6 +172,12 @@ typedef struct Tiny_Expr {
 
             // (Optional) name of the index variable
             Tiny_StringNode *indexName;
+
+            // The thing being iterated over
+            struct Tiny_Expr *range;
+
+            const Tiny_Symbol *makeIterFunc;
+            const Tiny_Symbol *iterNextFunc;
         } forIn;
     };
 } Tiny_Expr;
