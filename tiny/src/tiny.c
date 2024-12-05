@@ -991,7 +991,7 @@ void Tiny_RegisterType(Tiny_State *state, const char *name) {
 
     if (s) {
         if (s->type == TINY_SYM_TAG_STRUCT && !s->sstruct.defined) {
-            // If there's a struct that's undefined with the same name, the user is probably
+            // If there's a struct that's undefined with the same name, the Tiny code is probably
             // referring to this type that we're about to define here, so just update it in place
             // to be an opaque foreign type.
             s->type = TINY_SYM_TAG_FOREIGN;
@@ -2518,6 +2518,11 @@ static bool IsTagAssignableTo(const Tiny_Symbol *src, const Tiny_Symbol *dest) {
 
     if (dest->type == TINY_SYM_TAG_NULLABLE) {
         return IsTagAssignableTo(src, dest->nullableTag);
+    }
+
+    if (dest->type == TINY_SYM_TAG_ARRAY) {
+        return src->type == TINY_SYM_TAG_ARRAY &&
+               IsTagAssignableTo(src->arrayElemTag, dest->arrayElemTag);
     }
 
     if (src->type == dest->type) {
