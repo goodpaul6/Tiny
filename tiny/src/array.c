@@ -65,7 +65,7 @@ void ArrayInsert(Array *array, int index, Tiny_Value value) {
 
     sb_add(&array->ctx, array->data, 1);
 
-    memmove(&array->data[index + 1], &array->data[index], sizeof(Tiny_Value) * (len - index - 1));
+    memmove(&array->data[index + 1], &array->data[index], sizeof(Tiny_Value) * (len - index));
     memcpy(&array->data[index], &value, sizeof(Tiny_Value));
 }
 

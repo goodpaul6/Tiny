@@ -231,6 +231,15 @@ static TINY_FOREIGN_FUNCTION(Lib_ArrayResize) {
     return Tiny_Null;
 }
 
+static TINY_FOREIGN_FUNCTION(Lib_ArrayResizeFill) {
+    Array *array = Tiny_ToAddr(args[0]);
+    Tiny_Value fillValue = args[2];
+
+    ArrayResize(array, (int)Tiny_ToNumber(args[1]), fillValue);
+
+    return Tiny_Null;
+}
+
 static TINY_FOREIGN_FUNCTION(Lib_ArrayPush) {
     Array *array = Tiny_ToAddr(args[0]);
     Tiny_Value value = args[1];
@@ -280,6 +289,16 @@ static TINY_FOREIGN_FUNCTION(Lib_ArrayRemove) {
     int idx = Tiny_ToInt(args[1]);
 
     ArrayRemove(array, idx);
+
+    return Tiny_Null;
+}
+
+static TINY_FOREIGN_FUNCTION(Lib_ArrayInsert) {
+    Array *array = Tiny_ToAddr(args[0]);
+    int idx = Tiny_ToInt(args[1]);
+    Tiny_Value value = args[2];
+
+    ArrayInsert(array, idx, value);
 
     return Tiny_Null;
 }
@@ -392,6 +411,24 @@ static Tiny_Value Lib_DictKeys(Tiny_StateThread *thread, const Tiny_Value *args,
 
         if (!Tiny_IsNull(key)) {
             ArrayPush(array, key);
+        }
+    }
+
+    return Tiny_NewNative(thread, array, &ArrayProp);
+}
+
+static Tiny_Value Lib_DictValues(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
+    Dict *dict = args[0].obj->nat.addr;
+
+    Array *array = Tiny_AllocUsingContext(thread->ctx, NULL, sizeof(Array));
+
+    InitArray(array, thread->ctx);
+
+    for (int i = 0; i < dict->bucketCount; ++i) {
+        Tiny_Value key = *ArrayGet(&dict->keys, i);
+
+        if (!Tiny_IsNull(key)) {
+            ArrayPush(array, *ArrayGet(&dict->values, i));
         }
     }
 
@@ -839,6 +876,9 @@ static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
     snprintf(sigbuf, sizeof(sigbuf), "%s_resize(%s, int): void", asName, asName);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayResize);
 
+    snprintf(sigbuf, sizeof(sigbuf), "%s_resize_fill(%s, int, %s): void", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayResizeFill);
+
     snprintf(sigbuf, sizeof(sigbuf), "%s_get(%s, int): %s", asName, asName, args[0]);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayGet);
 
@@ -868,6 +908,9 @@ static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
     snprintf(sigbuf, sizeof(sigbuf), "%s_remove(%s, int): void", asName, asName);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayRemove);
 
+    snprintf(sigbuf, sizeof(sigbuf), "%s_insert(%s, int, %s): void", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayInsert);
+
     if (elemType->type == TINY_SYM_TAG_INT) {
         // TODO(Apaar): Add functions to sort other types
         snprintf(sigbuf, sizeof(sigbuf), "%s_sort(%s): void", asName, asName);
@@ -882,15 +925,17 @@ void Tiny_BindStandardArray(Tiny_State *state) {
 }
 
 void Tiny_BindStandardDict(Tiny_State *state) {
+    Tiny_RegisterType(state, "array_any");
     Tiny_RegisterType(state, "array_str");
     Tiny_RegisterType(state, "dict");
 
     Tiny_BindFunction(state, "dict(...): dict", CreateDict);
-    Tiny_BindFunction(state, "dict_put(dict, str, any): void", Lib_DictPut);
-    Tiny_BindFunction(state, "dict_exists(dict, str): bool", Lib_DictExists);
-    Tiny_BindFunction(state, "dict_get(dict, str): any", Lib_DictGet);
-    Tiny_BindFunction(state, "dict_remove(dict, str): void", Lib_DictRemove);
-    Tiny_BindFunction(state, "dict_keys(dict): array_str", Lib_DictKeys);
+    Tiny_BindFunction(state, "dict_put(dict, any, any): void", Lib_DictPut);
+    Tiny_BindFunction(state, "dict_exists(dict, any): bool", Lib_DictExists);
+    Tiny_BindFunction(state, "dict_get(dict, any): any", Lib_DictGet);
+    Tiny_BindFunction(state, "dict_remove(dict, any): void", Lib_DictRemove);
+    Tiny_BindFunction(state, "dict_keys(dict): array_any", Lib_DictKeys);
+    Tiny_BindFunction(state, "dict_values(dict): array_any", Lib_DictValues);
     Tiny_BindFunction(state, "dict_clear(dict): void", Lib_DictClear);
 
     // Conform to index protocol
