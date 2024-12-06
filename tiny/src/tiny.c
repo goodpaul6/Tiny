@@ -1254,8 +1254,9 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
         case TINY_OP_STRUCT_SET: {
             ++thread->pc;
             Word i = state->program[thread->pc++];
-            Tiny_Value val = DoPop(thread);
+
             Tiny_Value vstruct = DoPop(thread);
+            Tiny_Value val = DoPop(thread);
 
             assert(vstruct.type == TINY_VAL_STRUCT);
             assert(i >= 0 && i < vstruct.obj->ostruct.n);

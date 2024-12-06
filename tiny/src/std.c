@@ -1108,6 +1108,53 @@ static TINY_FOREIGN_FUNCTION(GetExecutingLine) {
     return Tiny_NewInt(line);
 }
 
+static TINY_FOREIGN_FUNCTION(DebugBreak) {
+    // HACK(Apaar): Very stupid debugger; unsafe
+
+    for (;;) {
+        int pc = thread->pc;
+        char disBuf[512] = {0};
+
+        Tiny_DisasmOne(thread->state, &pc, disBuf, sizeof(disBuf));
+
+        printf("%s\n", disBuf);
+        printf("> ");
+
+        char cmd[256] = {0};
+
+        if (!fgets(cmd, sizeof(cmd), stdin)) {
+            break;
+        }
+
+        if (strcmp(cmd, "top2\n") == 0) {
+            for (int i = 1; i <= 2; ++i) {
+                int pos = thread->sp - i;
+
+                if (pos < 0) {
+                    break;
+                }
+
+                Print(thread->stack[pos], true);
+                putchar('\n');
+            }
+        } else if (strcmp(cmd, "s\n") == 0) {
+            Tiny_ExecuteCycle(thread);
+        } else if (strcmp(cmd, "c\n") == 0) {
+            // HACK(Apaar): We can't return because we've kinda
+            // probably put stuff on the stack and CALLF resets
+            // the stack after the foreign function exits sooooo
+            // we just kinda keep going here
+
+            Tiny_Run(thread);
+            break;
+        } else {
+            printf("no such command\n");
+        }
+    }
+
+    return Tiny_Null;
+}
+
 void Tiny_BindStandardLib(Tiny_State *state) {
     Tiny_BindConstInt(state, "INT_MAX", INT_MAX);
 
@@ -1159,4 +1206,6 @@ void Tiny_BindStandardLib(Tiny_State *state) {
     Tiny_BindFunction(state, "get_executing_line", GetExecutingLine);
 
     Tiny_BindMacro(state, "json", JsonMacroFunction);
+
+    Tiny_BindFunction(state, "debug_break", DebugBreak);
 }
