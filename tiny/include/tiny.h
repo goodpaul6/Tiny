@@ -219,17 +219,17 @@ static inline bool Tiny_ToBool(const Tiny_Value value) {
     return value.boolean;
 }
 
-static inline int Tiny_ToInt(const Tiny_Value value) {
+static inline Tiny_Int Tiny_ToInt(const Tiny_Value value) {
     if (value.type != TINY_VAL_INT) return 0;
     return value.i;
 }
 
-static inline float Tiny_ToFloat(const Tiny_Value value) {
+static inline Tiny_Float Tiny_ToFloat(const Tiny_Value value) {
     if (value.type != TINY_VAL_FLOAT) return 0;
     return value.f;
 }
 
-static inline float Tiny_ToNumber(const Tiny_Value value) {
+static inline Tiny_Float Tiny_ToNumber(const Tiny_Value value) {
     if (value.type == TINY_VAL_FLOAT) return value.f;
     if (value.type != TINY_VAL_INT) return 0;
 
