@@ -15,6 +15,7 @@ syntax keyword tinyKeywords
             \ continue
             \ use
             \ as
+            \ struct
 
 syntax match tinyNumber "\v<\d+>"
 syntax match tinyNumber "\v<\d+\.\d+>"
