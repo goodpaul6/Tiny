@@ -1093,6 +1093,36 @@ static void test_IndexSyntax() {
     Tiny_DeleteState(state);
 }
 
+static void test_NestedStructAssignValue() {
+    Tiny_State *state = CreateState();
+
+    const char *code =
+        "struct A { x: int } struct B { x: int a: A } b := new B{10, new A{20}}\n"
+        "b.x = 10\n"
+        "b.a.x = 30\n";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(nested struct assignment)", code);
+
+    lequal_return(result.type, TINY_COMPILE_SUCCESS);
+
+    int b = Tiny_GetGlobalIndex(state, "b");
+
+    Tiny_StateThread thread;
+
+    Tiny_InitThread(&thread, state);
+
+    Tiny_StartThread(&thread);
+    Tiny_Run(&thread);
+
+    Tiny_Value bv = Tiny_GetGlobal(&thread, b);
+    lequal_return(bv.type, TINY_VAL_STRUCT);
+    lequal_return(bv.obj->ostruct.fields[0].i, 10);
+    lequal_return(bv.obj->ostruct.fields[1].type, TINY_VAL_STRUCT);
+    lequal_return(bv.obj->ostruct.fields[1].obj->ostruct.fields[0].i, 30);
+
+    Tiny_DeleteState(state);
+}
+
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
@@ -1121,6 +1151,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Test GetStringConstant", test_GetStringConst);
     lrun("Tiny Nested Compile Error Propagates", test_NestCompileFailPropagates);
     lrun("Tiny Index Syntax Works", test_IndexSyntax);
+    lrun("Tiny Nested Struct Assignment Works", test_NestedStructAssignValue);
 
     lrun("Check no leak in tests", test_CheckMallocs);
 
