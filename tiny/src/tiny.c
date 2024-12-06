@@ -1243,9 +1243,12 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
         case TINY_OP_STRUCT_GET: {
             ++thread->pc;
             Word i = state->program[thread->pc++];
-            Tiny_Value *structVal = &thread->stack[thread->sp - 1];
-            assert(i >= 0 && i < structVal->obj->ostruct.n);
-            *structVal = structVal->obj->ostruct.fields[i];
+            Tiny_Value *vstruct = &thread->stack[thread->sp - 1];
+
+            assert(vstruct->type == TINY_VAL_STRUCT);
+            assert(i >= 0 && i < vstruct->obj->ostruct.n);
+
+            *vstruct = vstruct->obj->ostruct.fields[i];
         } break;
 
         case TINY_OP_STRUCT_SET: {
@@ -1253,7 +1256,10 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
             Word i = state->program[thread->pc++];
             Tiny_Value val = DoPop(thread);
             Tiny_Value vstruct = DoPop(thread);
+
+            assert(vstruct.type == TINY_VAL_STRUCT);
             assert(i >= 0 && i < vstruct.obj->ostruct.n);
+
             vstruct.obj->ostruct.fields[i] = val;
         } break;
 
