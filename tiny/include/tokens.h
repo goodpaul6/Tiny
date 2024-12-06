@@ -17,8 +17,10 @@ typedef enum {
     TINY_TOK_LT,
     TINY_TOK_EQUAL,
     TINY_TOK_BANG,
-    TINY_TOK_AND,
-    TINY_TOK_OR,
+    TINY_TOK_AND,          // &
+    TINY_TOK_OR,           // |
+    TINY_TOK_SHIFT_LEFT,   // <<
+    TINY_TOK_SHIFT_RIGHT,  // >>
     TINY_TOK_COMMA,
     TINY_TOK_SEMI,
     TINY_TOK_COLON,

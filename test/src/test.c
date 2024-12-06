@@ -1123,6 +1123,39 @@ static void test_NestedStructAssignValue() {
     Tiny_DeleteState(state);
 }
 
+static void test_LeftAndRightShift() {
+    Tiny_State *state = CreateState();
+
+    const char *code =
+        "x := 1\n"
+        "x = x << 2\n"
+        "y := x >> 2\n";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(left and right shift)", code);
+
+    lequal_return(result.type, TINY_COMPILE_SUCCESS);
+
+    int x = Tiny_GetGlobalIndex(state, "x");
+    int y = Tiny_GetGlobalIndex(state, "y");
+
+    Tiny_StateThread thread;
+
+    Tiny_InitThread(&thread, state);
+
+    Tiny_StartThread(&thread);
+    Tiny_Run(&thread);
+
+    Tiny_Value xv = Tiny_GetGlobal(&thread, x);
+    lequal_return(xv.type, TINY_VAL_INT);
+    lequal_return(xv.i, 4);
+
+    Tiny_Value yv = Tiny_GetGlobal(&thread, y);
+    lequal_return(yv.type, TINY_VAL_INT);
+    lequal_return(yv.i, 1);
+
+    Tiny_DeleteState(state);
+}
+
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
@@ -1152,6 +1185,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Nested Compile Error Propagates", test_NestCompileFailPropagates);
     lrun("Tiny Index Syntax Works", test_IndexSyntax);
     lrun("Tiny Nested Struct Assignment Works", test_NestedStructAssignValue);
+    lrun("Tiny Left and Right Shift Works", test_LeftAndRightShift);
 
     lrun("Check no leak in tests", test_CheckMallocs);
 

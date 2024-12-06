@@ -1311,6 +1311,8 @@ inline static bool ExecuteCycle(Tiny_StateThread *thread) {
             BIN_OP_INT(MOD, %)
             BIN_OP_INT(OR, |)
             BIN_OP_INT(AND, &)
+            BIN_OP_INT(SHIFT_LEFT, <<)
+            BIN_OP_INT(SHIFT_RIGHT, >>)
 
             REL_OP(LT, <)
             REL_OP(GT, >)
@@ -2137,6 +2139,8 @@ static int GetTokenPrec(int tok) {
             prec = 5;
             break;
 
+        case TINY_TOK_SHIFT_LEFT:
+        case TINY_TOK_SHIFT_RIGHT:
         case TINY_TOK_PLUS:
         case TINY_TOK_MINUS:
             prec = 4;
@@ -2614,7 +2618,9 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
                 case TINY_TOK_AND:
                 case TINY_TOK_OR:
-                case TINY_TOK_PERCENT: {
+                case TINY_TOK_PERCENT:
+                case TINY_TOK_SHIFT_LEFT:
+                case TINY_TOK_SHIFT_RIGHT: {
                     ResolveTypes(state, exp->binary.lhs);
                     ResolveTypes(state, exp->binary.rhs);
 
@@ -3323,6 +3329,18 @@ static void CompileExpr(Tiny_State *state, Tiny_Expr *exp) {
                     CompileExpr(state, exp->binary.lhs);
                     CompileExpr(state, exp->binary.rhs);
                     GenerateCode(state, TINY_OP_AND);
+                } break;
+
+                case TINY_TOK_SHIFT_LEFT: {
+                    CompileExpr(state, exp->binary.lhs);
+                    CompileExpr(state, exp->binary.rhs);
+                    GenerateCode(state, TINY_OP_SHIFT_LEFT);
+                } break;
+
+                case TINY_TOK_SHIFT_RIGHT: {
+                    CompileExpr(state, exp->binary.lhs);
+                    CompileExpr(state, exp->binary.rhs);
+                    GenerateCode(state, TINY_OP_SHIFT_RIGHT);
                 } break;
 
                 case TINY_TOK_LT: {

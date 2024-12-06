@@ -108,6 +108,9 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
 
     MATCH2("->", ARROW);
 
+    MATCH2("<<", SHIFT_LEFT);
+    MATCH2(">>", SHIFT_RIGHT);
+
 #define MATCH(c, tok)                       \
     do {                                    \
         if (l->last == c) {                 \

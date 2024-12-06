@@ -34,6 +34,8 @@ enum {
     TINY_OP_MOD,
     TINY_OP_OR,
     TINY_OP_AND,
+    TINY_OP_SHIFT_LEFT,
+    TINY_OP_SHIFT_RIGHT,
     TINY_OP_LT,
     TINY_OP_LTE,
     TINY_OP_GT,
