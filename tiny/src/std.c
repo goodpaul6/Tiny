@@ -201,14 +201,28 @@ const Tiny_NativeProp ArrayProp = {
     ArrayFree,
 };
 
-static TINY_FOREIGN_FUNCTION(CreateArray) {
+// This elides the cost of marking every element of the array (which can be very expensive)
+const Tiny_NativeProp PrimitiveArrayProp = {
+    "array",
+    NULL,
+    ArrayFree,
+};
+
+static Tiny_Value CreateArrayEx(Tiny_StateThread *thread, int count, const Tiny_Value *values,
+                                bool primitive) {
     Array *array = Tiny_AllocUsingContext(thread->ctx, NULL, sizeof(Array));
 
-    InitArrayEx(array, thread->ctx, count, args);
+    InitArrayEx(array, thread->ctx, count, values);
 
-    memcpy(array->data, args, sizeof(Tiny_Value) * count);
+    memcpy(array->data, values, sizeof(Tiny_Value) * count);
 
-    return Tiny_NewNative(thread, array, &ArrayProp);
+    return Tiny_NewNative(thread, array, primitive ? &PrimitiveArrayProp : &ArrayProp);
+}
+
+static TINY_FOREIGN_FUNCTION(CreateArray) { return CreateArrayEx(thread, count, args, false); }
+
+static TINY_FOREIGN_FUNCTION(CreatePrimitiveArray) {
+    return CreateArrayEx(thread, count, args, true);
 }
 
 static TINY_FOREIGN_FUNCTION(Lib_ArrayLen) {
@@ -867,8 +881,11 @@ static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
 
     char sigbuf[512] = {0};
 
+    bool primitive = elemType->type == TINY_SYM_TAG_BOOL || elemType->type == TINY_SYM_TAG_INT ||
+                     elemType->type == TINY_SYM_TAG_FLOAT;
+
     snprintf(sigbuf, sizeof(sigbuf), "%s(...): %s", asName, asName);
-    Tiny_BindFunction(state, sigbuf, CreateArray);
+    Tiny_BindFunction(state, sigbuf, primitive ? CreatePrimitiveArray : CreateArray);
 
     snprintf(sigbuf, sizeof(sigbuf), "%s_clear(%s): void", asName, asName);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayClear);

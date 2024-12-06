@@ -86,7 +86,7 @@ void DictSet(Dict *dict, Tiny_Value key, Tiny_Value value) {
     // adjust growth factor and parameters (like allow it to fail
     // if there's no space). Better yet, break these apart into
     // DictSet and DictSetGrow so that it's clear.
-    if (dict->filledCount >= (dict->bucketCount * 2) / 3) Grow(dict);
+    if (dict->filledCount >= dict->bucketCount / 2) Grow(dict);
 
     unsigned long hash = HashValue(key);
 
