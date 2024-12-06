@@ -221,6 +221,18 @@ bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b) {
         return a.f == b.f;
     }
 
+    if (a.type == TINY_VAL_NATIVE) {
+        return a.obj->nat.addr == b.obj->nat.addr;
+    }
+
+    if (a.type == TINY_VAL_LIGHT_NATIVE) {
+        return a.addr == b.addr;
+    }
+
+    if (a.type == TINY_VAL_STRUCT) {
+        return a.obj == b.obj;
+    }
+
     if (a.type == TINY_VAL_STRING) {
         size_t aLen = Tiny_StringLen(a);
         size_t bLen = Tiny_StringLen(b);
@@ -245,18 +257,6 @@ bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b) {
         }
 
         return strncmp(a.cstr, Tiny_ToString(b), aLen) == 0;
-    }
-
-    if (a.type == TINY_VAL_NATIVE) {
-        return a.obj->nat.addr == b.obj->nat.addr;
-    }
-
-    if (a.type == TINY_VAL_LIGHT_NATIVE) {
-        return a.addr == b.addr;
-    }
-
-    if (a.type == TINY_VAL_STRUCT) {
-        return a.obj == b.obj;
     }
 
     return false;

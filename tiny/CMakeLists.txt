@@ -16,8 +16,9 @@ endif()
 
 if(UNIX)
     target_link_libraries(tiny PRIVATE m)
+    target_compile_options(tiny PRIVATE -Wno-gnu-alignof-expression)
 endif()
 
-target_compile_options(tiny PRIVATE -Wno-gnu-alignof-expression)
+set_property(TARGET tiny PROPERTY INTERPROCEDURAL_OPTIMIZATION True)
 
 target_include_directories(tiny PUBLIC include)
