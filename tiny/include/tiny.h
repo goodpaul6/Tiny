@@ -211,6 +211,9 @@ Tiny_Value Tiny_NewStringCopy(Tiny_StateThread *thread, const char *src, size_t 
 // Same as Tiny_NewStringCopy but assumes the given string is null terminated.
 Tiny_Value Tiny_NewStringCopyNullTerminated(Tiny_StateThread *thread, const char *src);
 
+// Creates a new dynamic array object with the given length (filled with fillValue) and capacity.
+Tiny_Value Tiny_NewArray(Tiny_StateThread* thread, size_t len, Tiny_Value fillValue, size_t cap);
+
 Tiny_Value Tiny_NewNative(Tiny_StateThread *thread, void *ptr, const Tiny_NativeProp *prop);
 
 static inline bool Tiny_IsNull(const Tiny_Value value) { return value.type == TINY_VAL_NULL; }

@@ -316,6 +316,37 @@ static Tiny_Object *NewStructObject(Tiny_StateThread *thread, Word n) {
     return obj;
 }
 
+static Tiny_Object* NewArrayObject(Tiny_StateThread *thread, size_t len, Tiny_Value fillValue, size_t cap) {
+    assert(cap >= len);
+
+    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + sizeof(Tiny_Value) * cap);
+
+    obj->type = TINY_VAL_ARRAY;
+    obj->next = thread->gcHead;
+    thread->gcHead = obj;
+    obj->marked = 0;
+
+    obj->array.cap = cap;
+    obj->array.len = len;
+
+    for(size_t i = 0; i < len; i += 1) {
+        obj->array.elems[i] = fillValue;
+    }
+
+    thread->numObjects++;
+
+    return obj;
+}
+
+Tiny_Value Tiny_NewArray(Tiny_StateThread* thread, size_t len, Tiny_Value fillValue, size_t cap) {
+    Tiny_Value val;
+
+    val.type = TINY_VAL_ARRAY;
+    val.obj = NewArrayObject(thread, len, fillValue, cap);
+
+    return val;
+}
+
 Tiny_Value Tiny_NewLightNative(void *ptr) {
     Tiny_Value val;
 
@@ -428,7 +459,7 @@ Tiny_Value Tiny_NewStringCopyNullTerminated(Tiny_StateThread *thread, const char
 static void Symbol_destroy(Tiny_Symbol *sym, Tiny_Context *ctx);
 
 static Tiny_Value Lib_ToInt(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
-    return Tiny_NewInt((int)Tiny_ToFloat(args[0]));
+    return Tiny_NewInt((Tiny_Int)Tiny_ToFloat(args[0]));
 }
 
 static Tiny_Value Lib_ToFloat(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
