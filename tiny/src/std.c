@@ -515,9 +515,9 @@ static Tiny_Value Lib_Stoi(Tiny_StateThread *thread, const Tiny_Value *args, int
     const char *str = Tiny_ToString(args[0]);
     int base = count > 1 ? Tiny_ToInt(args[1]) : 10;
 
-    long value = strtol(str, NULL, base);
+    Tiny_Int value = (Tiny_Int)strtoll(str, NULL, base);
 
-    return Tiny_NewInt((int)value);
+    return Tiny_NewInt((Tiny_Int)value);
 }
 
 static Tiny_Value Lib_Ntos(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
@@ -587,6 +587,9 @@ static void Print(Tiny_Value val, bool repr) {
         case TINY_VAL_NULL:
             printf("<null>");
             break;
+        case TINY_VAL_BOOL:
+            printf("%s", val.boolean ? "true" : "false");
+            break;
         case TINY_VAL_INT:
             printf("%lld", (int64_t)val.i);
             break;
@@ -611,7 +614,7 @@ static void Print(Tiny_Value val, bool repr) {
             printf("<light native at %p>", val.addr);
             break;
         case TINY_VAL_NATIVE: {
-            if (repr && val.obj->nat.prop == &ArrayProp) {
+            if (repr && (val.obj->nat.prop == &ArrayProp || val.obj->nat.prop == &PrimitiveArrayProp)) {
                 printf("[");
 
                 Array *array = val.obj->nat.addr;

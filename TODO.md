@@ -1,5 +1,7 @@
 # TODO
 
+- IDEA Rather than having arrays or indexing syntax built in, maybe just have a primitive "slice" type? Pretty much the Zig approach
+
 - IDEA Since it's become such a common pattern to call methods like `arr->aint_len()`, maybe a shorthand like `arr:len()` which just compiles to `{type(arr)}_len()`
   would simplify a lot of code
 
