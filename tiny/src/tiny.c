@@ -384,7 +384,7 @@ Tiny_Value Tiny_NewBool(bool value) {
     return val;
 }
 
-Tiny_Value Tiny_NewInt(int i) {
+Tiny_Value Tiny_NewInt(Tiny_Int i) {
     Tiny_Value val;
 
     val.type = TINY_VAL_INT;
