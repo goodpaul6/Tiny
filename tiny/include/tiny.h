@@ -119,11 +119,10 @@ typedef enum {
     TINY_VAL_NATIVE,
     TINY_VAL_LIGHT_NATIVE,
     TINY_VAL_STRUCT,
-    TINY_VAL_ARRAY,
 } Tiny_ValueType;
 
 // TODO(Apaar): For now, we're just gonna have the bytecode be fully typed.
-// 
+//
 // Since we don't officially support polymorphic stuff, we can just store
 // GC roots elsewhere. I think I did that in the `snow-common` branch.
 typedef struct Tiny_Value {
@@ -135,6 +134,8 @@ typedef struct Tiny_Value {
         void *addr;        // for TINY_VAL_LIGHT_NATIVE
         Tiny_Object *obj;
     };
+
+    uint8_t type;
 } Tiny_Value;
 
 typedef struct Tiny_Frame {
@@ -212,9 +213,6 @@ Tiny_Value Tiny_NewStringCopy(Tiny_StateThread *thread, const char *src, size_t 
 
 // Same as Tiny_NewStringCopy but assumes the given string is null terminated.
 Tiny_Value Tiny_NewStringCopyNullTerminated(Tiny_StateThread *thread, const char *src);
-
-// Creates a new dynamic array object with the given length (filled with fillValue) and capacity.
-Tiny_Value Tiny_NewArray(Tiny_StateThread* thread, size_t len, Tiny_Value fillValue, size_t cap);
 
 Tiny_Value Tiny_NewNative(Tiny_StateThread *thread, void *ptr, const Tiny_NativeProp *prop);
 
@@ -485,7 +483,6 @@ typedef enum {
     TINY_SYM_TAG_FOREIGN,
     TINY_SYM_TAG_STRUCT,
     TINY_SYM_TAG_NULLABLE,
-    TINY_SYM_TAG_ARRAY,
 } Tiny_SymbolType;
 
 // For all the fields marked with `// array` below, you can use
@@ -550,8 +547,6 @@ typedef struct Tiny_Symbol {
         struct Tiny_Symbol *fieldTag;
 
         struct Tiny_Symbol *nullableTag;
-
-        struct Tiny_Symbol *arrayElemTag;
 
         Tiny_MacroFunction modFunc;
     };

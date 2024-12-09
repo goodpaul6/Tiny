@@ -316,37 +316,6 @@ static Tiny_Object *NewStructObject(Tiny_StateThread *thread, Word n) {
     return obj;
 }
 
-static Tiny_Object* NewArrayObject(Tiny_StateThread *thread, size_t len, Tiny_Value fillValue, size_t cap) {
-    assert(cap >= len);
-
-    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + sizeof(Tiny_Value) * cap);
-
-    obj->type = TINY_VAL_ARRAY;
-    obj->next = thread->gcHead;
-    thread->gcHead = obj;
-    obj->marked = 0;
-
-    obj->array.cap = cap;
-    obj->array.len = len;
-
-    for(size_t i = 0; i < len; i += 1) {
-        obj->array.elems[i] = fillValue;
-    }
-
-    thread->numObjects++;
-
-    return obj;
-}
-
-Tiny_Value Tiny_NewArray(Tiny_StateThread* thread, size_t len, Tiny_Value fillValue, size_t cap) {
-    Tiny_Value val;
-
-    val.type = TINY_VAL_ARRAY;
-    val.obj = NewArrayObject(thread, len, fillValue, cap);
-
-    return val;
-}
-
 Tiny_Value Tiny_NewLightNative(void *ptr) {
     Tiny_Value val;
 
@@ -1613,29 +1582,6 @@ static Tiny_Symbol *GetOrCreateNullable(Tiny_State *state, Tiny_Symbol *inner) {
     return sym;
 }
 
-static Tiny_Symbol* GetOrCreateArrayTag(Tiny_State* state, Tiny_Symbol* inner) {
-    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Tiny_Symbol *sym = state->globalSymbols[i];
-
-        if (sym->type == TINY_SYM_TAG_ARRAY && sym->arrayElemTag == inner) {
-            return sym;
-        }
-    }
-    
-    // FIXME(Apaar): Allow names longer than 256 chars
-    char nameBuf[256] = {0};
-
-    snprintf(nameBuf, sizeof(nameBuf), "[]%s", GetTagName(inner));
-
-    Tiny_Symbol *sym = Symbol_create(TINY_SYM_TAG_ARRAY, nameBuf, state);
-
-    sym->arrayElemTag = inner;
-
-    sb_push(&state->ctx, state->globalSymbols, sym);
-
-    return sym;
-}
-
 static Tiny_Symbol *GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
     assert(s->type == TINY_SYM_TAG_STRUCT);
     assert(s->sstruct.defined);
@@ -1661,29 +1607,14 @@ static Tiny_Symbol *ParseTypeL(Tiny_State *state, Tiny_Lexer *l) {
     if (l->lastTok == TINY_TOK_QUESTION) {
         Tiny_GetToken(l);
 
-        Tiny_Symbol* inner = ParseTypeL(state, l);
+        Tiny_Symbol *inner = ParseTypeL(state, l);
 
         if (inner->type == TINY_SYM_TAG_VOID) {
             ReportErrorL(state, l,
-                    "Attempted to make a nullable 'void' type which doesn't make any sense.");
+                         "Attempted to make a nullable 'void' type which doesn't make any sense.");
         }
 
         return GetOrCreateNullable(state, inner);
-    }
-
-    // Array type
-    if(l->lastTok == TINY_TOK_OPENSQUARE) {
-        // Consume '['
-        Tiny_GetToken(l);
-
-        ExpectTokenL(state, l, TINY_TOK_CLOSESQUARE, "Expected ']' after '[' in array type.");
-
-        // Consume ']'
-        Tiny_GetToken(l);
-
-        Tiny_Symbol* inner = ParseTypeL(state, l);
-
-        return GetOrCreateArrayTag(state, inner);
     }
 
     ExpectTokenL(state, l, TINY_TOK_IDENT, "Expected identifier for typename.");
@@ -2549,11 +2480,6 @@ static bool IsTagAssignableTo(const Tiny_Symbol *src, const Tiny_Symbol *dest) {
 
     if (dest->type == TINY_SYM_TAG_NULLABLE) {
         return IsTagAssignableTo(src, dest->nullableTag);
-    }
-
-    if (dest->type == TINY_SYM_TAG_ARRAY) {
-        return src->type == TINY_SYM_TAG_ARRAY &&
-               IsTagAssignableTo(src->arrayElemTag, dest->arrayElemTag);
     }
 
     if (src->type == dest->type) {

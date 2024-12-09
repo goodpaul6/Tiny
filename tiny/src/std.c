@@ -614,7 +614,8 @@ static void Print(Tiny_Value val, bool repr) {
             printf("<light native at %p>", val.addr);
             break;
         case TINY_VAL_NATIVE: {
-            if (repr && (val.obj->nat.prop == &ArrayProp || val.obj->nat.prop == &PrimitiveArrayProp)) {
+            if (repr &&
+                (val.obj->nat.prop == &ArrayProp || val.obj->nat.prop == &PrimitiveArrayProp)) {
                 printf("[");
 
                 Array *array = val.obj->nat.addr;

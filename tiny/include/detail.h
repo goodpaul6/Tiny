@@ -36,13 +36,6 @@ typedef struct Tiny_Object {
             Word n;
             Tiny_Value fields[];
         } ostruct;
-
-        struct {
-            size_t cap;
-            size_t len;
-            // Part of the same allocation as this object
-            Tiny_Value elems[];
-        } array;
     };
 } Tiny_Object;
 
