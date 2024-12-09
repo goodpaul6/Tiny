@@ -10,6 +10,12 @@
         - There _are_ some complications with this model; can no longer have _true_ 64-bit ints without boxing
         - Might also be troublesome for embedded systems where we'd want integer type not to be the same width as pointer type
             - Oh but actually `Tiny_Value` is already always at least pointer width
+    - We can support unboxed arrays via the extern system
+
+- IDEA First class namespaces/modules would be pretty sick; easy way to soup up the macro system by making them truly hygenic
+    - Basically like OCaml, but I believe we can make the language _simpler_ somehow using them
+    - Types can be namespaces? Or namespaces can have types?
+    - Basically formalize the "protocol" thing we've been doing with the indexing syntax
 
 - IDEA Since it's become such a common pattern to call methods like `arr->aint_len()`, maybe a shorthand like `arr:len()` which just compiles to `{type(arr)}_len()`
   would simplify a lot of code
