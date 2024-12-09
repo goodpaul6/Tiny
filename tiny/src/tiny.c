@@ -2580,6 +2580,11 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                 }
             }
 
+            if (i < argc) {
+                ReportErrorE(state, exp, "'%s' expects (at least) %d args but you supplied %d",
+                             exp->call.calleeName->value, argc, i);
+            }
+
             exp->tag = func->type == TINY_SYM_FOREIGN_FUNCTION ? func->foreignFunc.returnTag
                                                                : func->func.returnTag;
         } break;

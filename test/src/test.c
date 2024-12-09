@@ -1156,6 +1156,20 @@ static void test_LeftAndRightShift() {
     Tiny_DeleteState(state);
 }
 
+static void test_InsufficientArgsError() {
+    Tiny_State *state = CreateState();
+
+    const char *code =
+        "func add(x: int, y: int): int { return x + y }\n"
+        "a := add(10)\n";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(insufficient args)", code);
+
+    lequal_return(result.type, TINY_COMPILE_ERROR);
+
+    Tiny_DeleteState(state);
+}
+
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
@@ -1186,6 +1200,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Index Syntax Works", test_IndexSyntax);
     lrun("Tiny Nested Struct Assignment Works", test_NestedStructAssignValue);
     lrun("Tiny Left and Right Shift Works", test_LeftAndRightShift);
+    lrun("Tiny Insufficient Args", test_InsufficientArgsError);
 
     lrun("Check no leak in tests", test_CheckMallocs);
 
