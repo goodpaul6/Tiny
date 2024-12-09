@@ -21,7 +21,7 @@ static unsigned long HashValue(Tiny_Value value) {
         case TINY_VAL_BOOL:
             return (int)value.boolean + 1;
         case TINY_VAL_INT:
-            return (unsigned long)value.i;
+            return (Tiny_Int)value.i;
         case TINY_VAL_CONST_STRING:
         case TINY_VAL_STRING: {
             const char *start = Tiny_ToString(value);

@@ -22,7 +22,7 @@ typedef struct Tiny_Object {
             // NOTE(Apaar): If the user calls "NewStringWithLen" then this is just
             // a pointer to the same allocation as this object!
             //
-            // Otherwise (if calling NewString)
+            // Otherwise (if calling NewString) this points to a string allocated separately.
             char *ptr;
         } string;
 

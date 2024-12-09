@@ -121,6 +121,10 @@ typedef enum {
     TINY_VAL_STRUCT,
 } Tiny_ValueType;
 
+// TODO(Apaar): For now, we're just gonna have the bytecode be fully typed.
+//
+// Since we don't officially support polymorphic stuff, we can just store
+// GC roots elsewhere. I think I did that in the `snow-common` branch.
 typedef struct Tiny_Value {
     union {
         bool boolean;
@@ -183,7 +187,7 @@ extern Tiny_Context Tiny_DefaultContext;
 void Tiny_ProtectFromGC(Tiny_Value value);
 
 Tiny_Value Tiny_NewBool(bool value);
-Tiny_Value Tiny_NewInt(int i);
+Tiny_Value Tiny_NewInt(Tiny_Int i);
 Tiny_Value Tiny_NewFloat(Tiny_Float f);
 Tiny_Value Tiny_NewConstString(const char *string);
 Tiny_Value Tiny_NewLightNative(void *ptr);

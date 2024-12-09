@@ -353,7 +353,7 @@ Tiny_Value Tiny_NewBool(bool value) {
     return val;
 }
 
-Tiny_Value Tiny_NewInt(int i) {
+Tiny_Value Tiny_NewInt(Tiny_Int i) {
     Tiny_Value val;
 
     val.type = TINY_VAL_INT;
@@ -428,7 +428,7 @@ Tiny_Value Tiny_NewStringCopyNullTerminated(Tiny_StateThread *thread, const char
 static void Symbol_destroy(Tiny_Symbol *sym, Tiny_Context *ctx);
 
 static Tiny_Value Lib_ToInt(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
-    return Tiny_NewInt((int)Tiny_ToFloat(args[0]));
+    return Tiny_NewInt((Tiny_Int)Tiny_ToFloat(args[0]));
 }
 
 static Tiny_Value Lib_ToFloat(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
@@ -991,7 +991,7 @@ void Tiny_RegisterType(Tiny_State *state, const char *name) {
 
     if (s) {
         if (s->type == TINY_SYM_TAG_STRUCT && !s->sstruct.defined) {
-            // If there's a struct that's undefined with the same name, the user is probably
+            // If there's a struct that's undefined with the same name, the Tiny code is probably
             // referring to this type that we're about to define here, so just update it in place
             // to be an opaque foreign type.
             s->type = TINY_SYM_TAG_FOREIGN;
@@ -1046,8 +1046,6 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
             varargs = true;
             Tiny_GetToken(&l);
         } else {
-            assert(l.lastTok == TINY_TOK_IDENT);
-
             Tiny_Symbol *s = ParseTypeL(state, &l);
 
             assert(s);
@@ -1064,8 +1062,6 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
 
     if (l.lastTok == TINY_TOK_COLON) {
         Tiny_GetToken(&l);
-
-        assert(l.lastTok == TINY_TOK_IDENT);
 
         returnTag = ParseTypeL(state, &l);
         assert(returnTag);
@@ -1575,7 +1571,7 @@ static Tiny_Symbol *GetOrCreateNullable(Tiny_State *state, Tiny_Symbol *inner) {
     // FIXME(Apaar): Allow names longer than 256 chars
     char nameBuf[256] = {0};
 
-    snprintf(nameBuf, sizeof(nameBuf), "%s?", GetTagName(inner));
+    snprintf(nameBuf, sizeof(nameBuf), "?%s", GetTagName(inner));
 
     Tiny_Symbol *sym = Symbol_create(TINY_SYM_TAG_NULLABLE, nameBuf, state);
 
@@ -1607,6 +1603,20 @@ static Tiny_Symbol *GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
 static Tiny_TokenKind GetNextToken(Tiny_State *state) { return Tiny_GetToken(&state->l); }
 
 static Tiny_Symbol *ParseTypeL(Tiny_State *state, Tiny_Lexer *l) {
+    // Nullable type (more consistent if we prefix)
+    if (l->lastTok == TINY_TOK_QUESTION) {
+        Tiny_GetToken(l);
+
+        Tiny_Symbol *inner = ParseTypeL(state, l);
+
+        if (inner->type == TINY_SYM_TAG_VOID) {
+            ReportErrorL(state, l,
+                         "Attempted to make a nullable 'void' type which doesn't make any sense.");
+        }
+
+        return GetOrCreateNullable(state, inner);
+    }
+
     ExpectTokenL(state, l, TINY_TOK_IDENT, "Expected identifier for typename.");
 
     Tiny_Symbol *s = GetTagFromName(state, l->lexeme, true);
@@ -1616,16 +1626,6 @@ static Tiny_Symbol *ParseTypeL(Tiny_State *state, Tiny_Lexer *l) {
     }
 
     Tiny_GetToken(l);
-
-    if (l->lastTok == TINY_TOK_QUESTION) {
-        if (s->type == TINY_SYM_TAG_VOID) {
-            ReportErrorL(state, l,
-                         "Attempted to make a nullable 'void' type which doesn't make any sense.");
-        }
-
-        s = GetOrCreateNullable(state, s);
-        Tiny_GetToken(l);
-    }
 
     return s;
 }

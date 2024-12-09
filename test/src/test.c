@@ -871,8 +871,8 @@ static void test_ParseNullable() {
     Tiny_State *state = CreateState();
 
     const char *code =
-        "x : int? = 10\n"
-        "func f(): int?\n"
+        "x : ?int = 10\n"
+        "func f(): ?int\n"
         "{ return 10 }\n";
 
     Tiny_CompileString(state, "(parse opt test)", code);
@@ -887,7 +887,7 @@ static void test_BindNullable() {
 
     Tiny_RegisterType(state, "Point");
 
-    Tiny_BindFunction(state, "f(Point?, int?): int?", Lib_Print);
+    Tiny_BindFunction(state, "f(?Point, ?int): ?int", Lib_Print);
 
     lok(true);
 
@@ -898,7 +898,7 @@ static void test_CannotUseNullable() {
     Tiny_State *state = CreateState();
 
     const char *code =
-        "x : int? = 10\n"
+        "x : ?int = 10\n"
         "func f(x: int) {}\n"
         "f(x)\n";
 
@@ -913,7 +913,7 @@ static void test_ParseFailureIsOkay() {
     Tiny_State *state = CreateState();
 
     const char *code =
-        "x : int? = 10\n"
+        "x : ?int = 10\n"
         "func fx: int) {}\n"
         "f(x)\n";
 
@@ -952,7 +952,7 @@ static void test_AssignNullToAny() {
 static void test_AssignValueToNullable() {
     Tiny_State *state = CreateState();
 
-    const char *code = "x : int? = 10\n";
+    const char *code = "x : ?int = 10\n";
 
     Tiny_CompileResult result = Tiny_CompileString(state, "(can assign 10 to int?)", code);
 
@@ -965,7 +965,7 @@ static void test_CantAssignNullableToNonNullable() {
     Tiny_State *state = CreateState();
 
     const char *code =
-        "x: int? = 10\n"
+        "x: ?int = 10\n"
         "y: int = x\n";
 
     Tiny_CompileResult result =

@@ -1,5 +1,24 @@
 # TODO
 
+- IDEA Rather than having arrays or indexing syntax built in, maybe just have a primitive "slice" type? Pretty much the Zig approach
+    - A slice + encoding/iterator covers like 90% of cases
+    - If we want these things to be efficiently encoded, we should just start having multiple values on the stack
+    - A slice is just a length int value + a `TINY_VAL_SLICE_PTR` so we don't have to box every slice and we also don't have
+      to blow up the size of every `Tiny_Value`
+    - But if we're gonna support unboxed structs and stuff, then we might as well use an OCaml-like value representation
+      (use a high bit to represent whether anything is an `Object*` vs a primitive)
+        - There _are_ some complications with this model; can no longer have _true_ 64-bit ints without boxing
+        - Might also be troublesome for embedded systems where we'd want integer type not to be the same width as pointer type
+            - Oh but actually `Tiny_Value` is already always at least pointer width
+    - We can support unboxed arrays via the extern system
+
+- IDEA First class namespaces/modules would be pretty sick; easy way to soup up the macro system by making them truly hygenic
+    - Basically like OCaml, but I believe we can make the language _simpler_ somehow using them
+    - Types can be namespaces? Or namespaces can have types?
+    - Basically formalize the "protocol" thing we've been doing with the indexing syntax
+
+- IDEA What if all `struct` are structurally typed? Assuming structs 
+
 - IDEA Since it's become such a common pattern to call methods like `arr->aint_len()`, maybe a shorthand like `arr:len()` which just compiles to `{type(arr)}_len()`
   would simplify a lot of code
 

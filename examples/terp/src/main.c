@@ -85,6 +85,8 @@ static TINY_MACRO_FUNCTION(DefineResultFunction) {
 }
 
 int main(int argc, char** argv) {
+    printf("sizeof(Tiny_Value)=%zd\n", sizeof(Tiny_Value));
+
     if (argc < 2) {
         fprintf(stderr, "Usage: %s (path to tiny file)\n", argv[0]);
         return 1;
