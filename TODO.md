@@ -1,5 +1,7 @@
 # TODO
 
+- BAD Bytecode VM should check whether we have the right values on the stack. Can be removed in release mode.
+
 - IDEA Rather than having arrays or indexing syntax built in, maybe just have a primitive "slice" type? Pretty much the Zig approach
     - A slice + encoding/iterator covers like 90% of cases
     - If we want these things to be efficiently encoded, we should just start having multiple values on the stack

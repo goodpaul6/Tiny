@@ -880,6 +880,19 @@ static Tiny_Symbol *DeclareArgument(Tiny_State *state, const char *name, Tiny_Sy
 static Tiny_Symbol *DeclareLocal(Tiny_State *state, const char *name) {
     assert(state->currFunc);
 
+    for (int i = 0; i < sb_count(state->currFunc->func.args); ++i) {
+        Tiny_Symbol *sym = state->currFunc->func.args[i];
+
+        assert(sym->type == TINY_SYM_LOCAL);
+
+        if (!sym->var.scopeEnded && strcmp(sym->name, name) == 0) {
+            ReportErrorSL(state,
+                          "Function '%s' has a local var and an argument in the same scope with "
+                          "name '%s'.\n",
+                          state->currFunc->name, name);
+        }
+    }
+
     for (int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
         Tiny_Symbol *sym = state->currFunc->func.locals[i];
 
