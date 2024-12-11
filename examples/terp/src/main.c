@@ -86,6 +86,8 @@ static TINY_MACRO_FUNCTION(DefineResultFunction) {
 
 int main(int argc, char** argv) {
     printf("sizeof(Tiny_Value)=%zd\n", sizeof(Tiny_Value));
+    printf("TINY_THREAD_STACK_SIZE=%d\n", TINY_THREAD_STACK_SIZE);
+    printf("TINY_THREAD_MAX_CALL_DEPTH=%d\n", TINY_THREAD_MAX_CALL_DEPTH);
 
     if (argc < 2) {
         fprintf(stderr, "Usage: %s (path to tiny file)\n", argv[0]);
