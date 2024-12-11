@@ -1248,6 +1248,38 @@ static void test_ForeachRev() {
     Tiny_DeleteState(state);
 }
 
+static void test_ForeachRevNoIndex() {
+    Tiny_State *state = CreateState();
+
+    Tiny_BindStandardArray(state);
+
+    const char *code =
+        "use array(\"int\") as aint\n"
+        "sum := 0\n"
+        "foreach x in_reverse aint(1, 2, 3) sum += x\n";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(foreach reverse noindex syntax)", code);
+
+    lok_print_return(result.type == TINY_COMPILE_SUCCESS, "Failed to compile: %s\n", result.error.msg);
+
+    int sumIdx = Tiny_GetGlobalIndex(state, "sum");
+
+    lequal_return(sumIdx, 0);
+
+    Tiny_StateThread thread;
+
+    Tiny_InitThread(&thread, state);
+
+    Tiny_StartThread(&thread);
+    Tiny_Run(&thread);
+
+    Tiny_Value sum = Tiny_GetGlobal(&thread, sumIdx);
+    lequal_return(sum.type, TINY_VAL_INT);
+    lequal_return(sum.i, 6);
+
+    Tiny_DeleteState(state);
+}
+
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
@@ -1282,6 +1314,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Matching Arg and Local Names", test_MatchingArgLocalName);
     lrun("Tiny Foreach Syntax", test_Foreach);
     lrun("Tiny Foreach Reverse Syntax", test_ForeachRev);
+    lrun("Tiny Foreach Reverse Noindex Syntax", test_ForeachRevNoIndex);
 
     lrun("Check no leak in tests", test_CheckMallocs);
 
