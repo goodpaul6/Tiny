@@ -1184,6 +1184,69 @@ static void test_MatchingArgLocalName() {
     Tiny_DeleteState(state);
 }
 
+static void test_Foreach() {
+    Tiny_State *state = CreateState();
+
+    Tiny_BindStandardArray(state);
+
+    const char *code =
+        "use array(\"int\") as aint\n"
+        "sum := 0\n"
+        "foreach x, i in aint(1, 2, 3) sum += x * i\n";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(foreach syntax)", code);
+
+    lok_print_return(result.type == TINY_COMPILE_SUCCESS, "Failed to compile: %s\n", result.error.msg);
+
+    int sumIdx = Tiny_GetGlobalIndex(state, "sum");
+
+    lequal_return(sumIdx, 0);
+
+    Tiny_StateThread thread;
+
+    Tiny_InitThread(&thread, state);
+
+    Tiny_StartThread(&thread);
+    Tiny_Run(&thread);
+
+    Tiny_Value sum = Tiny_GetGlobal(&thread, sumIdx);
+    lequal_return(sum.type, TINY_VAL_INT);
+    lequal_return(sum.i, 8);
+
+    Tiny_DeleteState(state);
+}
+
+static void test_ForeachRev() {
+    Tiny_State *state = CreateState();
+
+    Tiny_BindStandardArray(state);
+
+    const char *code =
+        "use array(\"int\") as aint\n"
+        "sum := 0\n"
+        "foreach x, i in_reverse aint(1, 2, 3) sum += x * i\n";
+
+    Tiny_CompileResult result = Tiny_CompileString(state, "(foreach reverse syntax)", code);
+
+    lok_print_return(result.type == TINY_COMPILE_SUCCESS, "Failed to compile: %s\n", result.error.msg);
+
+    int sumIdx = Tiny_GetGlobalIndex(state, "sum");
+
+    lequal_return(sumIdx, 0);
+
+    Tiny_StateThread thread;
+
+    Tiny_InitThread(&thread, state);
+
+    Tiny_StartThread(&thread);
+    Tiny_Run(&thread);
+
+    Tiny_Value sum = Tiny_GetGlobal(&thread, sumIdx);
+    lequal_return(sum.type, TINY_VAL_INT);
+    lequal_return(sum.i, 8);
+
+    Tiny_DeleteState(state);
+}
 
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
@@ -1217,6 +1280,8 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Left and Right Shift Works", test_LeftAndRightShift);
     lrun("Tiny Insufficient Args", test_InsufficientArgsError);
     lrun("Tiny Matching Arg and Local Names", test_MatchingArgLocalName);
+    lrun("Tiny Foreach Syntax", test_Foreach);
+    lrun("Tiny Foreach Reverse Syntax", test_ForeachRev);
 
     lrun("Check no leak in tests", test_CheckMallocs);
 

@@ -29,6 +29,9 @@
 
 const Tiny_Value Tiny_Null = {TINY_VAL_NULL};
 
+// In the event that you want to declare a symbol that can't be named
+const char* ANON_SYM_NAME = "(anonymous)";
+
 static void *DefaultAlloc(void *ptr, size_t size, void *userdata) {
     if (size == 0) {
         free(ptr);
@@ -781,6 +784,12 @@ static void CloseScope(Tiny_State *state) {
 }
 
 static Tiny_Symbol *ReferenceVariable(Tiny_State *state, const char *name) {
+    // This clever trick let's me unify the codepaths for symbols
+    // that can be named and can't be named
+    if(name == ANON_SYM_NAME) {
+        return NULL;
+    }
+
     if (state->currFunc) {
         // Check local variables
         for (int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
@@ -820,13 +829,15 @@ static Tiny_Symbol *ReferenceVariable(Tiny_State *state, const char *name) {
 }
 
 static Tiny_Symbol *DeclareGlobalVar(Tiny_State *state, const char *name) {
-    Tiny_Symbol *sym = ReferenceVariable(state, name);
+    if (name != ANON_SYM_NAME) {
+        Tiny_Symbol *sym = ReferenceVariable(state, name);
 
-    if (sym && (sym->type == TINY_SYM_GLOBAL || sym->type == TINY_SYM_CONST)) {
-        ReportErrorSL(state,
-                      "Attempted to declare multiple global entities with the same "
-                      "name '%s'.",
-                      name);
+        if (sym && (sym->type == TINY_SYM_GLOBAL || sym->type == TINY_SYM_CONST)) {
+            ReportErrorSL(state,
+                          "Attempted to declare multiple global entities with the same "
+                          "name '%s'.",
+                          name);
+        }
     }
 
     Tiny_Symbol *newNode = Symbol_create(TINY_SYM_GLOBAL, name, state);
@@ -853,15 +864,13 @@ static Tiny_Symbol *DeclareArgument(Tiny_State *state, const char *name, Tiny_Sy
     assert(state->currFunc);
     assert(tag);
 
-    for (int i = 0; i < sb_count(state->currFunc->func.args); ++i) {
-        Tiny_Symbol *sym = state->currFunc->func.args[i];
-
-        assert(sym->type == TINY_SYM_LOCAL);
-
-        if (strcmp(sym->name, name) == 0) {
-            ReportErrorSL(state, "Function '%s' takes multiple arguments with name '%s'.\n",
-                          state->currFunc->name, name);
-        }
+    // At this time there would be no locals declared so this should be fine.
+    // Regardless, you shan't have locals + args have the same name.
+    Tiny_Symbol *prevSym = ReferenceVariable(state, name);
+    if(prevSym && prevSym->type == TINY_SYM_LOCAL) {
+        ReportErrorSL(state,
+                      "Function '%s' has arguments locals with the name '%s'.\n",
+                      state->currFunc->name, name); 
     }
 
     Tiny_Symbol *newNode = Symbol_create(TINY_SYM_LOCAL, name, state);
@@ -880,30 +889,12 @@ static Tiny_Symbol *DeclareArgument(Tiny_State *state, const char *name, Tiny_Sy
 static Tiny_Symbol *DeclareLocal(Tiny_State *state, const char *name) {
     assert(state->currFunc);
 
-    for (int i = 0; i < sb_count(state->currFunc->func.args); ++i) {
-        Tiny_Symbol *sym = state->currFunc->func.args[i];
-
-        assert(sym->type == TINY_SYM_LOCAL);
-
-        if (!sym->var.scopeEnded && strcmp(sym->name, name) == 0) {
-            ReportErrorSL(state,
-                          "Function '%s' has a local var and an argument in the same scope with "
-                          "name '%s'.\n",
-                          state->currFunc->name, name);
-        }
-    }
-
-    for (int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
-        Tiny_Symbol *sym = state->currFunc->func.locals[i];
-
-        assert(sym->type == TINY_SYM_LOCAL);
-
-        if (!sym->var.scopeEnded && strcmp(sym->name, name) == 0) {
-            ReportErrorSL(state,
-                          "Function '%s' has multiple locals in the same scope with "
-                          "name '%s'.\n",
-                          state->currFunc->name, name);
-        }
+    Tiny_Symbol *prevSym = ReferenceVariable(state, name);
+    if(prevSym && prevSym->type == TINY_SYM_LOCAL) {
+        ReportErrorSL(state,
+                      "Function '%s' has multiple locals in the same scope with "
+                      "name '%s'.\n",
+                      state->currFunc->name, name); 
     }
 
     Tiny_Symbol *newNode = Symbol_create(TINY_SYM_LOCAL, name, state);
@@ -918,6 +909,12 @@ static Tiny_Symbol *DeclareLocal(Tiny_State *state, const char *name) {
     return newNode;
 }
 
+// Declares a local or global depending on whether we are inside a func
+static Tiny_Symbol* DeclareVar(Tiny_State* state, const char* name) {
+    return state->currFunc ? DeclareLocal(state, name) :
+                             DeclareGlobalVar(state, name);
+}
+
 static Tiny_Symbol *DeclareConst(Tiny_State *state, const char *name, Tiny_Symbol *tag) {
     Tiny_Symbol *sym = ReferenceVariable(state, name);
 
@@ -928,12 +925,6 @@ static Tiny_Symbol *DeclareConst(Tiny_State *state, const char *name, Tiny_Symbo
                       "another value.\n",
                       name);
     }
-
-    if (state->currFunc)
-        fprintf(stderr,
-                "Warning: Constant '%s' declared inside function bodies will still "
-                "have global scope.\n",
-                name);
 
     Tiny_Symbol *newNode = Symbol_create(TINY_SYM_CONST, name, state);
 
@@ -2363,6 +2354,59 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
             return exp;
         } break;
 
+        case TINY_TOK_FOREACH: {
+            Tiny_Expr* exp = Expr_create(TINY_EXP_FOREACH, state);
+
+            GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after 'foreach'");
+            
+            // Every local declared after this is scoped to the foreach
+            OpenScope(state);
+
+            exp->forEach.elemVar = DeclareVar(state, state->l.lexeme);
+            exp->forEach.indexVar = NULL;
+            exp->forEach.reverse = false;
+            exp->forEach.lenFunc = NULL;
+            exp->forEach.getIndexFunc = NULL;
+
+            GetNextToken(state);
+
+            if (state->l.lastTok == TINY_TOK_COMMA) {
+                GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after 'foreach {varname},'");
+
+                exp->forEach.indexVar = DeclareVar(state, state->l.lexeme);
+                GetNextToken(state);
+            } else {
+                // Declare an anon var for the index
+                exp->forEach.indexVar = DeclareVar(state, ANON_SYM_NAME);
+            }
+ 
+            const char* err = "Expected 'in' or 'in_reverse' after foreach ...";
+
+            ExpectTokenSL(state, TINY_TOK_IDENT, err);
+
+            if (strcmp(state->l.lexeme, "in_reverse") == 0) {
+                exp->forEach.reverse = true;
+            } else if(strcmp(state->l.lexeme, "in") != 0) {
+                // It must be one of in or in_reverse
+                ExpectTokenSL(state, TINY_TOK_IDENT, err);
+            }
+
+            GetNextToken(state);
+
+            exp->forEach.range = ParseExpr(state);
+            
+            // You cannot refer to the range value
+            //
+            // TODO(Apaar): What if you could?? :)
+            exp->forEach.rangeVar = DeclareVar(state, ANON_SYM_NAME);
+
+            exp->forEach.body = ParseStatement(state);
+
+            CloseScope(state);
+
+            return exp;
+        } break;
+
         default: {
             Tiny_Expr *lhs = ParseFactor(state);
 
@@ -2381,11 +2425,7 @@ static Tiny_Expr *ParseStatement(Tiny_State *state) {
                     ReportErrorSL(state, "Left hand side of declaration must be identifier.");
                 }
 
-                if (state->currFunc) {
-                    lhs->id.sym = DeclareLocal(state, lhs->id.name->value);
-                } else {
-                    lhs->id.sym = DeclareGlobalVar(state, lhs->id.name->value);
-                }
+                lhs->id.sym = DeclareVar(state, lhs->id.name->value);
 
                 if (state->l.lastTok == TINY_TOK_COLON) {
                     GetNextToken(state);
@@ -3049,6 +3089,62 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             exp->index.getIndexFunc = getIndexFunc;
             exp->index.setIndexFunc = setIndexFunc;
         } break;
+
+        case TINY_EXP_FOREACH: {
+            exp->tag = GetPrimTag(TINY_SYM_TAG_VOID);
+
+            ResolveTypes(state, exp->forEach.range);
+
+            // Must resolve the types of the elemVar and indexVar before resolving the body
+            // because it probably uses these vars
+            exp->forEach.indexVar->var.tag = GetPrimTag(TINY_SYM_TAG_INT);
+
+            { 
+                const char *arrTypeName = GetTagName(exp->forEach.range->tag);
+
+                // HACK(Apaar): Copy pasted wholesale from above
+                // COPYPASTE BEGIN
+                
+                // TODO(Apaar): Allow for longer names??
+                char buf[256] = {0};
+                snprintf(buf, sizeof(buf), "%s_get_index", arrTypeName);
+
+                // This better exist (registered or otherwise)
+                const Tiny_Symbol *getIndexFunc = ReferenceFunction(state, buf);
+
+                if (!getIndexFunc) {
+                    ReportErrorE(state, exp->forEach.range,
+                                 "In order to use `foreach` on this you must define %s, but no such function exists",
+                                 buf, arrTypeName);
+                }
+
+                Tiny_Symbol *getIndexReturnType = getIndexFunc->type == TINY_SYM_FOREIGN_FUNCTION
+                                                      ? getIndexFunc->foreignFunc.returnTag
+                                                      : getIndexFunc->func.returnTag;
+
+                // TODO(Apaar): Check that the argument count of getIndexFunc is 2 and also that it
+                // receives the correct argument types.
+
+                // COPYPASTE END
+
+                snprintf(buf, sizeof(buf), "%s_len", arrTypeName);
+                
+                // This better exist (registered or otherwise)
+                const Tiny_Symbol *lenFunc = ReferenceFunction(state, buf);
+
+                if (!lenFunc) {
+                    ReportErrorE(state, exp->forEach.range,
+                                 "In order to use `foreach` on this you must define %s, but no such function exists",
+                                 buf);
+                }
+
+                exp->forEach.getIndexFunc = getIndexFunc;
+                exp->forEach.lenFunc = lenFunc;
+                exp->forEach.elemVar->var.tag = getIndexReturnType;
+            }
+
+            ResolveTypes(state, exp->forEach.body);
+        } break;
     }
 }
 
@@ -3123,41 +3219,49 @@ static void CompileCallSymbolWithArgsPrepared(Tiny_State *state, Word nargs, con
     }
 }
 
+static void CompileGetVar(Tiny_State* state, const Tiny_Symbol* sym) {
+    assert(sym);
+    assert(sym->type == TINY_SYM_CONST ||
+           sym->type == TINY_SYM_LOCAL ||
+           sym->type == TINY_SYM_GLOBAL);
+
+    if(sym->type == TINY_SYM_CONST) {
+        if (sym->constant.tag == GetPrimTag(TINY_SYM_TAG_STR)) {
+            GeneratePushString(state, sym->constant.sIndex);
+        } else if (sym->constant.tag == GetPrimTag(TINY_SYM_TAG_BOOL)) {
+            GenerateCode(state,
+                         sym->constant.bValue ? TINY_OP_PUSH_TRUE : TINY_OP_PUSH_FALSE);
+        } else if (sym->constant.tag == GetPrimTag(TINY_SYM_TAG_INT)) {
+            GeneratePushInt(state, sym->constant.iValue);
+        } else if (sym->constant.tag == GetPrimTag(TINY_SYM_TAG_FLOAT)) {
+            GeneratePushFloat(state, sym->constant.fValue);
+        } else {
+            assert(0);
+        }
+
+        return;
+    }
+
+    if (sym->type == TINY_SYM_GLOBAL) {
+        GenerateCode(state, TINY_OP_GET);
+        GEN_VALUE_NOPOS(state, &sym->var.index);
+    } else {
+        if (sym->var.index < 0 || sym->var.index > 0xff) {
+            GenerateCode(state, TINY_OP_GETLOCAL);
+            GEN_VALUE_NOPOS(state, &sym->var.index);
+        } else {
+            GenerateCode(state, TINY_OP_GETLOCAL_W);
+            GenerateCode(state, (Word)sym->var.index);
+        }
+    }
+}
+
 static void CompileGetLHS(Tiny_State *state, Tiny_Expr *exp) {
     if (exp->type == TINY_EXP_ID) {
         if (!exp->id.sym)
             ReportErrorE(state, exp, "Referencing undeclared identifier '%s'.\n", exp->id.name);
 
-        assert(exp->id.sym->type == TINY_SYM_GLOBAL || exp->id.sym->type == TINY_SYM_LOCAL ||
-               exp->id.sym->type == TINY_SYM_CONST);
-
-        if (exp->id.sym->type != TINY_SYM_CONST) {
-            if (exp->id.sym->type == TINY_SYM_GLOBAL) {
-                GenerateCode(state, TINY_OP_GET);
-                GEN_VALUE_NOPOS(state, &exp->id.sym->var.index);
-            } else if (exp->id.sym->type == TINY_SYM_LOCAL) {
-                if (exp->id.sym->var.index < 0 || exp->id.sym->var.index > 0xff) {
-                    GenerateCode(state, TINY_OP_GETLOCAL);
-                    GEN_VALUE_NOPOS(state, &exp->id.sym->var.index);
-                } else {
-                    GenerateCode(state, TINY_OP_GETLOCAL_W);
-                    GenerateCode(state, (Word)exp->id.sym->var.index);
-                }
-            }
-        } else {
-            if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_STR)) {
-                GeneratePushString(state, exp->id.sym->constant.sIndex);
-            } else if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_BOOL)) {
-                GenerateCode(state,
-                             exp->id.sym->constant.bValue ? TINY_OP_PUSH_TRUE : TINY_OP_PUSH_FALSE);
-            } else if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_INT)) {
-                GeneratePushInt(state, exp->id.sym->constant.iValue);
-            } else if (exp->id.sym->constant.tag == GetPrimTag(TINY_SYM_TAG_FLOAT)) {
-                GeneratePushFloat(state, exp->id.sym->constant.fValue);
-            } else {
-                assert(0);
-            }
-        }
+        CompileGetVar(state, exp->id.sym);
     } else if (exp->type == TINY_EXP_INDEX) {
         // Types should be resolved, so this should exist already
         assert(exp->index.getIndexFunc);
@@ -3619,6 +3723,23 @@ void Tiny_GetExecutingFileLine(const Tiny_StateThread *thread, const char **file
     GetFileLineForPC(thread->state, thread->pc, fileName, line);
 }
 
+static void CompileAssignVarToTopOfStack(Tiny_State* state, Tiny_Symbol* destVar, Tiny_Expr* errExp) {
+    assert(destVar);
+
+    if (destVar->type == TINY_SYM_GLOBAL) {
+        GenerateCode(state, TINY_OP_SET);
+        GEN_VALUE_NOPOS(state, &destVar->var.index);
+    } else if (destVar->type == TINY_SYM_LOCAL) {
+        GenerateCode(state, TINY_OP_SETLOCAL);
+        GEN_VALUE_NOPOS(state, &destVar->var.index);
+    } else {
+        // Probably a constant, can't change it
+        ReportErrorE(state, errExp, "Cannot assign to id '%s'.\n", destVar->name);
+    }
+
+    destVar->var.initialized = true;
+}
+
 static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
     AddPCFileLineRecord(
         state,
@@ -3739,19 +3860,7 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
                                          exp->binary.lhs->id.name);
                         }
 
-                        if (exp->binary.lhs->id.sym->type == TINY_SYM_GLOBAL) {
-                            GenerateCode(state, TINY_OP_SET);
-                            GEN_VALUE_NOPOS(state, &exp->binary.lhs->id.sym->var.index);
-                        } else if (exp->binary.lhs->id.sym->type == TINY_SYM_LOCAL) {
-                            GenerateCode(state, TINY_OP_SETLOCAL);
-                            GEN_VALUE_NOPOS(state, &exp->binary.lhs->id.sym->var.index);
-                        } else  // Probably a constant, can't change it
-                        {
-                            ReportErrorE(state, exp, "Cannot assign to id '%s'.\n",
-                                         exp->binary.lhs->id.name);
-                        }
-
-                        exp->binary.lhs->id.sym->var.initialized = true;
+                        CompileAssignVarToTopOfStack(state, exp->binary.lhs->id.sym, exp->binary.lhs);
                     } else if (exp->binary.lhs->type == TINY_EXP_INDEX) {
                         const Tiny_Symbol *setIndexFunc = exp->binary.lhs->index.setIndexFunc;
 
@@ -3867,6 +3976,74 @@ static void CompileStatement(Tiny_State *state, Tiny_Expr *exp) {
             PatchJumpLoc(state, skipBodyLoc, sb_count(state->program));
 
             PatchBreakContinue(state, exp->forx.body, sb_count(state->program), stepPc);
+        } break;
+
+        case TINY_EXP_FOREACH: {
+            assert(exp->forEach.lenFunc);
+            assert(exp->forEach.getIndexFunc);
+
+            // Assign to range expr
+            CompileExpr(state, exp->forEach.range);
+            CompileAssignVarToTopOfStack(state, exp->forEach.rangeVar, exp->forEach.range);
+
+            if(exp->forEach.reverse) {
+                // Initialize indexVar to len - 1
+
+                // (index) := aint_len(range) - 1
+                CompileGetVar(state, exp->forEach.rangeVar);
+                CompileCallSymbolWithArgsPrepared(state, 1, exp->forEach.lenFunc, exp);
+                GenerateCode(state, TINY_OP_GET_RETVAL);
+                GenerateCode(state, TINY_OP_SUB1);
+
+                CompileAssignVarToTopOfStack(state, exp->forEach.indexVar, exp);
+            } else {
+                GenerateCode(state, TINY_OP_PUSH_0);
+                CompileAssignVarToTopOfStack(state, exp->forEach.indexVar, exp);
+            }
+
+            // Foreach cond
+            int condPc = sb_count(state->program);
+            
+            // index
+            CompileGetVar(state, exp->forEach.indexVar);
+            
+            if(!exp->forEach.reverse) {
+                // len
+                CompileGetVar(state, exp->forEach.rangeVar);
+                CompileCallSymbolWithArgsPrepared(state, 1, exp->forEach.lenFunc, exp);
+                GenerateCode(state, TINY_OP_GET_RETVAL);
+
+                // <
+                GenerateCode(state, TINY_OP_LT);
+            } else {
+                GenerateCode(state, TINY_OP_PUSH_0);
+                GenerateCode(state, TINY_OP_GTE);
+            }
+
+            int skipBodyLoc = GenerateJump(state, TINY_OP_GOTOZ, 0);
+            
+            // Initialize the elem to the result of get index
+            CompileGetVar(state, exp->forEach.rangeVar);
+            CompileGetVar(state, exp->forEach.indexVar);
+            CompileCallSymbolWithArgsPrepared(state, 2, exp->forEach.getIndexFunc, exp);
+            GenerateCode(state, TINY_OP_GET_RETVAL);
+
+            CompileAssignVarToTopOfStack(state, exp->forEach.elemVar, exp);
+
+            if (exp->forEach.body) CompileStatement(state, exp->forEach.body);
+
+            int stepPc = sb_count(state->program);
+
+            // Foreach step
+            CompileGetVar(state, exp->forEach.indexVar);
+            GenerateCode(state, exp->forEach.reverse ? TINY_OP_SUB1 : TINY_OP_ADD1);
+            CompileAssignVarToTopOfStack(state, exp->forEach.indexVar, exp);
+
+            GenerateJump(state, TINY_OP_GOTO, condPc);
+
+            PatchJumpLoc(state, skipBodyLoc, sb_count(state->program));
+
+            PatchBreakContinue(state, exp->forEach.body, sb_count(state->program), stepPc);
         } break;
 
         case TINY_EXP_RETURN: {

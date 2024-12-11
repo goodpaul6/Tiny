@@ -167,24 +167,32 @@ typedef struct Tiny_Expr {
         } index;
 
         struct {
-            // The name of the element variable
-            Tiny_StringNode *elemName;
-
-            // (Optional) name of the index variable
-            Tiny_StringNode *indexName;
+            Tiny_Symbol* elemVar;
+            Tiny_Symbol* indexVar;
 
             // The thing being iterated over
             struct Tiny_Expr *range;
 
+            // This is what stores the thing we're iterating over.
+            //
+            // We only ever run the range expression once and store
+            // the result into here because otherwise you can imagine
+            // the kind of trouble we'd get into. For example,
+            //
+            // foreach x in aint(10, 20, 30)
+            Tiny_Symbol* rangeVar;
+
             // If true, then the user wrote `foreach something in_reverse arr`
             // otherwise `foreach something in arr`.
             //
-            // This just makes us look for a `{type}_make_reverse_iter` instead of
-            // `{type}_make_iter`
+            // This just makes us start the integer at len - 1 and decrement instead of incrementing
+            // from 0.
             bool reverse;
 
-            const Tiny_Symbol *makeIterFunc;
-            const Tiny_Symbol *iterNextFunc;
+            struct Tiny_Expr *body;
+
+            const Tiny_Symbol *lenFunc;
+            const Tiny_Symbol *getIndexFunc;
         } forEach;
     };
 } Tiny_Expr;

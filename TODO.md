@@ -2,6 +2,9 @@
 
 - BAD Bytecode VM should check whether we have the right values on the stack. Can be removed in release mode.
 
+- IDEA Make structs non-gc'd and make `object` a GC'd equivalent? Objects can be used to handle by-ref situations but structs can be used in most cases
+    - Objects can also perhaps implement `interface` type stuff as below
+
 - IDEA Rather than having arrays or indexing syntax built in, maybe just have a primitive "slice" type? Pretty much the Zig approach
     - A slice + encoding/iterator covers like 90% of cases
     - If we want these things to be efficiently encoded, we should just start having multiple values on the stack
