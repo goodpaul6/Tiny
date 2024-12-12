@@ -16,6 +16,9 @@ syntax keyword tinyKeywords
             \ use
             \ as
             \ struct
+            \ foreach
+            \ in
+            \ in_reverse
 
 syntax match tinyNumber "\v<\d+>"
 syntax match tinyNumber "\v<\d+\.\d+>"
