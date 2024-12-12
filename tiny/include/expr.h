@@ -167,8 +167,8 @@ typedef struct Tiny_Expr {
         } index;
 
         struct {
-            Tiny_Symbol* elemVar;
-            Tiny_Symbol* indexVar;
+            Tiny_Symbol *elemVar;
+            Tiny_Symbol *indexVar;
 
             // The thing being iterated over
             struct Tiny_Expr *range;
@@ -180,7 +180,7 @@ typedef struct Tiny_Expr {
             // the kind of trouble we'd get into. For example,
             //
             // foreach x in aint(10, 20, 30)
-            Tiny_Symbol* rangeVar;
+            Tiny_Symbol *rangeVar;
 
             // If true, then the user wrote `foreach something in_reverse arr`
             // otherwise `foreach something in arr`.

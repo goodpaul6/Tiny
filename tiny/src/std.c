@@ -946,8 +946,8 @@ void Tiny_BindStandardArray(Tiny_State *state) {
 }
 
 void Tiny_BindStandardDict(Tiny_State *state) {
-    ArrayMacroFunction(state, (char* const[]){"any"}, 1, "array_any");
-    ArrayMacroFunction(state, (char* const[]){"str"}, 1, "array_str");
+    ArrayMacroFunction(state, (char *const[]){"any"}, 1, "array_any");
+    ArrayMacroFunction(state, (char *const[]){"str"}, 1, "array_str");
 
     Tiny_RegisterType(state, "dict");
 

@@ -1196,7 +1196,8 @@ static void test_Foreach() {
 
     Tiny_CompileResult result = Tiny_CompileString(state, "(foreach syntax)", code);
 
-    lok_print_return(result.type == TINY_COMPILE_SUCCESS, "Failed to compile: %s\n", result.error.msg);
+    lok_print_return(result.type == TINY_COMPILE_SUCCESS, "Failed to compile: %s\n",
+                     result.error.msg);
 
     int sumIdx = Tiny_GetGlobalIndex(state, "sum");
 
@@ -1228,7 +1229,8 @@ static void test_ForeachRev() {
 
     Tiny_CompileResult result = Tiny_CompileString(state, "(foreach reverse syntax)", code);
 
-    lok_print_return(result.type == TINY_COMPILE_SUCCESS, "Failed to compile: %s\n", result.error.msg);
+    lok_print_return(result.type == TINY_COMPILE_SUCCESS, "Failed to compile: %s\n",
+                     result.error.msg);
 
     int sumIdx = Tiny_GetGlobalIndex(state, "sum");
 
@@ -1260,7 +1262,8 @@ static void test_ForeachRevNoIndex() {
 
     Tiny_CompileResult result = Tiny_CompileString(state, "(foreach reverse noindex syntax)", code);
 
-    lok_print_return(result.type == TINY_COMPILE_SUCCESS, "Failed to compile: %s\n", result.error.msg);
+    lok_print_return(result.type == TINY_COMPILE_SUCCESS, "Failed to compile: %s\n",
+                     result.error.msg);
 
     int sumIdx = Tiny_GetGlobalIndex(state, "sum");
 
