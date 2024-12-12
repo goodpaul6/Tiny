@@ -1130,8 +1130,8 @@ static TINY_FOREIGN_FUNCTION(GetExecutingLine) {
     return Tiny_NewInt(line);
 }
 
-static const Tiny_Symbol* GetExecutingFuncSym(Tiny_StateThread* thread) {
-    if(thread->fc == 0) {
+static const Tiny_Symbol *GetExecutingFuncSym(Tiny_StateThread *thread) {
+    if (thread->fc == 0) {
         return NULL;
     }
 
@@ -1140,27 +1140,27 @@ static const Tiny_Symbol* GetExecutingFuncSym(Tiny_StateThread* thread) {
     // PC we are after. That's the index.
     int funcIdx = -1;
 
-    for(int i = 0; i < thread->state->numFunctions; ++i) {
-        if(thread->pc >= thread->state->functionPcs[i]) {
+    for (int i = 0; i < thread->state->numFunctions; ++i) {
+        if (thread->pc >= thread->state->functionPcs[i]) {
             funcIdx = i;
             break;
         }
     }
 
-    if(funcIdx < 0) {
+    if (funcIdx < 0) {
         return NULL;
     }
 
     // Now find the symbol
-    for(int i = 0; i < Tiny_SymbolArrayCount(thread->state->globalSymbols); ++i) {
-        if(thread->state->globalSymbols[i]->type != TINY_SYM_FUNCTION ||
-           thread->state->globalSymbols[i]->func.index != funcIdx) {
+    for (int i = 0; i < Tiny_SymbolArrayCount(thread->state->globalSymbols); ++i) {
+        if (thread->state->globalSymbols[i]->type != TINY_SYM_FUNCTION ||
+            thread->state->globalSymbols[i]->func.index != funcIdx) {
             continue;
         }
 
         return thread->state->globalSymbols[i];
     }
-    
+
     return NULL;
 }
 
@@ -1193,11 +1193,11 @@ static TINY_FOREIGN_FUNCTION(DebugBreak) {
                 Print(thread->stack[pos], true);
                 putchar('\n');
             }
-        } else if(strcmp(cmd, "dumpfunc\n") == 0 || strcmp(cmd, "df\n") == 0) {
-            const Tiny_Symbol* funcSym = GetExecutingFuncSym(thread);
+        } else if (strcmp(cmd, "dumpfunc\n") == 0 || strcmp(cmd, "df\n") == 0) {
+            const Tiny_Symbol *funcSym = GetExecutingFuncSym(thread);
 
-            if(!funcSym) {
-                if(thread->fc == 0) {
+            if (!funcSym) {
+                if (thread->fc == 0) {
                     printf("not inside function\n");
                     continue;
                 }
@@ -1208,8 +1208,8 @@ static TINY_FOREIGN_FUNCTION(DebugBreak) {
 
             printf("funcname=%s\n", funcSym->name);
 
-            for(int i = 0; i < Tiny_SymbolArrayCount(funcSym->func.args); ++i) {
-                const Tiny_Symbol* sym = funcSym->func.args[i];
+            for (int i = 0; i < Tiny_SymbolArrayCount(funcSym->func.args); ++i) {
+                const Tiny_Symbol *sym = funcSym->func.args[i];
 
                 assert(sym->type == TINY_SYM_LOCAL);
 
@@ -1218,8 +1218,8 @@ static TINY_FOREIGN_FUNCTION(DebugBreak) {
                 putchar('\n');
             }
 
-            for(int i = 0; i < Tiny_SymbolArrayCount(funcSym->func.locals); ++i) {
-                const Tiny_Symbol* sym = funcSym->func.locals[i];
+            for (int i = 0; i < Tiny_SymbolArrayCount(funcSym->func.locals); ++i) {
+                const Tiny_Symbol *sym = funcSym->func.locals[i];
 
                 assert(sym->type == TINY_SYM_LOCAL);
 
