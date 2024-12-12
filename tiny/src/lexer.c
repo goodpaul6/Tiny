@@ -145,7 +145,7 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
     MATCH('.', DOT);
     MATCH('?', QUESTION);
 
-    if (isalpha(l->last)) {
+    if (isalpha(l->last) || l->last == '_') {
         ResetLexeme(l);
 
         while (isalnum(l->last) || l->last == '_') {
