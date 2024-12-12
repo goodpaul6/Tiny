@@ -1,41 +1,44 @@
-// Reverse polish notation calculator
+// Obligatory reverse polish notation calculator
 use array("int") as aint
-
-// The type of the 'stack' variable is inferred to be
-// 'aint' (array of integers). I can also explicitly
-// specify it by doing `stack: aint = aint()`, but
-// that's no fun.
+  
+// The type of `stack` is inferred to be 'aint' (array of integers).
+// I can also explicitly specify it by doing `stack: aint = aint()`
+// but that's no fun.
 stack := aint()
-
+  
 op := ""
-
+  
 // Constants
-plus_op     :: '+'
-minus_op    :: '-'
-mul_op      :: '*'
-div_op      :: '/'
-print_op    :: '='
-quit_op     :: 'q'
+plus_op 	:: '+'
+minus_op 	:: '-'
+mul_op 		:: '*'
+div_op 		:: '/'
+print_op 	:: '='
+quit_op 	:: 'q'
 
 while op != quit_op {
-    op = input()
-
-    // The -> operator is just sugar for sget(op, 0) in this case
-    ch := op->sget(0)
-
-    if ch == plus_op {
-        stack->aint_push(stack->aint_pop() + stack->aint_pop())
-    } else if ch == minus_op {
-        stack->aint_push(stack->aint_pop() - stack->aint_pop())
-    } else if ch == mul_op {
-        stack->aint_push(stack->aint_pop() * stack->aint_pop())
-    } else if ch == div_op {
-        stack->aint_push(stack->aint_pop() / stack->aint_pop())
-    } else if ch == print_op {
-        printf("%i\n", stack->aint_pop())
-    } else if ch != quit_op {
-        stack->aint_push(str_to_int(op))
-    } else {
-        break
-    }
+  op = input()
+  
+  // First character of the input. This is just
+  // syntactic sugar for `str_get_index(op, 0)`. This
+  // sugar works for any type (including user-defined ones).
+  ch := op[0]
+ 
+  if ch == plus_op {
+    // stack->aint_push(...) is the same as
+    // aint_push(stack, ...)
+    stack->aint_push(stack->aint_pop() + stack->aint_pop())
+  } else if ch == minus_op {
+    stack->aint_push(stack->aint_pop() - stack->aint_pop())
+  } else if ch == mul_op {
+    stack->aint_push(stack->aint_pop() * stack->aint_pop())
+  } else if ch == div_op {
+    stack->aint_push(stack->aint_pop() / stack->aint_pop())
+  } else if ch == print_op {
+    printf("%i\n", stack->aint_pop())
+  } else if ch != quit_op {
+    stack->aint_push(op->str_to_int())
+  } else {
+    break
+  }
 }
