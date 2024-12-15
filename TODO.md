@@ -4,7 +4,7 @@
   get passed around on the stack
     - How does this interact with the C code? If you're passing a tuple as args, what do we do? I guess we pass it as N arguments (one for each field)
       of the tuple but...
-    - I mean, even right now it's up to the user to do the right thing (tm)
+    - I mean, even right now it's up to the user to do the right thing when grabbing values (tm)
     - We can probably have a max tuple size and we can replace `retVal` with up to that many values
         - This lets functions return tuples
         - If the tuple size is large enough (e.g. 8), _most_ functions will never need to box

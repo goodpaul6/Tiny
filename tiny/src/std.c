@@ -52,7 +52,7 @@ static Tiny_Value Stridx(Tiny_StateThread *thread, const Tiny_Value *args, int c
     const char *s = Tiny_ToString(args[0]);
     size_t len = strlen(s);
 
-    int i = Tiny_ToInt(args[1]);
+    Tiny_Int i = Tiny_ToInt(args[1]);
 
     assert(i >= 0 && i < len);
 
@@ -102,12 +102,12 @@ static Tiny_Value Lib_Fsize(Tiny_StateThread *thread, const Tiny_Value *args, in
 
 static Tiny_Value Lib_Fread(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     FILE *file = Tiny_ToAddr(args[0]);
-    int num = (int)Tiny_ToNumber(args[1]);
+    Tiny_Int num = Tiny_ToInt(args[1]);
 
     // + 1 for null-terminator
     char *str = Tiny_AllocUsingContext(thread->ctx, NULL, num + 1);
 
-    int readCount = fread(str, 1, num, file);
+    uint32_t readCount = fread(str, 1, num, file);
 
     if (readCount < 0) {
         Tiny_AllocUsingContext(thread->ctx, str, 0);
@@ -281,10 +281,10 @@ static TINY_FOREIGN_FUNCTION(Lib_ArrayGet) {
 
 static Tiny_Value Lib_ArraySet(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     Array *array = Tiny_ToAddr(args[0]);
-    int index = Tiny_ToInt(args[1]);
+    Tiny_Int index = Tiny_ToInt(args[1]);
     Tiny_Value value = args[2];
 
-    ArraySet(array, index, value);
+    ArraySet(array, (int)index, value);
 
     return Tiny_Null;
 }
@@ -309,19 +309,19 @@ static Tiny_Value Lib_ArrayShift(Tiny_StateThread *thread, const Tiny_Value *arg
 
 static TINY_FOREIGN_FUNCTION(Lib_ArrayRemove) {
     Array *array = Tiny_ToAddr(args[0]);
-    int idx = Tiny_ToInt(args[1]);
+    Tiny_Int idx = Tiny_ToInt(args[1]);
 
-    ArrayRemove(array, idx);
+    ArrayRemove(array, (int)idx);
 
     return Tiny_Null;
 }
 
 static TINY_FOREIGN_FUNCTION(Lib_ArrayInsert) {
     Array *array = Tiny_ToAddr(args[0]);
-    int idx = Tiny_ToInt(args[1]);
+    Tiny_Int idx = Tiny_ToInt(args[1]);
     Tiny_Value value = args[2];
 
-    ArrayInsert(array, idx, value);
+    ArrayInsert(array, (int)idx, value);
 
     return Tiny_Null;
 }
@@ -333,7 +333,7 @@ static int CompareInts(const void *aRaw, const void *bRaw) {
     assert(a->type == TINY_VAL_INT);
     assert(b->type == TINY_VAL_INT);
 
-    return a->i - b->i;
+    return (int)(a->i - b->i);
 }
 
 static TINY_FOREIGN_FUNCTION(Lib_ArraySortInt) {
@@ -486,8 +486,8 @@ static Tiny_Value Lib_Substr(Tiny_StateThread *thread, const Tiny_Value *args, i
     const char *s = Tiny_ToString(args[0]);
     size_t sLen = Tiny_StringLen(args[0]);
 
-    int start = (int)Tiny_ToNumber(args[1]);
-    int end = (int)Tiny_ToNumber(args[2]);
+    Tiny_Int start = Tiny_ToInt(args[1]);
+    Tiny_Int end = Tiny_ToInt(args[2]);
 
     if (end == -1) {
         end = sLen;
@@ -522,7 +522,7 @@ static Tiny_Value Lib_Ston(Tiny_StateThread *thread, const Tiny_Value *args, int
 
 static Tiny_Value Lib_Stoi(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
     const char *str = Tiny_ToString(args[0]);
-    int base = count > 1 ? Tiny_ToInt(args[1]) : 10;
+    Tiny_Int base = count > 1 ? Tiny_ToInt(args[1]) : 10;
 
     Tiny_Int value = (Tiny_Int)strtoll(str, NULL, base);
 
@@ -710,9 +710,9 @@ static Tiny_Value Lib_Printf(Tiny_StateThread *thread, const Tiny_Value *args, i
 }
 
 static Tiny_Value Exit(Tiny_StateThread *thread, const Tiny_Value *args, int count) {
-    int arg = Tiny_ToInt(args[0]);
+    Tiny_Int arg = Tiny_ToInt(args[0]);
 
-    exit(arg);
+    exit((int)arg);
 
     return Tiny_Null;
 }
@@ -1130,9 +1130,9 @@ static TINY_FOREIGN_FUNCTION(GetFunctionIndex) {
 
 static TINY_FOREIGN_FUNCTION(CallFunction) {
     assert(count >= 1);
-    int i = Tiny_ToInt(args[0]);
+    Tiny_Int i = Tiny_ToInt(args[0]);
 
-    return Tiny_CallFunction(thread, i, args + 1, count - 1);
+    return Tiny_CallFunction(thread, (int)i, args + 1, count - 1);
 }
 
 static TINY_FOREIGN_FUNCTION(GetExecutingLine) {

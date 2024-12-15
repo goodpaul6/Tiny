@@ -959,14 +959,14 @@ static Tiny_Symbol *ReferenceFunction(Tiny_State *state, const char *name) {
     return NULL;
 }
 
-static void BindFunction(Tiny_State *state, const char *name, Tiny_Symbol **argTags, bool varargs,
-                         Tiny_Symbol *returnTag, Tiny_ForeignFunction func) {
+static Tiny_BindFunctionResultType BindFunction(Tiny_State *state, const char *name,
+                                                Tiny_Symbol **argTags, bool varargs,
+                                                Tiny_Symbol *returnTag, Tiny_ForeignFunction func) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
         Tiny_Symbol *node = state->globalSymbols[i];
 
         if (node->type == TINY_SYM_FOREIGN_FUNCTION && strcmp(node->name, name) == 0) {
-            fprintf(stderr, "There is already a foreign function bound to name '%s'.", name);
-            exit(1);
+            return TINY_BIND_FUNCTION_ERROR_DUPLICATE;
         }
     }
 
@@ -1009,7 +1009,8 @@ void Tiny_RegisterType(Tiny_State *state, const char *name) {
 
 static Tiny_Symbol *ParseTypeL(Tiny_State *state, Tiny_Lexer *l);
 
-void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction func) {
+Tiny_BindFunctionResultType Tiny_BindFunction(Tiny_State *state, const char *sig,
+                                              Tiny_ForeignFunction func) {
     Tiny_Lexer l;
 
     Tiny_InitLexer(&l, "(bind signature)", sig, state->ctx);
@@ -1024,12 +1025,13 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
 
     if (l.lastTok != TINY_TOK_OPENPAREN) {
         // Just the name
-        BindFunction(state, name, NULL, true, GetPrimTag(TINY_SYM_TAG_ANY), func);
+        Tiny_BindFunctionResultType res =
+            BindFunction(state, name, NULL, true, GetPrimTag(TINY_SYM_TAG_ANY), func);
         Tiny_DestroyLexer(&l);
 
         TFree(&state->ctx, name);
 
-        return;
+        return res;
     }
 
     Tiny_GetToken(&l);
@@ -1069,11 +1071,13 @@ void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction 
         assert(returnTag);
     }
 
-    BindFunction(state, name, argTags, varargs, returnTag, func);
+    Tiny_BindFunctionResultType res = BindFunction(state, name, argTags, varargs, returnTag, func);
 
     Tiny_DestroyLexer(&l);
 
     TFree(&state->ctx, name);
+
+    return res;
 }
 
 void Tiny_BindConstBool(Tiny_State *state, const char *name, bool b) {
@@ -4571,13 +4575,12 @@ bool Tiny_DisasmOne(const Tiny_State *state, int *ppc, char *buf, size_t maxlen)
     return true;
 }
 
-void Tiny_BindMacro(Tiny_State *state, const char *name, Tiny_MacroFunction fn) {
+Tiny_BindMacroResultType Tiny_BindMacro(Tiny_State *state, const char *name,
+                                        Tiny_MacroFunction fn) {
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
         Tiny_Symbol *s = state->globalSymbols[i];
         if (s->type == TINY_SYM_MODULE && strcmp(s->name, name) == 0) {
-            // TODO(Apaar): Do not error exit here, just return a valid result type!
-            fprintf(stderr, "There is already a module bound to name '%s'.", name);
-            exit(1);
+            return TINY_BIND_MACRO_ERROR_DUPLICATE;
         }
     }
 

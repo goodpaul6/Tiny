@@ -92,7 +92,7 @@ void DictSet(Dict *dict, Tiny_Value key, Tiny_Value value) {
 
     unsigned long index = hash % dict->bucketCount;
 
-    Tiny_Value prevKey = *ArrayGet(&dict->keys, index);
+    Tiny_Value prevKey = *ArrayGet(&dict->keys, (int)index);
 
     unsigned long origin = index;
 
@@ -112,12 +112,12 @@ void DictSet(Dict *dict, Tiny_Value key, Tiny_Value value) {
             origin = index;
         }
 
-        prevKey = *ArrayGet(&dict->keys, index);
+        prevKey = *ArrayGet(&dict->keys, (int)index);
     }
 
     // There was no key here before (i.e bucket was empty)
     if (Tiny_IsNull(prevKey)) {
-        ArraySet(&dict->keys, index, key);
+        ArraySet(&dict->keys, (int)index, key);
 
         dict->filledCount += 1;
     } else {
@@ -125,7 +125,7 @@ void DictSet(Dict *dict, Tiny_Value key, Tiny_Value value) {
         // is probably replacing the value
     }
 
-    ArraySet(&dict->values, index, value);
+    ArraySet(&dict->values, (int)index, value);
 }
 
 const Tiny_Value *DictGet(Dict *dict, Tiny_Value key) {
@@ -133,11 +133,11 @@ const Tiny_Value *DictGet(Dict *dict, Tiny_Value key) {
     unsigned long origin = index;
 
     for (;;) {
-        Tiny_Value keyHere = *ArrayGet(&dict->keys, index);
+        Tiny_Value keyHere = *ArrayGet(&dict->keys, (int)index);
 
         if (Tiny_IsNull(keyHere)) return NULL;
 
-        if (Tiny_AreValuesEqual(keyHere, key)) return ArrayGet(&dict->values, index);
+        if (Tiny_AreValuesEqual(keyHere, key)) return ArrayGet(&dict->values, (int)index);
 
         index += 1;
         index %= dict->bucketCount;
@@ -159,12 +159,12 @@ void DictRemove(Dict *dict, Tiny_Value key) {
     unsigned long origin = index;
 
     for (;;) {
-        Tiny_Value keyHere = *ArrayGet(&dict->keys, index);
+        Tiny_Value keyHere = *ArrayGet(&dict->keys, (int)index);
 
         if (Tiny_IsNull(keyHere)) return;  // Done
 
         if (Tiny_AreValuesEqual(keyHere, key)) {
-            ArraySet(&dict->keys, index, Tiny_Null);
+            ArraySet(&dict->keys, (int)index, Tiny_Null);
 
             dict->filledCount -= 1;
         } else if ((HashValue(keyHere) % dict->bucketCount) != index) {
@@ -178,9 +178,9 @@ void DictRemove(Dict *dict, Tiny_Value key) {
             // key was colliding with the original and took keyHere's
             // spot so remove the key from this slot and readd the key/value
             // to the table.
-            const Tiny_Value *value = ArrayGet(&dict->values, index);
+            const Tiny_Value *value = ArrayGet(&dict->values, (int)index);
 
-            ArraySet(&dict->keys, index, Tiny_Null);
+            ArraySet(&dict->keys, (int)index, Tiny_Null);
             dict->filledCount -= 1;
 
             DictSet(dict, keyHere, *value);

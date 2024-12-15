@@ -284,6 +284,11 @@ Tiny_State *Tiny_CreateStateWithContext(Tiny_Context ctx);
 // Tiny_BindFunction(state, "db_conn_delete(DBConn): void", DBConnDelete);
 void Tiny_RegisterType(Tiny_State *state, const char *name);
 
+typedef enum Tiny_BindFunctionResultType {
+    TINY_BIND_FUNCTION_SUCCESS,
+    TINY_BIND_FUNCTION_ERROR_DUPLICATE,
+} Tiny_BindFunctionResultType;
+
 // Exposes the provided C function as a callable function in
 // Tiny code.
 //
@@ -307,7 +312,8 @@ void Tiny_RegisterType(Tiny_State *state, const char *name);
 // an untyped function:
 //
 // Tiny_BindFunction(state, "myprint", MyPrint);
-void Tiny_BindFunction(Tiny_State *state, const char *sig, Tiny_ForeignFunction func);
+Tiny_BindFunctionResultType Tiny_BindFunction(Tiny_State *state, const char *sig,
+                                              Tiny_ForeignFunction func);
 
 void Tiny_BindConstBool(Tiny_State *state, const char *name, bool b);
 void Tiny_BindConstInt(Tiny_State *state, const char *name, Tiny_Int i);
@@ -552,7 +558,12 @@ typedef struct Tiny_Symbol {
     };
 } Tiny_Symbol;
 
-void Tiny_BindMacro(Tiny_State *state, const char *name, Tiny_MacroFunction fn);
+typedef enum Tiny_BindMacroResultType {
+    TINY_BIND_MACRO_SUCCESS,
+    TINY_BIND_MACRO_ERROR_DUPLICATE,
+} Tiny_BindMacroResultType;
+
+Tiny_BindMacroResultType Tiny_BindMacro(Tiny_State *state, const char *name, Tiny_MacroFunction fn);
 
 size_t Tiny_SymbolArrayCount(Tiny_Symbol *const *arr);
 
