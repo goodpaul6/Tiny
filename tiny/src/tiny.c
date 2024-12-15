@@ -1129,6 +1129,8 @@ static Tiny_Float ReadFloat(Tiny_StateThread *thread) {
 }
 
 static void DoPush(Tiny_StateThread *thread, Tiny_Value value) {
+    assert(thread->sp < TINY_THREAD_STACK_SIZE);
+
     thread->stack[thread->sp++] = value;
 }
 

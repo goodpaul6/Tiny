@@ -254,6 +254,15 @@ static TINY_FOREIGN_FUNCTION(Lib_ArrayResizeFill) {
     return Tiny_Null;
 }
 
+static TINY_FOREIGN_FUNCTION(Lib_ArrayCopy) {
+    Array *dest = Tiny_ToAddr(args[0]);
+    Array *src = Tiny_ToAddr(args[1]);
+
+    ArrayCopy(dest, src);
+
+    return Tiny_Null;
+}
+
 static TINY_FOREIGN_FUNCTION(Lib_ArrayPush) {
     Array *array = Tiny_ToAddr(args[0]);
     Tiny_Value value = args[1];
@@ -920,6 +929,9 @@ static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
     snprintf(sigbuf, sizeof(sigbuf), "%s_push(%s, %s): void", asName, asName, args[0]);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayPush);
 
+    snprintf(sigbuf, sizeof(sigbuf), "%s_copy(%s, %s): void", asName, asName, asName);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayCopy);
+
     snprintf(sigbuf, sizeof(sigbuf), "%s_pop(%s): %s", asName, asName, args[0]);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayPop);
 
@@ -1141,7 +1153,9 @@ static const Tiny_Symbol *GetExecutingFuncSym(Tiny_StateThread *thread) {
     int funcIdx = -1;
 
     for (int i = 0; i < thread->state->numFunctions; ++i) {
-        if (thread->pc >= thread->state->functionPcs[i]) {
+        if (thread->pc >= thread->state->functionPcs[i] &&
+            (i + 1 >= thread->state->numFunctions ||
+             thread->pc < thread->state->functionPcs[i + 1])) {
             funcIdx = i;
             break;
         }
@@ -1249,6 +1263,7 @@ void Tiny_BindStandardLib(Tiny_State *state) {
     Tiny_BindConstInt(state, "INT_MAX", INT_MAX);
 
     Tiny_BindFunction(state, "strlen(str): int", Strlen);
+    Tiny_BindFunction(state, "str_len(str): int", Strlen);
     Tiny_BindFunction(state, "stridx(str, int): int", Stridx);
     Tiny_BindFunction(state, "sget(str, int): int", Stridx);
     Tiny_BindFunction(state, "strchr(str, int): int", Strchr);

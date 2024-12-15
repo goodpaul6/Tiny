@@ -1,5 +1,15 @@
 # TODO
 
+- IDEA Ok, rather than making `struct` non-gc, what if we had `tuple` as a non-gc alternative? It can still have named fields but it truly does
+  get passed around on the stack
+    - How does this interact with the C code? If you're passing a tuple as args, what do we do? I guess we pass it as N arguments (one for each field)
+      of the tuple but...
+    - I mean, even right now it's up to the user to do the right thing (tm)
+    - We can probably have a max tuple size and we can replace `retVal` with up to that many values
+        - This lets functions return tuples
+        - If the tuple size is large enough (e.g. 8), _most_ functions will never need to box
+    - We can make tuples immutable
+
 - BAD Bytecode VM should check whether we have the right values on the stack. Can be removed in release mode.
 
 - IDEA Make structs non-gc'd and make `object` a GC'd equivalent? Objects can be used to handle by-ref situations but structs can be used in most cases
@@ -33,15 +43,6 @@
   and the way that the compiled code interacts with them
     - Actuallyyyyy, this is not that straightforward; foreign functions just track tags for their args, no names, for example
     - Could do with some simplifying helpers though
-
-- BAD No for..in type thing
-    - Another protocol thing? Just anything that has a `_len` and a `_get_index` would work for now
-    - Could also do a true "iterator" thing where it expects a `_iter`, `_iter_next` to be defined and goes
-      from there?
-        - 90% of use cases should work with just an integer IMO; the iterator case should probably be explicit
-        - Nullable types could make it easier to do the `_iter_next` thing
-        - I could have an unboxed integer iterator easily by just stuffing it into a pointer (light native) or even literally just having it be
-          an integer at runtime (since `Tiny_Value` technically boxes it anyways)
 
 - BAD No function pointers
     - Allow specifying types like `func(int, int) void` which just get turned into `func__int__int__void` in line with the simple flat type system
@@ -287,6 +288,15 @@ func split_lines(s: str): array {
 - BUG `continue` doesn't seem to run the "step" part of the for loop
 - Make sure VM bytecode instructions and data are aligned properly
 - Safer "any" type: must be explicitly converted
+
+- BAD No for..in type thing
+    - Another protocol thing? Just anything that has a `_len` and a `_get_index` would work for now
+    - Could also do a true "iterator" thing where it expects a `_iter`, `_iter_next` to be defined and goes
+      from there?
+        - 90% of use cases should work with just an integer IMO; the iterator case should probably be explicit
+        - Nullable types could make it easier to do the `_iter_next` thing
+        - I could have an unboxed integer iterator easily by just stuffing it into a pointer (light native) or even literally just having it be
+          an integer at runtime (since `Tiny_Value` technically boxes it anyways)
 
 - NOTE Slices no longer needed since index sugar added
 

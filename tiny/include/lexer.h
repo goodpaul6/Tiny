@@ -22,8 +22,8 @@ typedef struct {
 
     union {
         bool bValue;
-        int iValue;
-        float fValue;
+        Tiny_Int iValue;
+        Tiny_Float fValue;
     };
 
     const char *errorMsg;

@@ -206,13 +206,13 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
         sb_push(&l->ctx, l->lexeme, 0);
 
         if (isFloat) {
-            l->fValue = (float)strtod(l->lexeme, NULL);
+            l->fValue = (Tiny_Float)strtod(l->lexeme, NULL);
         } else if (isHex) {
-            int64_t value = strtoll(l->lexeme, NULL, 16);
+            Tiny_Int value = strtoll(l->lexeme, NULL, 16);
 
-            l->iValue = (int)value;
+            l->iValue = (Tiny_Int)value;
         } else {
-            l->iValue = strtol(l->lexeme, NULL, 10);
+            l->iValue = strtoll(l->lexeme, NULL, 10);
         }
 
         return isFloat ? TINY_TOK_FLOAT : TINY_TOK_INT;

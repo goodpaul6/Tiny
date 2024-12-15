@@ -14,6 +14,8 @@ void InitArrayEx(Array *array, Tiny_Context ctx, int length, const Tiny_Value *i
 
 int ArrayLen(Array *array);
 
+void ArrayCopy(Array *dest, const Array *src);
+
 void ArrayClear(Array *array);
 void ArrayResize(Array *array, int length, Tiny_Value newValue);
 

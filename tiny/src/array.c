@@ -38,6 +38,14 @@ void ArrayResize(Array *array, int newLen, Tiny_Value newValue) {
     }
 }
 
+void ArrayCopy(Array *dest, const Array *src) {
+    size_t count = sb_count(src->data);
+
+    // TODO(Apaar): No need to fill with null
+    ArrayResize(dest, count, Tiny_Null);
+    memcpy(dest->data, src->data, count * sizeof(Tiny_Value));
+}
+
 void ArrayPush(Array *array, Tiny_Value value) { sb_push(&array->ctx, array->data, value); }
 
 void ArrayPop(Array *array, Tiny_Value *value) {
