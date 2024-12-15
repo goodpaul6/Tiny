@@ -39,7 +39,7 @@ void ArrayResize(Array *array, int newLen, Tiny_Value newValue) {
 }
 
 void ArrayCopy(Array *dest, const Array *src) {
-    size_t count = sb_count(src->data);
+    int count = sb_count(src->data);
 
     // TODO(Apaar): No need to fill with null
     ArrayResize(dest, count, Tiny_Null);

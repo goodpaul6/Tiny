@@ -1,5 +1,12 @@
 # TODO
 
+- IDEA Get rid of nullable types from the code and just implement it as a macro library? `use nullable("int") as nint` + `nint_unwrap` + `nint_or`
+    - Can store these in a single `Tiny_Value` anyways while we're tagging types
+    - This will work nicely with the `:` syntax proposed below
+    
+- IDEA Add optional `symbolPrefix` argument to `CompileString` which lets you prefix every symbol in the compiled file
+    - Allows you to prevent name collisions, makes composition via macros easier?
+
 - IDEA Ok, rather than making `struct` non-gc, what if we had `tuple` as a non-gc alternative? It can still have named fields but it truly does
   get passed around on the stack
     - How does this interact with the C code? If you're passing a tuple as args, what do we do? I guess we pass it as N arguments (one for each field)

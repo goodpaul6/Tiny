@@ -867,53 +867,11 @@ static void test_Continue() {
     Tiny_DeleteState(state);
 }
 
-static void test_ParseNullable() {
-    Tiny_State *state = CreateState();
-
-    const char *code =
-        "x : ?int = 10\n"
-        "func f(): ?int\n"
-        "{ return 10 }\n";
-
-    Tiny_CompileString(state, "(parse opt test)", code);
-
-    lok(true);
-
-    Tiny_DeleteState(state);
-}
-
-static void test_BindNullable() {
-    Tiny_State *state = CreateState();
-
-    Tiny_RegisterType(state, "Point");
-
-    Tiny_BindFunction(state, "f(?Point, ?int): ?int", Lib_Print);
-
-    lok(true);
-
-    Tiny_DeleteState(state);
-}
-
-static void test_CannotUseNullable() {
-    Tiny_State *state = CreateState();
-
-    const char *code =
-        "x : ?int = 10\n"
-        "func f(x: int) {}\n"
-        "f(x)\n";
-
-    Tiny_CompileResult result = Tiny_CompileString(state, "(cannot use nullable test)", code);
-
-    lequal(result.type, TINY_COMPILE_ERROR);
-
-    Tiny_DeleteState(state);
-}
-
 static void test_ParseFailureIsOkay() {
     Tiny_State *state = CreateState();
 
     const char *code =
-        "x : ?int = 10\n"
+        "x : int = 10\n"
         "func fx: int) {}\n"
         "f(x)\n";
 
@@ -945,33 +903,6 @@ static void test_AssignNullToAny() {
     Tiny_CompileResult result = Tiny_CompileString(state, "(can assign null to any)", code);
 
     lequal(result.type, TINY_COMPILE_SUCCESS);
-
-    Tiny_DeleteState(state);
-}
-
-static void test_AssignValueToNullable() {
-    Tiny_State *state = CreateState();
-
-    const char *code = "x : ?int = 10\n";
-
-    Tiny_CompileResult result = Tiny_CompileString(state, "(can assign 10 to int?)", code);
-
-    lequal(result.type, TINY_COMPILE_SUCCESS);
-
-    Tiny_DeleteState(state);
-}
-
-static void test_CantAssignNullableToNonNullable() {
-    Tiny_State *state = CreateState();
-
-    const char *code =
-        "x: ?int = 10\n"
-        "y: int = x\n";
-
-    Tiny_CompileResult result =
-        Tiny_CompileString(state, "(can't assign nullable to non-nullable)", code);
-
-    lequal(result.type, TINY_COMPILE_ERROR);
 
     Tiny_DeleteState(state);
 }
@@ -1299,14 +1230,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Hex Literal", test_HexLiteral);
     lrun("Tiny Break Statement", test_Break);
     lrun("Tiny Continue Statement", test_Continue);
-    lrun("Tiny Parse Nullable Types", test_ParseNullable);
-    lrun("Tiny Bind Nullable Types in Fn", test_BindNullable);
-    lrun("Tiny Check Cannot Use Nullable", test_CannotUseNullable);
     lrun("Tiny Parse Failure is Ok", test_ParseFailureIsOkay);
-    lrun("Tiny Cannot Assign Null to Non-Nullable", test_CannotAssignNull);
-    lrun("Tiny Can Assign Null to Any", test_AssignNullToAny);
-    lrun("Tiny Can Assign Value to Nullable", test_AssignValueToNullable);
-    lrun("Tiny Can't Assign Nullable to Non-Nullable", test_CantAssignNullableToNonNullable);
     lrun("Tiny Test DisasmOne", test_DisasmOne);
     lrun("Tiny Test GetStringConstant", test_GetStringConst);
     lrun("Tiny Nested Compile Error Propagates", test_NestCompileFailPropagates);

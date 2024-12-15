@@ -488,7 +488,6 @@ typedef enum {
     TINY_SYM_TAG_ANY,
     TINY_SYM_TAG_FOREIGN,
     TINY_SYM_TAG_STRUCT,
-    TINY_SYM_TAG_NULLABLE,
 } Tiny_SymbolType;
 
 // For all the fields marked with `// array` below, you can use
@@ -551,8 +550,6 @@ typedef struct Tiny_Symbol {
         } sstruct;
 
         struct Tiny_Symbol *fieldTag;
-
-        struct Tiny_Symbol *nullableTag;
 
         Tiny_MacroFunction modFunc;
     };
