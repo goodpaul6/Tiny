@@ -265,10 +265,8 @@ bool Tiny_AreValuesEqual(Tiny_Value a, Tiny_Value b) {
     return false;
 }
 
-static Tiny_Object *NewObject(Tiny_StateThread *thread, Tiny_ValueType type) {
-    assert(type != TINY_VAL_STRUCT);
-
-    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object));
+static Tiny_Object *NewObject(Tiny_StateThread *thread, Tiny_ValueType type, size_t extra) {
+    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + extra);
 
     obj->type = type;
     obj->next = thread->gcHead;
@@ -284,12 +282,7 @@ static Tiny_Object *NewObject(Tiny_StateThread *thread, Tiny_ValueType type) {
 // a single allocation for the entire thing.
 static Tiny_Object *NewStringObjectEmbedString(Tiny_StateThread *thread, const char *str,
                                                size_t len) {
-    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + len + 1);
-
-    obj->type = TINY_VAL_STRING;
-    obj->next = thread->gcHead;
-    thread->gcHead = obj;
-    obj->marked = 0;
+    Tiny_Object *obj = NewObject(thread, TINY_VAL_STRING, len + 1);
 
     obj->string.len = len;
     obj->string.ptr = (char *)obj + sizeof(Tiny_Object);
@@ -298,19 +291,14 @@ static Tiny_Object *NewStringObjectEmbedString(Tiny_StateThread *thread, const c
     // Null terminate the string for interfacing with C
     obj->string.ptr[obj->string.len] = '\0';
 
-    thread->numObjects++;
-
     return obj;
 }
 
 static Tiny_Object *NewStructObject(Tiny_StateThread *thread, Word n) {
     assert(n >= 0);
-    Tiny_Object *obj = TMalloc(&thread->ctx, sizeof(Tiny_Object) + sizeof(Tiny_Value) * n);
 
-    obj->type = TINY_VAL_STRUCT;
-    obj->next = thread->gcHead;
-    thread->gcHead = obj;
-    obj->marked = 0;
+    Tiny_Object *obj = NewObject(thread, TINY_VAL_STRUCT, sizeof(Tiny_Value) * n);
+    memset(obj->ostruct.fields, 0, sizeof(Tiny_Value) * n);
 
     obj->ostruct.n = n;
 
@@ -334,7 +322,7 @@ Tiny_Value Tiny_NewNative(Tiny_StateThread *thread, void *ptr, const Tiny_Native
     // Make sure thread is alive
     assert(thread->pc >= 0);
 
-    Tiny_Object *obj = NewObject(thread, TINY_VAL_NATIVE);
+    Tiny_Object *obj = NewObject(thread, TINY_VAL_NATIVE, 0);
 
     obj->nat.addr = ptr;
     obj->nat.prop = prop;
@@ -390,7 +378,7 @@ Tiny_Value Tiny_NewConstString(const char *str) {
 Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *str, size_t len) {
     assert(thread && thread->state && str);
 
-    Tiny_Object *obj = NewObject(thread, TINY_VAL_STRING);
+    Tiny_Object *obj = NewObject(thread, TINY_VAL_STRING, 0);
 
     obj->string.len = len;
     obj->string.ptr = str;
