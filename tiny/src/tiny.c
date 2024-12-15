@@ -771,14 +771,20 @@ static void CloseScope(Tiny_State *state) {
     --state->currScope;
 }
 
-static Tiny_Symbol *ReferenceVariable(Tiny_State *state, const char *name) {
+#define ST_MASK(symType) (1UL << (symType))
+
+#define ST_MASK_FUNC (ST_MASK(TINY_SYM_FUNCTION) | ST_MASK(TINY_SYM_FOREIGN_FUNCTION))
+#define ST_MASK_VAR (ST_MASK(TINY_SYM_LOCAL) | ST_MASK(TINY_SYM_GLOBAL))
+#define ST_MASK_VAR_OR_CONST ST_MASK_VAR | ST_MASK(TINY_SYM_CONST)
+
+static Tiny_Symbol *FindSymbol(Tiny_State *state, const char *name, uint32_t mask) {
     // This clever trick let's me unify the codepaths for symbols
     // that can be named and can't be named
     if (name == ANON_SYM_NAME) {
         return NULL;
     }
 
-    if (state->currFunc) {
+    if (state->currFunc && ST_MASK(TINY_SYM_LOCAL) & mask) {
         // Check local variables
         for (int i = 0; i < sb_count(state->currFunc->func.locals); ++i) {
             Tiny_Symbol *sym = state->currFunc->func.locals[i];
@@ -803,29 +809,27 @@ static Tiny_Symbol *ReferenceVariable(Tiny_State *state, const char *name) {
         }
     }
 
-    // Check global variables/constants
     for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
         Tiny_Symbol *sym = state->globalSymbols[i];
 
-        if (sym->type == TINY_SYM_GLOBAL || sym->type == TINY_SYM_CONST) {
+        if (ST_MASK(sym->type) & mask) {
             if (strcmp(sym->name, name) == 0) return sym;
         }
     }
 
-    // This variable doesn't exist
     return NULL;
 }
 
 static Tiny_Symbol *DeclareGlobalVar(Tiny_State *state, const char *name) {
-    if (name != ANON_SYM_NAME) {
-        Tiny_Symbol *sym = ReferenceVariable(state, name);
+    Tiny_Symbol *sym = FindSymbol(state, name, ST_MASK(TINY_SYM_GLOBAL) | ST_MASK(TINY_SYM_CONST));
 
-        if (sym && (sym->type == TINY_SYM_GLOBAL || sym->type == TINY_SYM_CONST)) {
-            ReportErrorSL(state,
-                          "Attempted to declare multiple global entities with the same "
-                          "name '%s'.",
-                          name);
-        }
+    if (sym) {
+        assert(sym->type == TINY_SYM_GLOBAL || sym->type == TINY_SYM_CONST);
+
+        ReportErrorSL(state,
+                      "Attempted to declare multiple global entities with the same "
+                      "name '%s'.",
+                      name);
     }
 
     Tiny_Symbol *newNode = Symbol_create(TINY_SYM_GLOBAL, name, state);
@@ -854,9 +858,11 @@ static Tiny_Symbol *DeclareArgument(Tiny_State *state, const char *name, Tiny_Sy
 
     // At this time there would be no locals declared so this should be fine.
     // Regardless, you shan't have locals + args have the same name.
-    Tiny_Symbol *prevSym = ReferenceVariable(state, name);
-    if (prevSym && prevSym->type == TINY_SYM_LOCAL) {
-        ReportErrorSL(state, "Function '%s' has arguments locals with the name '%s'.\n",
+    Tiny_Symbol *prevSym = FindSymbol(state, name, ST_MASK(TINY_SYM_LOCAL));
+    if (prevSym) {
+        assert(prevSym->type == TINY_SYM_LOCAL);
+
+        ReportErrorSL(state, "Function '%s' has multiple arguments with the name '%s'.\n",
                       state->currFunc->name, name);
     }
 
@@ -876,8 +882,10 @@ static Tiny_Symbol *DeclareArgument(Tiny_State *state, const char *name, Tiny_Sy
 static Tiny_Symbol *DeclareLocal(Tiny_State *state, const char *name) {
     assert(state->currFunc);
 
-    Tiny_Symbol *prevSym = ReferenceVariable(state, name);
-    if (prevSym && prevSym->type == TINY_SYM_LOCAL) {
+    Tiny_Symbol *prevSym = FindSymbol(state, name, ST_MASK(TINY_SYM_LOCAL));
+    if (prevSym) {
+        assert(prevSym->type == TINY_SYM_LOCAL);
+
         ReportErrorSL(state,
                       "Function '%s' has multiple locals in the same scope with "
                       "name '%s'.\n",
@@ -902,10 +910,12 @@ static Tiny_Symbol *DeclareVar(Tiny_State *state, const char *name) {
 }
 
 static Tiny_Symbol *DeclareConst(Tiny_State *state, const char *name, Tiny_Symbol *tag) {
-    Tiny_Symbol *sym = ReferenceVariable(state, name);
+    Tiny_Symbol *sym = FindSymbol(state, name, ST_MASK_VAR_OR_CONST);
 
-    if (sym && (sym->type == TINY_SYM_CONST || sym->type == TINY_SYM_LOCAL ||
-                sym->type == TINY_SYM_GLOBAL)) {
+    if (sym) {
+        assert(sym->type == TINY_SYM_CONST || sym->type == TINY_SYM_LOCAL ||
+               sym->type == TINY_SYM_GLOBAL);
+
         ReportErrorSL(state,
                       "Attempted to define constant with the same name '%s' as "
                       "another value.\n",
@@ -935,27 +945,13 @@ static Tiny_Symbol *DeclareFunction(Tiny_State *state, const char *name) {
     return newNode;
 }
 
-static Tiny_Symbol *ReferenceFunction(Tiny_State *state, const char *name) {
-    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Tiny_Symbol *node = state->globalSymbols[i];
-
-        if ((node->type == TINY_SYM_FUNCTION || node->type == TINY_SYM_FOREIGN_FUNCTION) &&
-            strcmp(node->name, name) == 0)
-            return node;
-    }
-
-    return NULL;
-}
-
 static Tiny_BindFunctionResultType BindFunction(Tiny_State *state, const char *name,
                                                 Tiny_Symbol **argTags, bool varargs,
                                                 Tiny_Symbol *returnTag, Tiny_ForeignFunction func) {
-    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Tiny_Symbol *node = state->globalSymbols[i];
-
-        if (node->type == TINY_SYM_FOREIGN_FUNCTION && strcmp(node->name, name) == 0) {
-            return TINY_BIND_FUNCTION_ERROR_DUPLICATE;
-        }
+    Tiny_Symbol *prevSym = FindSymbol(state, name, ST_MASK(TINY_SYM_FOREIGN_FUNCTION));
+    if (prevSym) {
+        assert(prevSym->type == TINY_SYM_FOREIGN_FUNCTION);
+        return TINY_BIND_FUNCTION_ERROR_DUPLICATE;
     }
 
     Tiny_Symbol *newNode = Symbol_create(TINY_SYM_FOREIGN_FUNCTION, name, state);
@@ -1839,7 +1835,7 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
             exp->pos = pos;
             exp->lineNumber = lineNumber;
 
-            exp->id.sym = ReferenceVariable(state, ident->value);
+            exp->id.sym = FindSymbol(state, ident->value, ST_MASK_VAR_OR_CONST);
             exp->id.name = ident;
 
             return exp;
@@ -2542,7 +2538,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
         } break;
 
         case TINY_EXP_CALL: {
-            Tiny_Symbol *func = ReferenceFunction(state, exp->call.calleeName->value);
+            Tiny_Symbol *func = FindSymbol(state, exp->call.calleeName->value, ST_MASK_FUNC);
 
             if (!func) {
                 ReportErrorE(state, exp, "Calling undeclared function '%s'.\n",
@@ -3015,7 +3011,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
             snprintf(buf, sizeof(buf), "%s_get_index", arrTypeName);
 
             // This better exist (registered or otherwise)
-            const Tiny_Symbol *getIndexFunc = ReferenceFunction(state, buf);
+            const Tiny_Symbol *getIndexFunc = FindSymbol(state, buf, ST_MASK_FUNC);
 
             if (!getIndexFunc) {
                 ReportErrorE(state, exp->index.arr,
@@ -3036,7 +3032,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
             // This one may or may not exist. Only matters if used.
             // TODO(Apaar): If it does exist, we should ensure it is symmetric with the getIndexFunc
-            const Tiny_Symbol *setIndexFunc = ReferenceFunction(state, buf);
+            const Tiny_Symbol *setIndexFunc = FindSymbol(state, buf, ST_MASK_FUNC);
 
             exp->index.getIndexFunc = getIndexFunc;
             exp->index.setIndexFunc = setIndexFunc;
@@ -3062,7 +3058,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                 snprintf(buf, sizeof(buf), "%s_get_index", arrTypeName);
 
                 // This better exist (registered or otherwise)
-                const Tiny_Symbol *getIndexFunc = ReferenceFunction(state, buf);
+                const Tiny_Symbol *getIndexFunc = FindSymbol(state, buf, ST_MASK_FUNC);
 
                 if (!getIndexFunc) {
                     ReportErrorE(state, exp->forEach.range,
@@ -3083,7 +3079,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
                 snprintf(buf, sizeof(buf), "%s_len", arrTypeName);
 
                 // This better exist (registered or otherwise)
-                const Tiny_Symbol *lenFunc = ReferenceFunction(state, buf);
+                const Tiny_Symbol *lenFunc = FindSymbol(state, buf, ST_MASK_FUNC);
 
                 if (!lenFunc) {
                     ReportErrorE(state, exp->forEach.range,
@@ -3257,7 +3253,8 @@ static void CompileCall(Tiny_State *state, Tiny_Expr *exp) {
         ++nargs;
     }
 
-    Tiny_Symbol *sym = ReferenceFunction(state, exp->call.calleeName->value);
+    Tiny_Symbol *sym = FindSymbol(state, exp->call.calleeName->value, ST_MASK_FUNC);
+
     if (!sym) {
         ReportErrorE(state, exp, "Attempted to call undefined function '%s'.\n",
                      exp->call.calleeName);
@@ -4552,7 +4549,7 @@ const Tiny_Symbol *Tiny_FindTypeSymbol(Tiny_State *state, const char *name) {
 }
 
 const Tiny_Symbol *Tiny_FindFuncSymbol(Tiny_State *state, const char *name) {
-    return ReferenceFunction(state, name);
+    return FindSymbol(state, name, ST_MASK_FUNC);
 }
 
 const Tiny_Symbol *Tiny_FindConstSymbol(Tiny_State *state, const char *name) {
