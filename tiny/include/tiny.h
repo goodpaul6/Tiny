@@ -121,7 +121,7 @@ typedef enum {
     TINY_VAL_STRUCT,
 } Tiny_ValueType;
 
-// TODO(Apaar): For now, we're just gonna have the bytecode be fully typed.
+// TODO(Apaar): We should untag the non-boxed values and just have the bytecode be typed.
 //
 // Since we don't officially support polymorphic stuff, we can just store
 // GC roots elsewhere. I think I did that in the `snow-common` branch.
@@ -184,6 +184,8 @@ extern const Tiny_Value Tiny_Null;
 
 extern Tiny_Context Tiny_DefaultContext;
 
+// If you're storing Tiny_Value in your native objects, you should call this
+// on them via your `protectFromGC` function in the props.
 void Tiny_ProtectFromGC(Tiny_Value value);
 
 Tiny_Value Tiny_NewBool(bool value);
