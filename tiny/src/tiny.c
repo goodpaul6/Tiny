@@ -1491,20 +1491,9 @@ static void ExpectTokenSL(Tiny_State *state, Tiny_TokenKind tok, const char *msg
     ExpectTokenL(state, &state->l, tok, msg);
 }
 
-static Tiny_Symbol *GetStructTag(Tiny_State *state, const char *name) {
-    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        if (state->globalSymbols[i]->type == TINY_SYM_TAG_STRUCT &&
-            strcmp(state->globalSymbols[i]->name, name) == 0) {
-            return state->globalSymbols[i];
-        }
-    }
-
-    return NULL;
-}
-
 static Tiny_Symbol *DeclareStruct(Tiny_State *state, const char *name, bool search) {
     if (search) {
-        Tiny_Symbol *s = GetStructTag(state, name);
+        Tiny_Symbol *s = FindSymbol(state, name, ST_MASK(TINY_SYM_TAG_STRUCT));
         if (s) return s;
     }
 
@@ -4553,15 +4542,7 @@ const Tiny_Symbol *Tiny_FindFuncSymbol(Tiny_State *state, const char *name) {
 }
 
 const Tiny_Symbol *Tiny_FindConstSymbol(Tiny_State *state, const char *name) {
-    for (int i = 0; i < sb_count(state->globalSymbols); ++i) {
-        Tiny_Symbol *sym = state->globalSymbols[i];
-
-        if (sym->type == TINY_SYM_CONST) {
-            if (strcmp(sym->name, name) == 0) return sym;
-        }
-    }
-
-    return NULL;
+    return FindSymbol(state, name, ST_MASK(TINY_SYM_CONST));
 }
 
 const char *Tiny_GetStringFromConstIndex(Tiny_State *state, Tiny_ConstantIndex sIndex) {
