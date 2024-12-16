@@ -490,6 +490,7 @@ typedef enum {
     TINY_SYM_TAG_ANY,
     TINY_SYM_TAG_FOREIGN,
     TINY_SYM_TAG_STRUCT,
+    TINY_SYM_TAG_TUPLE,
 } Tiny_SymbolType;
 
 // For all the fields marked with `// array` below, you can use
@@ -549,7 +550,7 @@ typedef struct Tiny_Symbol {
             bool defined;
 
             struct Tiny_Symbol **fields;  // array
-        } sstruct;
+        } sstruct; // also used for SYM_TAG_TUPLE
 
         struct Tiny_Symbol *fieldTag;
 

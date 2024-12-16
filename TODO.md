@@ -16,6 +16,7 @@
         - This lets functions return tuples
         - If the tuple size is large enough (e.g. 8), _most_ functions will never need to box
     - We can make tuples immutable
+    - Once this is done, we should _rename_ `struct` to `object`
 
 - BAD Bytecode VM should check whether we have the right values on the stack. Can be removed in release mode.
 

@@ -1493,13 +1493,15 @@ static void ExpectTokenSL(Tiny_State *state, Tiny_TokenKind tok, const char *msg
     ExpectTokenL(state, &state->l, tok, msg);
 }
 
-static Tiny_Symbol *DeclareStruct(Tiny_State *state, const char *name, bool search) {
+static Tiny_Symbol *DeclareUserDefinedType(Tiny_State *state, const char *name, Tiny_SymbolType type, bool search) {
+    assert(type == TINY_SYM_TAG_STRUCT || type == TINY_SYM_TAG_TUPLE);
+
     if (search) {
-        Tiny_Symbol *s = FindSymbol(state, name, ST_MASK(TINY_SYM_TAG_STRUCT));
+        Tiny_Symbol *s = FindSymbol(state, name, ST_MASK(TINY_SYM_TAG_STRUCT) | ST_MASK(TINY_SYM_TAG_TUPLE));
         if (s) return s;
     }
 
-    Tiny_Symbol *s = Symbol_create(TINY_SYM_TAG_STRUCT, name, state);
+    Tiny_Symbol *s = Symbol_create(type, name, state);
 
     s->sstruct.defined = false;
     s->sstruct.fields = NULL;
@@ -1533,7 +1535,8 @@ static Tiny_Symbol *GetTagFromName(Tiny_State *state, const char *name, bool dec
         }
 
         if (declareStruct) {
-            return DeclareStruct(state, name, false);
+            // NOTE(Apaar): Default to structs; if a tuple is defined with the same name we simply override
+            return DeclareUserDefinedType(state, name, TINY_SYM_TAG_STRUCT, false);
         }
     }
 
@@ -1703,17 +1706,17 @@ static Tiny_Expr *ParseFunc(Tiny_State *state) {
     return exp;
 }
 
-static Tiny_Symbol *ParseStruct(Tiny_State *state) {
+static Tiny_Symbol *ParseUserDefinedType(Tiny_State *state, bool tuple) {
     if (state->currFunc) {
-        ReportErrorSL(state, "Attempted to declare struct inside func %s. Can't do that bruh.",
+        ReportErrorSL(state, "Attempted to declare struct/tuple inside func %s. Can't do that bruh.",
                       state->currFunc->name);
     }
 
     Tiny_TokenPos pos = state->l.pos;
 
-    GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after 'struct'.");
+    GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after struct/tuple.");
 
-    Tiny_Symbol *s = DeclareStruct(state, state->l.lexeme, true);
+    Tiny_Symbol *s = DeclareUserDefinedType(state, state->l.lexeme, true);
 
     if (s->sstruct.defined) {
         ReportErrorSL(state, "Attempted to define struct %s multiple times.", state->l.lexeme);
