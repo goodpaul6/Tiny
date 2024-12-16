@@ -968,6 +968,8 @@ static Tiny_BindFunctionResultType BindFunction(Tiny_State *state, const char *n
     sb_push(&state->ctx, state->globalSymbols, newNode);
 
     state->numForeignFunctions += 1;
+
+    return TINY_BIND_FUNCTION_SUCCESS;
 }
 
 static Tiny_Symbol *GetTagFromName(Tiny_State *state, const char *name, bool declareStruct);
@@ -2547,7 +2549,7 @@ static void ResolveTypes(Tiny_State *state, Tiny_Expr *exp) {
 
                 if (i >= argc && !isVarargs) {
                     ReportErrorE(state, node, "Too many arguments to function '%s' (%d expected).",
-                                 exp->call.calleeName, argc);
+                                 exp->call.calleeName->value, argc);
                 }
 
                 if (func->type == TINY_SYM_FOREIGN_FUNCTION) {
@@ -4522,6 +4524,8 @@ Tiny_BindMacroResultType Tiny_BindMacro(Tiny_State *state, const char *name,
     newNode->modFunc = fn;
 
     sb_push(&state->ctx, state->globalSymbols, newNode);
+
+    return TINY_BIND_MACRO_SUCCESS;
 }
 
 size_t Tiny_SymbolArrayCount(Tiny_Symbol *const *arr) { return sb_count(arr); }

@@ -249,7 +249,18 @@ static TINY_FOREIGN_FUNCTION(Lib_ArrayResizeFill) {
     Array *array = Tiny_ToAddr(args[0]);
     Tiny_Value fillValue = args[2];
 
-    ArrayResize(array, (int)Tiny_ToNumber(args[1]), fillValue);
+    ArrayResize(array, (int)Tiny_ToInt(args[1]), fillValue);
+
+    return Tiny_Null;
+}
+
+static TINY_FOREIGN_FUNCTION(Lib_ArrayFill) {
+    Array *array = Tiny_ToAddr(args[0]);
+    Tiny_Value fillValue = args[1];
+
+    for (int i = 0; i < ArrayLen(array); ++i) {
+        array->data[i] = fillValue;
+    }
 
     return Tiny_Null;
 }
@@ -909,6 +920,9 @@ static TINY_MACRO_FUNCTION(ArrayMacroFunction) {
     snprintf(sigbuf, sizeof(sigbuf), "%s_resize_fill(%s, int, %s): void", asName, asName, args[0]);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayResizeFill);
 
+    snprintf(sigbuf, sizeof(sigbuf), "%s_fill(%s, %s): void", asName, asName, args[0]);
+    Tiny_BindFunction(state, sigbuf, Lib_ArrayFill);
+
     snprintf(sigbuf, sizeof(sigbuf), "%s_get(%s, int): %s", asName, asName, args[0]);
     Tiny_BindFunction(state, sigbuf, Lib_ArrayGet);
 
@@ -1260,7 +1274,7 @@ static TINY_FOREIGN_FUNCTION(DebugBreak) {
 }
 
 void Tiny_BindStandardLib(Tiny_State *state) {
-    Tiny_BindConstInt(state, "INT_MAX", INT_MAX);
+    Tiny_BindConstInt(state, "INT_MAX", INT64_MAX);
 
     Tiny_BindFunction(state, "strlen(str): int", Strlen);
     Tiny_BindFunction(state, "str_len(str): int", Strlen);
