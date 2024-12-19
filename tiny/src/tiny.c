@@ -1493,15 +1493,15 @@ static void ExpectTokenSL(Tiny_State *state, Tiny_TokenKind tok, const char *msg
     ExpectTokenL(state, &state->l, tok, msg);
 }
 
-static Tiny_Symbol *DeclareUserDefinedType(Tiny_State *state, const char *name, Tiny_SymbolType type, bool search) {
-    assert(type == TINY_SYM_TAG_STRUCT || type == TINY_SYM_TAG_TUPLE);
-
+static Tiny_Symbol *DeclareAggregate(Tiny_State *state, const char *name, bool search) {
     if (search) {
-        Tiny_Symbol *s = FindSymbol(state, name, ST_MASK(TINY_SYM_TAG_STRUCT) | ST_MASK(TINY_SYM_TAG_TUPLE));
+        Tiny_Symbol *s =
+            FindSymbol(state, name, ST_MASK(TINY_SYM_TAG_STRUCT) | ST_MASK(TINY_SYM_TAG_TUPLE));
         if (s) return s;
     }
 
-    Tiny_Symbol *s = Symbol_create(type, name, state);
+    // All aggregates are defaulted to struct but can be reassigned to be tuples in the calling code
+    Tiny_Symbol *s = Symbol_create(TINY_SYM_TAG_STRUCT, name, state);
 
     s->sstruct.defined = false;
     s->sstruct.fields = NULL;
@@ -1535,8 +1535,7 @@ static Tiny_Symbol *GetTagFromName(Tiny_State *state, const char *name, bool dec
         }
 
         if (declareStruct) {
-            // NOTE(Apaar): Default to structs; if a tuple is defined with the same name we simply override
-            return DeclareUserDefinedType(state, name, TINY_SYM_TAG_STRUCT, false);
+            return DeclareAggregate(state, name, false);
         }
     }
 
@@ -1546,7 +1545,7 @@ static Tiny_Symbol *GetTagFromName(Tiny_State *state, const char *name, bool dec
 static const char *GetTagName(const Tiny_Symbol *tag);
 
 static Tiny_Symbol *GetFieldTag(Tiny_Symbol *s, const char *name, int *index) {
-    assert(s->type == TINY_SYM_TAG_STRUCT);
+    assert(s->type == TINY_SYM_TAG_STRUCT || s->type == TINY_SYM_TAG_TUPLE);
     assert(s->sstruct.defined);
 
     for (int i = 0; i < sb_count(s->sstruct.fields); ++i) {
@@ -1706,9 +1705,15 @@ static Tiny_Expr *ParseFunc(Tiny_State *state) {
     return exp;
 }
 
-static Tiny_Symbol *ParseUserDefinedType(Tiny_State *state, bool tuple) {
+static Tiny_Symbol *ParseAggregate(Tiny_State *state) {
+    assert(state->l.lastTok == TINY_TOK_STRUCT || state->l.lastTok == TINY_TOK_TUPLE);
+
+    Tiny_SymbolType type =
+        state->l.lastTok == TINY_TOK_TUPLE ? TINY_SYM_TAG_TUPLE : TINY_SYM_TAG_STRUCT;
+
     if (state->currFunc) {
-        ReportErrorSL(state, "Attempted to declare struct/tuple inside func %s. Can't do that bruh.",
+        ReportErrorSL(state,
+                      "Attempted to declare struct/tuple inside func %s. Can't do that bruh.",
                       state->currFunc->name);
     }
 
@@ -1716,26 +1721,30 @@ static Tiny_Symbol *ParseUserDefinedType(Tiny_State *state, bool tuple) {
 
     GetExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier after struct/tuple.");
 
-    Tiny_Symbol *s = DeclareUserDefinedType(state, state->l.lexeme, true);
+    Tiny_Symbol *s = DeclareAggregate(state, state->l.lexeme, true);
 
     if (s->sstruct.defined) {
-        ReportErrorSL(state, "Attempted to define struct %s multiple times.", state->l.lexeme);
+        ReportErrorSL(state, "Attempted to define struct/tuple %s multiple times.",
+                      state->l.lexeme);
     }
+
+    // In case it was "forward-declared" as a struct and now it's a tuple
+    s->type = type;
 
     s->pos = pos;
     s->sstruct.defined = true;
 
-    GetExpectTokenSL(state, TINY_TOK_OPENCURLY, "Expected '{' after struct name.");
+    GetExpectTokenSL(state, TINY_TOK_OPENCURLY, "Expected '{' after struct/tuple name.");
 
     GetNextToken(state);
 
     while (state->l.lastTok != TINY_TOK_CLOSECURLY) {
-        ExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier in struct fields.");
+        ExpectTokenSL(state, TINY_TOK_IDENT, "Expected identifier in struct/tuple fields.");
 
         int count = sb_count(s->sstruct.fields);
 
         if (count >= UCHAR_MAX) {
-            ReportErrorSL(state, "Too many fields in struct.");
+            ReportErrorSL(state, "Too many fields in struct/tuple.");
         }
 
         for (int i = 0; i < count; ++i) {
@@ -1759,7 +1768,7 @@ static Tiny_Symbol *ParseUserDefinedType(Tiny_State *state, bool tuple) {
     GetNextToken(state);
 
     if (!s->sstruct.fields) {
-        ReportErrorSL(state, "Struct must have at least one field.\n");
+        ReportErrorSL(state, "Struct/tuple must have at least one field.\n");
     }
 
     return s;
@@ -1891,7 +1900,7 @@ static Tiny_Expr *ParseValue(Tiny_State *state) {
 
             GetNextToken(state);
 
-            Tiny_Symbol *tag = DeclareStruct(state, state->l.lexeme, true);
+            Tiny_Symbol *tag = DeclareAggregate(state, state->l.lexeme, true);
 
             exp->constructor.structTag = tag;
 
@@ -2446,8 +2455,8 @@ static Tiny_Expr *ParseProgram(Tiny_State *state) {
     Tiny_Expr *tail = NULL;
 
     while (state->l.lastTok != TINY_TOK_EOF) {
-        if (state->l.lastTok == TINY_TOK_STRUCT) {
-            ParseStruct(state);
+        if (state->l.lastTok == TINY_TOK_STRUCT || state->l.lastTok == TINY_TOK_TUPLE) {
+            ParseAggregate(state);
         } else {
             TINY_LL_APPEND(head, tail, ParseStatement(state));
         }

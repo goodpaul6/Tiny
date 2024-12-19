@@ -63,6 +63,7 @@ typedef enum {
     TINY_TOK_FUNC,
     TINY_TOK_FOREIGN,
     TINY_TOK_STRUCT,
+    TINY_TOK_TUPLE,
     TINY_TOK_NEW,
     TINY_TOK_CAST,
     TINY_TOK_BREAK,

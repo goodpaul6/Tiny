@@ -550,7 +550,7 @@ typedef struct Tiny_Symbol {
             bool defined;
 
             struct Tiny_Symbol **fields;  // array
-        } sstruct; // also used for SYM_TAG_TUPLE
+        } sstruct;                        // also used for SYM_TAG_TUPLE
 
         struct Tiny_Symbol *fieldTag;
 
