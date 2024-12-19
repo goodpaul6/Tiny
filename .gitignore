@@ -12,3 +12,4 @@ build
 bin 
 CMakeLists.txt.user
 .vscode
+*.dSYM
