@@ -1,5 +1,33 @@
 # TODO
 
+- IDEA Okay, so basically types are both _namespaces_ (via prefix) and also just types right now, should I just go the route of OCaml and have `module` be a thing?
+
+```
+// This is a c module (right now called macro)
+use array(int) as aint
+
+// v has type aint.T
+v := aint.make(10, 20, 30)
+
+// This is a user defined module
+mod bst(Elem: type) {
+    // Resolved _after_ code is fully parsed, so no worries about circularity
+    use nullable(Node) as NullNode
+
+    object Node {
+        value: Elem 
+        lhs: NullNode
+        rhs: NullNode
+    }
+
+    // Whatever is named "default" in the module can be referred to by the "asName" (this is how
+    // NullNode above works)
+    struct default {
+        root: NullNode
+    }
+}
+```
+
 - IDEA Get rid of nullable types from the code and just implement it as a macro library? `use nullable("int") as nint` + `nint_unwrap` + `nint_or`
     - Can store these in a single `Tiny_Value` anyways while we're tagging types
     - This will work nicely with the `:` syntax proposed below
