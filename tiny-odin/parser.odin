@@ -91,7 +91,7 @@ parse_str :: proc(using p: ^Parser) -> (ast: Ast_Literal, err: Maybe(Parser_Erro
 }
 
 @(private="file")
-parse_atom :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Error)) {
+parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Error)) {
     #partial switch l.last_tok.kind {
         case .Error: {
             err = cur_pos_error(p, l.last_tok.lexeme)
@@ -132,4 +132,4 @@ parse_atom :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Erro
     return
 }
 
-parser_parse_atom :: parse_atom
+parser_parse_value :: parse_value
