@@ -48,6 +48,12 @@ test_parse_bool :: proc(t: ^testing.T) {
         pos = 32,
         sub = Ast_Literal(rune('w'))
     })
+
+    atom, err = parser_parse_atom(&p)
+    testing.expect_value(t, err, Parser_Error{
+        pos = 35,
+        msg = "Unexpected token: (EOF)"
+    })
 }
 
 
