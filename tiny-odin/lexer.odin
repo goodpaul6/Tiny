@@ -214,7 +214,6 @@ get_token :: proc(l: ^Lexer) -> Token {
 
         l.last = get_char(l)
 
-        // Remove quotes
         lexeme := l.src[start_pos+1:l.pos-2]
 
         return {start_pos, .Char, lexeme}
@@ -233,7 +232,9 @@ get_token :: proc(l: ^Lexer) -> Token {
 
         l.last = get_char(l)
 
-        lexeme := l.src[start_pos+1:l.pos-2]
+        // We actually include quotes because strconv has a good
+        // function to unquote
+        lexeme := l.src[start_pos:l.pos-1]
 
         return {start_pos, .Str, lexeme}
     }

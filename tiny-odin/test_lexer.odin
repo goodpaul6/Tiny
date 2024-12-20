@@ -24,7 +24,7 @@ test_lexer :: proc(t: ^testing.T) {
     testing.expect_value(t, t4.lexeme, `\'`)
     testing.expect_value(t, t4.kind, Token_Kind.Char)
 
-    testing.expect_value(t, t5.lexeme, `\"`)
+    testing.expect_value(t, t5.lexeme, `"\""`)
     testing.expect_value(t, t5.kind, Token_Kind.Str)
 
     testing.expect_value(t, t6.lexeme, `0xfeed`)
