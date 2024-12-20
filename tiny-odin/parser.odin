@@ -167,7 +167,7 @@ parse_suffixed_value :: proc(using p: ^Parser) -> (lhs: ^Ast_Node, err: Maybe(Pa
             next_token(p)
 
             lhs = ast_node_create(p, Ast_Binary{
-                op = '[',
+                op = "[",
                 lhs = lhs,
                 rhs = parse_expr(p) or_return
             })
@@ -192,7 +192,7 @@ parse_suffixed_value :: proc(using p: ^Parser) -> (lhs: ^Ast_Node, err: Maybe(Pa
             }
 
             lhs = ast_node_create(p, Ast_Binary{
-                op = '.',
+                op = ".",
                 lhs = lhs,
                 rhs = rhs,
             })
@@ -245,8 +245,81 @@ parse_suffixed_value :: proc(using p: ^Parser) -> (lhs: ^Ast_Node, err: Maybe(Pa
 }
 
 @(private="file")
+Op_Prec :: struct {
+    op: string,
+    prec: int
+}
+
+@(private="file")
+get_prec :: proc(op: string) -> Op_Prec {
+    op_to_prec := [?]Op_Prec{
+        {"*", 5},
+        {"/", 5},
+        {"%", 5},
+        {"&", 5},
+        {"|", 5},
+
+        {"<<", 4},
+        {">>", 4},
+        {"+", 4},
+        {"-", 4},
+
+        {"<=", 3},
+        {">=", 3},
+        {"==", 3},
+        {"!=", 3},
+        {"<", 3},
+        {">", 3},
+
+        {"&&", 2},
+        {"||", 2},
+    }
+
+    for op_prec in op_to_prec {
+        if op_prec.op == op {
+            return op_prec
+        }
+    }
+
+    return {"", -1}
+}
+
+@(private="file")
+parse_bin_rhs :: proc(using p: ^Parser, expr_prec: int, lhs: ^Ast_Node) -> (node: ^Ast_Node, err: Maybe(Parser_Error)) {
+    lhs := lhs
+
+    for {
+        op := get_prec(l.last_tok.lexeme)
+
+        if op.prec < expr_prec {
+            node = lhs
+            return
+        }
+
+        next_token(p)
+
+        rhs := parse_suffixed_value(p) or_return
+
+        next_op := get_prec(l.last_tok.lexeme)
+
+        if next_op.prec > op.prec {
+            rhs = parse_bin_rhs(p, op.prec + 1, rhs) or_return
+        }
+
+        lhs = ast_node_create(p, Ast_Binary{
+            op = op.op,
+            lhs = lhs,
+            rhs = rhs,
+        })
+    }
+}
+
+@(private="file")
 parse_expr :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Error)) {
-    return parse_suffixed_value(p)
+    node = parse_suffixed_value(p) or_return
+    node = parse_bin_rhs(p, 0, node) or_return
+
+    return
 }
 
 parser_parse_expr :: parse_expr

@@ -77,5 +77,5 @@ test_parse_suffixes :: proc(t: ^testing.T) {
     call.first_arg.next = nil
     s := fmt.tprint(call.callee.sub, call.first_arg, call.last_arg)
 
-    testing.expect_value(t, s, `Ast_Binary{op = ., lhs = &Ast_Node{next = <nil>, pos = 0, sub = "x"}, rhs = &Ast_Node{next = <nil>, pos = 2, sub = "y"}} &Ast_Node{next = <nil>, pos = 4, sub = "hello"} &Ast_Node{next = <nil>, pos = 11, sub = 10}`)
+    testing.expect_value(t, s, `Ast_Binary{op = ".", lhs = &Ast_Node{next = <nil>, pos = 0, sub = "x"}, rhs = &Ast_Node{next = <nil>, pos = 2, sub = "y"}} &Ast_Node{next = <nil>, pos = 4, sub = "hello"} &Ast_Node{next = <nil>, pos = 11, sub = 10}`)
 }

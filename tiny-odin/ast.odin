@@ -14,7 +14,9 @@ Ast_Unary :: struct {
 
 // Anything that has two children (so 'x * x' but also x[x] and x.y)
 Ast_Binary :: struct {
-    op: rune,
+    // This is not allocated, it's just a literal, but I guess that
+    // doesn't matter since we're using the temp allocator
+    op: string,
     lhs: ^Ast_Node,
     rhs: ^Ast_Node,
 }
