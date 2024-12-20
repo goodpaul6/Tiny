@@ -6,7 +6,7 @@ Ast_Literal :: union {bool, i64, f64, rune, string}
 // Any identifier
 Ast_Ident :: distinct string
 
-// Any AST that has one child (so '-x' but also '(x)')
+// Any AST that has one child (so '-x')
 Ast_Unary :: struct {
     op: rune,
     rhs: ^Ast_Node,
@@ -20,7 +20,10 @@ Ast_Binary :: struct {
 }
 
 // Just a container for sub-nodes, use `first_child` to get the head
-Ast_Block :: struct {}
+Ast_Block :: struct {
+    first_child: ^Ast_Node,
+    last_child: ^Ast_Node,
+}
 
 // This handles if, for, and while all-in-one
 Ast_Control_Flow :: struct {
@@ -30,13 +33,13 @@ Ast_Control_Flow :: struct {
     cond: ^Ast_Node,
     body: ^Ast_Node,
 
-    // If this is true, then we loop back to the condition after
-    // executing body
-    should_loop: bool,
-
     // Optional. If this is specified on a loop, then it gets triggered
     // if the loop condition fails on the initial check.
     else_body: ^Ast_Node,
+
+    // If this is true, then we loop back to the condition after
+    // executing body
+    should_loop: bool,
 }
 
 // Special case loop (foreach)
@@ -55,11 +58,8 @@ Ast_Jump :: struct {
     kind: enum {Break, Continue}
 }
 
-// This is not a part of the Ast data structure hence the lack of prefix.
-// We still allocate it in the Ast allocator so I'm using a linked list
-// regardless.
-Aggregate_Decl_Field :: struct {
-    next: ^Aggregate_Decl_Field,
+Def_Elem :: struct {
+    next: ^Def_Elem,
 
     name: string,
 
@@ -68,12 +68,25 @@ Aggregate_Decl_Field :: struct {
     type: ^Ast_Node,
 }
 
-Ast_Aggregate_Decl :: struct {
-    // If it's an object, then it's boxed, otherwise it is not
-    is_object: bool,
+Ast_Def :: struct {
+    kind: enum{Object, Struct, Func},
 
-    first_field: ^Aggregate_Decl_Field,
-    last_field: ^Aggregate_Decl_Field,
+    name: string,
+
+    // For functions, these are the arguments.
+    // For aggregates (Object, Struct), these are the fields.
+    first_elem: ^Def_Elem,
+    last_elem: ^Def_Elem,
+
+    // Optional
+    body: ^Ast_Node,
+}
+
+Ast_Call :: struct {
+    callee: ^Ast_Node,
+
+    first_arg: ^Ast_Node,
+    last_arg: ^Ast_Node,
 }
 
 Ast_Node_Sub :: union #no_nil {
@@ -85,12 +98,12 @@ Ast_Node_Sub :: union #no_nil {
     Ast_Control_Flow,
     Ast_Range_Loop,
     Ast_Jump,
-    Ast_Aggregate_Decl,
+    Ast_Def,
+    Ast_Call,
 }
 
 // AST nodes basically just form an n-ary tree.
-// If you wanted to traverse all of the nodes of the tree, you can do so straightforwardly
-// just by traversing the children via `first_child`.
+// There is a single traverse function that will let you go down the tree as needed.
 //
 // If you need more info about a particular node, you can use the `sub` field.
 //
@@ -101,12 +114,58 @@ Ast_Node_Sub :: union #no_nil {
 Ast_Node :: struct {
     next: ^Ast_Node,
 
-    first_child: ^Ast_Node,
-    last_child: ^Ast_Node,
-
     pos: Token_Pos,
 
     sub: Ast_Node_Sub,
 }
 
+ast_traverse :: proc(root: ^Ast_Node, ctx: ^$T, fn: proc(node: ^Ast_Node, ctx: ^T) -> bool) -> bool {
+    if root == nil {
+        return true
+    }
 
+    if !fn(root, ctx) {
+        return false
+    }
+
+    #partial switch sub in root.sub {
+        case .Ast_Unary: 
+            return ast_traverse(sub.rhs, ctx, fn)
+
+        case .Ast_Binary:
+            return ast_traverse(sub.lhs, ctx, fn) && 
+                   ast_traverse(sub.rhs, ctx, fn)
+
+        case .Ast_Block:
+            for node := sub.first_child; node != nil; node = node.next {
+                if !ast_traverse(node, ctx, fn) {
+                    return false
+                }
+            }
+
+            return true
+
+        case .Ast_Control_Flow:
+            return ast_traverse(sub.init, ctx, fn) &&
+                   ast_traverse(sub.cond, ctx, fn) &&
+                   ast_traverse(sub.body, ctx, fn) &&
+                   ast_traverse(sub.else_body, ctx, fn)
+
+        case .Ast_Range_Loop:
+            return ast_traverse(sub.range, ctx, fn)
+
+        case .Ast_Def:
+            return ast_traverse(sub.body, ctx, fn)
+
+        case .Ast_Call:
+            for node := sub.first_arg; node != nil; node = node.next {
+                if !ast_traverse(node, ctx, fn) {
+                    return false
+                }
+            }
+
+            return true
+    }
+
+    return true
+}

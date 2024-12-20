@@ -11,7 +11,7 @@ Parser_Error :: struct {
 }
 
 Parser :: struct {
-    l: Lexer,
+    l: Lexer,    
 }
 
 parser_make :: proc(file_name: string, src: string) -> Parser {
@@ -37,7 +37,7 @@ cur_pos_error :: proc(using p: ^Parser, msg: string) -> Parser_Error {
 
 // Everything goes on the temp allocator
 @(private="file")
-ast_node_create :: proc(using p: ^Parser, sub: Ast_Node_Sub) -> ^Ast_Node {
+ast_node_create :: proc(using p: ^Parser, sub: Ast_Node_Sub) -> (node: ^Ast_Node) {
     return new_clone(Ast_Node{
         pos = l.last_tok.pos,
         sub = sub,
@@ -157,6 +157,96 @@ parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Err
 parser_parse_value :: parse_value
 
 @(private="file")
-parse_expr :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Error)) {
-    return parse_value(p)
+parse_suffixed_value :: proc(using p: ^Parser) -> (lhs: ^Ast_Node, err: Maybe(Parser_Error)) {
+    lhs = parse_value(p) or_return
+
+    for {
+        lexeme := l.last_tok.lexeme
+
+        if lexeme == "[" {
+            next_token(p)
+
+            lhs = ast_node_create(p, Ast_Binary{
+                op = '[',
+                lhs = lhs,
+                rhs = parse_expr(p) or_return
+            })
+
+            expect_token_lexeme(p, "]", "Expected ']' after previous '['") or_return
+            next_token(p)
+
+            continue
+        } else if lexeme == "." {
+            next_token(p)
+
+            pos := l.pos
+
+            rhs := parse_value(p) or_return
+
+            if _, ok := rhs.sub.(Ast_Ident); !ok {
+                err = Parser_Error{
+                    pos = pos,
+                    msg = "Expected identifier after '.'"
+                }
+                return
+            }
+
+            lhs = ast_node_create(p, Ast_Binary{
+                op = '.',
+                lhs = lhs,
+                rhs = rhs,
+            })
+
+            continue
+        } else if lexeme == "(" {
+            next_token(p)
+
+            pos := l.pos
+
+            first_arg: ^Ast_Node
+            last_arg: ^Ast_Node
+
+            for l.last_tok.lexeme != ")" {
+                node := parse_expr(p) or_return
+
+                if first_arg == nil {
+                    first_arg = node
+                    last_arg = node
+                } else {
+                    last_arg.next = node
+                    last_arg = node
+                }
+
+                if l.last_tok.lexeme == "," {
+                    next_token(p)
+                } else if l.last_tok.lexeme != ")" {
+                    err = Parser_Error{
+                        pos = pos,
+                        msg = "Expected , or ) in call",
+                    }
+                    return
+                }
+            }
+
+            next_token(p)
+
+            lhs = ast_node_create(p, Ast_Call{
+                callee = lhs,
+
+                first_arg = first_arg,
+                last_arg = last_arg,
+            })
+
+            continue
+        }
+
+        return
+    }
 }
+
+@(private="file")
+parse_expr :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Error)) {
+    return parse_suffixed_value(p)
+}
+
+parser_parse_expr :: parse_expr
