@@ -91,6 +91,16 @@ parse_str :: proc(using p: ^Parser) -> (ast: Ast_Literal, err: Maybe(Parser_Erro
 }
 
 @(private="file")
+@(require_results)
+expect_token_lexeme :: proc(using p: ^Parser, lexeme: string, msg: string) -> Maybe(Parser_Error) {
+    if l.last_tok.lexeme != lexeme {
+        return cur_pos_error(p, msg)
+    }
+
+    return nil
+}
+
+@(private="file")
 parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Error)) {
     #partial switch l.last_tok.kind {
         case .Error: {
@@ -113,11 +123,23 @@ parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Err
             node = ast_node_create(p, lit)
         }
 
-        case .Other: {
+        case .Ident: {
             if l.last_tok.lexeme == "true" {
                 node = ast_node_create(p, Ast_Literal(true))
             } else if l.last_tok.lexeme == "false" {
                 node = ast_node_create(p, Ast_Literal(false))
+            } else {
+                node = ast_node_create(p, Ast_Ident(clone_lexeme(p)))
+            }
+        }
+
+        case .Punct: {
+            if l.last_tok.lexeme == "(" {
+                next_token(p)
+                node = parse_expr(p) or_return
+
+                expect_token_lexeme(p, ")", "Expected ')' after previous '('") or_return
+                next_token(p)
             }
         }
     }
@@ -133,3 +155,8 @@ parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Err
 }
 
 parser_parse_value :: parse_value
+
+@(private="file")
+parse_expr :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Error)) {
+    return parse_value(p)
+}

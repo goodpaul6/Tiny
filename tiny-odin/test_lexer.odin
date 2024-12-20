@@ -19,7 +19,7 @@ test_lexer :: proc(t: ^testing.T) {
     testing.expect_value(t, t2.lexeme, "world")
 
     testing.expect_value(t, t3.lexeme, "<=")
-    testing.expect_value(t, t3.kind, Token_Kind.Other)
+    testing.expect_value(t, t3.kind, Token_Kind.Punct)
 
     testing.expect_value(t, t4.lexeme, `\'`)
     testing.expect_value(t, t4.kind, Token_Kind.Char)

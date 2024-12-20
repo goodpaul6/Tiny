@@ -4,7 +4,7 @@ import "core:bytes"
 
 Token_Pos :: int
 
-Token_Kind :: enum { End, Error, Num, Char, Str, Other }
+Token_Kind :: enum { End, Error, Num, Char, Str, Punct, Ident }
 
 Token :: struct {
     pos: Token_Pos,
@@ -115,7 +115,7 @@ get_token :: proc(l: ^Lexer) -> Token {
     if l.last == '.' && peek(l) == '.' && peek2(l) == '.' {
         l.pos += 2
         l.last = get_char(l)
-        return {start_pos, .Other, "..."}
+        return {start_pos, .Punct, "..."}
     }
 
     two_ch := [?]string{
@@ -144,7 +144,7 @@ get_token :: proc(l: ^Lexer) -> Token {
             l.pos += 1
             l.last = get_char(l)
 
-            return {start_pos, .Other, opt}
+            return {start_pos, .Punct, opt}
         }
     }
 
@@ -177,7 +177,7 @@ get_token :: proc(l: ^Lexer) -> Token {
         if l.last == rune(opt[0]) {
             l.last = get_char(l)
 
-            return {start_pos, .Other, opt}
+            return {start_pos, .Punct, opt}
         }
     }
 
@@ -187,7 +187,7 @@ get_token :: proc(l: ^Lexer) -> Token {
         }
 
         lexeme := l.src[start_pos:l.pos-1]
-        return {start_pos, .Other, lexeme}
+        return {start_pos, .Ident, lexeme}
     }
 
     if is_digit(l.last) {

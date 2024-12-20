@@ -78,6 +78,7 @@ Ast_Aggregate_Decl :: struct {
 
 Ast_Node_Sub :: union #no_nil {
     Ast_Literal, 
+    Ast_Ident,
     Ast_Unary, 
     Ast_Binary, 
     Ast_Block,
