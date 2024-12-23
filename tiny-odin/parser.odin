@@ -177,13 +177,30 @@ parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Err
 parser_parse_value :: parse_value
 
 @(private="file")
+is_cur_lexeme_eq :: proc(using p: ^Parser, lex: string) -> (res: bool, err: Maybe(Parser_Error)) {
+    if l.last_tok.lexeme == lex {
+        return true, nil
+    }
+
+    if l.last_tok.kind == .Error {
+        return false, cur_pos_error(p, l.last_tok.lexeme)
+    }
+
+    if l.last_tok.kind == .End {
+        return false, cur_pos_error(p, fmt.tprint("Unexpected end-of-file when (eventually) expecting '%s'", lex))
+    }
+
+    return false, nil
+}
+
+@(private="file")
 parse_call_args :: proc(using p: ^Parser) -> (first_arg: ^Ast_Node, last_arg: ^Ast_Node, err: Maybe(Parser_Error)) {
     // Must be called on open paren
     assert(l.last_tok.lexeme == "(")
 
     next_token(p)
 
-    for l.last_tok.lexeme != ")" {
+    for !(is_cur_lexeme_eq(p, ")") or_return) {
         node := parse_expr(p) or_return
 
         if first_arg == nil {
@@ -477,6 +494,23 @@ parse_statement :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser
         return
     }
 
+    if lexeme == "return" {
+        next_token(p)
+
+        if l.last_tok.lexeme == ";" {
+            node = ast_node_create(p, Ast_Return{})
+            next_token(p)
+
+            return
+        }
+
+        node = ast_node_create(p, Ast_Return{
+            value = parse_expr(p) or_return
+        })
+
+        return
+    }
+
     if lexeme == "object" || lexeme == "struct" {
         kind := lexeme == "struct" ? Def_Kind.Struct : Def_Kind.Object
         def_word := kind == .Struct ? "struct" : "object"
@@ -498,7 +532,7 @@ parse_statement :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser
         first_elem: ^Def_Elem
         last_elem: ^Def_Elem
 
-        for l.last_tok.lexeme != "}" {
+        for !(is_cur_lexeme_eq(p, "}") or_return) {
             expect_token_kind(p, .Ident, "Expected identifier in field list") or_return
 
             field_name := clone_lexeme(p)
@@ -524,18 +558,87 @@ parse_statement :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser
         }
 
         next_token(p)
+
+        node = ast_node_create(p, Ast_Def{
+            kind = kind,
+            name = name,
+            first_elem = first_elem,
+            last_elem = last_elem,
+        })
+
+        return
+    }
+
+    if lexeme == "func" {
+        next_token(p)
+
+        expect_token_kind(p, .Ident, "Expected identifier after 'func'") or_return
+
+        name := clone_lexeme(p)
+
+        next_token(p)
+
+        expect_token_lexeme(p, "(", "Expected '(' after 'func ...'") or_return
+
+        next_token(p)
+
+        first_elem: ^Def_Elem
+        last_elem: ^Def_Elem
+
+        for !(is_cur_lexeme_eq(p, ")") or_return) {
+            expect_token_kind(p, .Ident, "Expected identifier in parameter list") or_return
+
+            field_name := clone_lexeme(p)
+
+            next_token(p)
+
+            expect_token_lexeme(p, ":", "Expected ':' after parameter name in parameter list") or_return 
+
+            type := parse_type(p) or_return
+
+            elem := new_clone(Def_Elem{
+                name = name,
+                type = type,
+            }, context.temp_allocator)
+
+            if first_elem == nil {
+                first_elem = elem
+                last_elem = elem
+            } else {
+                last_elem.next = elem
+                last_elem = elem
+            }
+        }
+
+        next_token(p) 
+
+        return_type: ^Qual_Name
+
+        if l.last_tok.lexeme == ":" {
+            next_token(p)
+
+            return_type = parse_type(p) or_return
+        }
+
+        expect_token_lexeme(p, "{", "Expected '{' after 'func ...(...)' for function body") or_return
+
+        body := parse_statement(p) or_return
+
+        node = ast_node_create(p, Ast_Def{
+            kind = .Func,
+            first_elem = first_elem,
+            last_elem = last_elem,
+            return_type = return_type,
+            body = body,
+        })
+
+        return
     }
 
     lhs := parse_suffixed_value(p) or_return
 
-    if l.last_tok.lexeme == "(" {
-        first_arg, last_arg := parse_call_args(p) or_return 
-
-        node = ast_node_create(p, Ast_Call{
-            callee = lhs,
-            first_arg = first_arg,
-            last_arg = last_arg,
-        })
+    if _, is_call := lhs.sub.(Ast_Call); is_call {
+        node = lhs
         return
     }
 

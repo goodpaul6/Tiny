@@ -95,7 +95,7 @@ Ast_Def :: struct {
     last_elem: ^Def_Elem,
 
     // For functions
-    return_type: ^Ast_Node,
+    return_type: ^Qual_Name,
 
     // For functions
     body: ^Ast_Node,
@@ -106,6 +106,10 @@ Ast_Call :: struct {
 
     first_arg: ^Ast_Node,
     last_arg: ^Ast_Node,
+}
+
+Ast_Return :: struct {
+    value: ^Ast_Node
 }
 
 Ast_Node_Sub :: union #no_nil {
@@ -119,6 +123,7 @@ Ast_Node_Sub :: union #no_nil {
     Ast_Jump,
     Ast_Def,
     Ast_Call,
+    Ast_Return,
 }
 
 // AST nodes basically just form an n-ary tree.
@@ -147,7 +152,10 @@ ast_traverse :: proc(root: ^Ast_Node, ctx: ^$T, fn: proc(node: ^Ast_Node, ctx: ^
         return false
     }
 
-    #partial switch sub in root.sub {
+    switch sub in root.sub {
+        case .Ast_Literal: return true
+        case .Ast_Ident: return true
+
         case .Ast_Unary: 
             return ast_traverse(sub.rhs, ctx, fn)
 
@@ -184,6 +192,9 @@ ast_traverse :: proc(root: ^Ast_Node, ctx: ^$T, fn: proc(node: ^Ast_Node, ctx: ^
             }
 
             return true
+
+        case .Ast_Return:
+            return ast_traverse(sub.value, ctx, fn)
     }
 
     return true

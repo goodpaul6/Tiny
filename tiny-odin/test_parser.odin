@@ -101,7 +101,7 @@ test_parse_binary :: proc(t: ^testing.T) {
 }
 
 @(test)
-test_parse_statement :: proc(t: ^testing.T) { 
+test_parse_assign :: proc(t: ^testing.T) { 
     p := parser_make("test", `x[0] := 10 * 20`)
     parser_next_token(&p)
 
@@ -121,4 +121,23 @@ test_parse_statement :: proc(t: ^testing.T) {
 
     s := fmt.tprint(sub, lhs_sub, rhs_sub)
     testing.expect_value(t, s, `Ast_Binary{op = ":=", lhs = <nil>, rhs = <nil>} Ast_Binary{op = "[", lhs = &Ast_Node{next = <nil>, pos = 0, sub = "x"}, rhs = &Ast_Node{next = <nil>, pos = 2, sub = 0}} Ast_Binary{op = "*", lhs = &Ast_Node{next = <nil>, pos = 8, sub = 10}, rhs = &Ast_Node{next = <nil>, pos = 13, sub = 20}}`)
+}
+
+@(test)
+test_parse_call :: proc(t: ^testing.T) {
+    p := parser_make("test", `x.y(10, 20)`)
+    parser_next_token(&p)
+
+    value, err := parser_parse_statement(&p)
+    testing.expect_value(t, err, nil)
+
+    sub := value.sub.(Ast_Call)
+
+    sub_callee := sub.callee.sub.(Ast_Binary)
+    sub.callee = nil
+
+    sub.first_arg.next = nil
+
+    s := fmt.tprint(sub_callee, sub.first_arg, sub.last_arg)
+    testing.expect_value(t, s, `Ast_Binary{op = ".", lhs = &Ast_Node{next = <nil>, pos = 0, sub = "x"}, rhs = &Ast_Node{next = <nil>, pos = 2, sub = "y"}} &Ast_Node{next = <nil>, pos = 4, sub = 10} &Ast_Node{next = <nil>, pos = 8, sub = 20}`)
 }
