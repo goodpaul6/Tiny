@@ -346,6 +346,16 @@ parse_bin_rhs :: proc(using p: ^Parser, expr_prec: int, lhs: ^Ast_Node) -> (node
 }
 
 @(private="file")
+parse_expr :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Error)) {
+    node = parse_suffixed_value(p) or_return
+    node = parse_bin_rhs(p, 0, node) or_return
+
+    return
+}
+
+parser_parse_expr :: parse_expr
+
+@(private="file")
 parse_type :: proc(using p: ^Parser) -> (node: ^Qual_Name, err: Maybe(Parser_Error)) {
     expect_token_kind(p, .Ident, "Expected identifier for type") or_return
 
@@ -518,8 +528,6 @@ parse_statement :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser
 
     lhs := parse_suffixed_value(p) or_return
 
-    next_token(p)
-
     if l.last_tok.lexeme == "(" {
         first_arg, last_arg := parse_call_args(p) or_return 
 
@@ -554,12 +562,5 @@ parse_statement :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser
     return
 }
 
-@(private="file")
-parse_expr :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Error)) {
-    node = parse_suffixed_value(p) or_return
-    node = parse_bin_rhs(p, 0, node) or_return
+parser_parse_statement :: parse_statement
 
-    return
-}
-
-parser_parse_expr :: parse_expr
