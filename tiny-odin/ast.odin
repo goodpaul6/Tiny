@@ -1,14 +1,23 @@
 package main
 
+Null_Literal_Value :: struct {}
+
+Qual_Name :: struct {
+    // Optional, could be empty
+    mod_name: string,
+
+    name: string
+}
+
 // Literals
-Ast_Literal :: union {bool, i64, f64, rune, string}
+Ast_Literal :: union {Null_Literal_Value, bool, i64, f64, rune, string}
 
 // Any identifier
 Ast_Ident :: distinct string
 
 // Any AST that has one child (so '-x')
 Ast_Unary :: struct {
-    op: rune,
+    op: string,
     rhs: ^Ast_Node,
 }
 
@@ -33,6 +42,10 @@ Ast_Control_Flow :: struct {
     init: ^Ast_Node,
 
     cond: ^Ast_Node,
+    
+    // Optional step
+    step: ^Ast_Node,
+
     body: ^Ast_Node,
 
     // Optional. If this is specified on a loop, then it gets triggered
@@ -53,6 +66,8 @@ Ast_Range_Loop :: struct {
 
     // The object being traversed
     range: ^Ast_Node,
+
+    body: ^Ast_Node,
 }
 
 Ast_Jump :: struct {
@@ -64,14 +79,13 @@ Def_Elem :: struct {
     next: ^Def_Elem,
 
     name: string,
-
-    // Technically this is just supposed to be a qualified name, but we use an Ast_Node
-    // to store it regardless (x.y is just Ast_Binary with op = '.' and two identifiers)
-    type: ^Ast_Node,
+    type: ^Qual_Name,
 }
 
+Def_Kind :: enum{Object, Struct, Func}
+
 Ast_Def :: struct {
-    kind: enum{Object, Struct, Func},
+    kind: Def_Kind,
 
     name: string,
 
@@ -80,7 +94,10 @@ Ast_Def :: struct {
     first_elem: ^Def_Elem,
     last_elem: ^Def_Elem,
 
-    // Optional
+    // For functions
+    return_type: ^Ast_Node,
+
+    // For functions
     body: ^Ast_Node,
 }
 
