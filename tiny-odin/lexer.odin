@@ -246,3 +246,17 @@ lexer_get_token :: proc(l: ^Lexer) -> Token {
     l.last_tok = get_token(l)
     return l.last_tok
 }
+
+pos_to_line_col :: proc(src: string, pos: int) -> (line: int, col: int) {
+    last_newline := 0
+
+    for i := 0; i < pos; i += 1 {
+        if src[i] == '\n' {
+            last_newline = i
+            line += 1
+        }
+    }
+
+    col = pos - last_newline
+    return
+}

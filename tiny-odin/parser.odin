@@ -30,7 +30,7 @@ parser_next_token :: next_token
 @(private="file")
 cur_pos_error :: proc(using p: ^Parser, msg: string) -> Parser_Error {
     return {
-        msg = msg,
+        msg = fmt.tprintf("%s (near '%s')", msg, p.l.last_tok.lexeme),
         pos = p.l.last_tok.pos,
     }
 }
@@ -141,6 +141,21 @@ parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Err
                 node = ast_node_create(p, Ast_Literal(false))
             } else if l.last_tok.lexeme == "null" {
                 node = ast_node_create(p, Ast_Literal(Null_Literal_Value{}))
+            } else if l.last_tok.lexeme == "new" {
+                next_token(p)
+
+                type := parse_type(p) or_return
+
+                // TODO(Apaar): Parse constructor args
+                expect_token_lexeme(p, "{", "Expected '{' after 'new ...'") or_return
+                next_token(p)
+
+                expect_token_lexeme(p, "}", "Expected '}' after 'new ...{'") or_return
+                next_token(p)    
+
+                node = ast_node_create(p, Ast_New{
+                    type = type,
+                })
             } else {
                 node = ast_node_create(p, Ast_Ident(clone_lexeme(p)))
             }
@@ -165,7 +180,7 @@ parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Err
     }
 
     if node == nil {
-        err = cur_pos_error(p, fmt.tprintf("Unexpected token: %s", l.last_tok.lexeme))
+        err = cur_pos_error(p, fmt.tprintf("Unexpected token"))
         return
     }
 
@@ -405,12 +420,42 @@ parse_type :: proc(using p: ^Parser) -> (node: ^Qual_Name, err: Maybe(Parser_Err
 
 @(private="file")
 parse_statement :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Error)) {
+    lexeme := l.last_tok.lexeme
+
+    if lexeme == "{" {
+        next_token(p)
+
+        // Just parse a block and return the first elem as the node
+        first_node: ^Ast_Node
+        last_node: ^Ast_Node
+
+        for !(is_cur_lexeme_eq(p, "}") or_return) {
+            stmt := parse_statement(p) or_return
+
+            if first_node == nil {
+                first_node = stmt
+                last_node = stmt
+            } else {
+                last_node.next = stmt
+                last_node = stmt
+            }
+        }
+
+        next_token(p)
+
+        if first_node == nil {
+            // If the block is empty, recurse
+            return parse_statement(p)
+        }
+
+        node = first_node
+        return
+    }
+
     if l.last_tok.kind != .Ident {
         err = cur_pos_error(p, "Expected identifier at start of statement")
         return
     }
-
-    lexeme := l.last_tok.lexeme
 
     if lexeme == "if" {
         next_token(p)
@@ -540,6 +585,7 @@ parse_statement :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser
             next_token(p)
 
             expect_token_lexeme(p, ":", "Expected ':' after field name in field list") or_return 
+            next_token(p)
 
             type := parse_type(p) or_return
 
@@ -593,6 +639,7 @@ parse_statement :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser
             next_token(p)
 
             expect_token_lexeme(p, ":", "Expected ':' after parameter name in parameter list") or_return 
+            next_token(p)
 
             type := parse_type(p) or_return
 
@@ -607,6 +654,13 @@ parse_statement :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser
             } else {
                 last_elem.next = elem
                 last_elem = elem
+            }
+
+            if l.last_tok.lexeme == "," {
+                next_token(p)
+            } else if l.last_tok.lexeme != ")" {
+                err = cur_pos_error(p, "Expected ',' or ')' in function parameter list")
+                return
             }
         }
 

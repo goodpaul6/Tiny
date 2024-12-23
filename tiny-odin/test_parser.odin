@@ -61,7 +61,7 @@ test_parse_literal :: proc(t: ^testing.T) {
     value, err = parser_parse_value(&p)
     testing.expect_value(t, err, Parser_Error{
         pos = 39,
-        msg = "Unexpected token: (EOF)"
+        msg = "Unexpected token (near '(EOF)')"
     })
 }
 
@@ -140,4 +140,26 @@ test_parse_call :: proc(t: ^testing.T) {
 
     s := fmt.tprint(sub_callee, sub.first_arg, sub.last_arg)
     testing.expect_value(t, s, `Ast_Binary{op = ".", lhs = &Ast_Node{next = <nil>, pos = 0, sub = "x"}, rhs = &Ast_Node{next = <nil>, pos = 2, sub = "y"}} &Ast_Node{next = <nil>, pos = 4, sub = 10} &Ast_Node{next = <nil>, pos = 8, sub = 20}`)
+}
+
+@(test)
+test_parse_all :: proc(t: ^testing.T) {
+    p := parser_make("test", `
+    struct V2 { x: int y: int }
+    func add(x: int, y: int): int { return x + y }
+
+    add(10, 20)
+    `)
+    parser_next_token(&p)
+
+    for p.l.last_tok.kind != .End {
+        _, err := parser_parse_statement(&p)
+        testing.expect_value(t, err, nil)
+
+        if err, ok := err.(Parser_Error); ok {
+            line, col := pos_to_line_col(p.l.src, err.pos)
+            log.error(line, col)
+            break
+        }
+    }
 }

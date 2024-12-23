@@ -30,12 +30,6 @@ Ast_Binary :: struct {
     rhs: ^Ast_Node,
 }
 
-// Just a container for sub-nodes, use `first_child` to get the head
-Ast_Block :: struct {
-    first_child: ^Ast_Node,
-    last_child: ^Ast_Node,
-}
-
 // This handles if, for, and while all-in-one
 Ast_Control_Flow :: struct {
     // Optional initializer statement.
@@ -112,18 +106,22 @@ Ast_Return :: struct {
     value: ^Ast_Node
 }
 
+Ast_New :: struct {
+    type: ^Qual_Name,
+}
+
 Ast_Node_Sub :: union #no_nil {
     Ast_Literal, 
     Ast_Ident,
     Ast_Unary, 
     Ast_Binary, 
-    Ast_Block,
     Ast_Control_Flow,
     Ast_Range_Loop,
     Ast_Jump,
     Ast_Def,
     Ast_Call,
     Ast_Return,
+    Ast_New,
 }
 
 // AST nodes basically just form an n-ary tree.
@@ -163,15 +161,6 @@ ast_traverse :: proc(root: ^Ast_Node, ctx: ^$T, fn: proc(node: ^Ast_Node, ctx: ^
             return ast_traverse(sub.lhs, ctx, fn) && 
                    ast_traverse(sub.rhs, ctx, fn)
 
-        case .Ast_Block:
-            for node := sub.first_child; node != nil; node = node.next {
-                if !ast_traverse(node, ctx, fn) {
-                    return false
-                }
-            }
-
-            return true
-
         case .Ast_Control_Flow:
             return ast_traverse(sub.init, ctx, fn) &&
                    ast_traverse(sub.cond, ctx, fn) &&
@@ -195,6 +184,9 @@ ast_traverse :: proc(root: ^Ast_Node, ctx: ^$T, fn: proc(node: ^Ast_Node, ctx: ^
 
         case .Ast_Return:
             return ast_traverse(sub.value, ctx, fn)
+
+        case .Ast_New:
+            return true
     }
 
     return true
