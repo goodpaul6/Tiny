@@ -122,25 +122,34 @@ parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Err
         case .Num: {
             lit := parse_num(p) or_return
             node = ast_node_create(p, lit)
+
+            next_token(p)
         }
 
         case .Char: {
             lit := parse_char(p) or_return
             node = ast_node_create(p, lit)
+
+            next_token(p)
         }
 
         case .Str: {
             lit := parse_str(p) or_return
             node = ast_node_create(p, lit)
+
+            next_token(p)
         }
 
         case .Ident: {
             if l.last_tok.lexeme == "true" {
                 node = ast_node_create(p, Ast_Literal(true))
+                next_token(p)
             } else if l.last_tok.lexeme == "false" {
                 node = ast_node_create(p, Ast_Literal(false))
+                next_token(p)
             } else if l.last_tok.lexeme == "null" {
                 node = ast_node_create(p, Ast_Literal(Null_Literal_Value{}))
+                next_token(p)
             } else if l.last_tok.lexeme == "new" {
                 next_token(p)
 
@@ -150,14 +159,71 @@ parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Err
                 expect_token_lexeme(p, "{", "Expected '{' after 'new ...'") or_return
                 next_token(p)
 
-                expect_token_lexeme(p, "}", "Expected '}' after 'new ...{'") or_return
-                next_token(p)    
+                first_arg: ^New_Arg
+                last_arg: ^New_Arg
+
+                MIX_ARGS_MSG :: "Cannot mix named and unnamed args in 'new' expression"
+
+                named_args := false
+
+                for i := 0; !(is_cur_lexeme_eq(p, "}") or_return); i += 1 {
+                    name: string
+
+                    if l.last_tok.lexeme == "." {
+                        if i > 0 && !named_args {
+                            err = cur_pos_error(p, MIX_ARGS_MSG)
+                            return
+                        }
+
+                        named_args = true
+
+                        next_token(p)
+                        expect_token_kind(p, .Ident, "Expected identifier after '.' in 'new' expression") or_return
+
+                        name = clone_lexeme(p)
+                        next_token(p)
+
+                        expect_token_lexeme(p, "=", "Expected '=' after identifier in 'new' expression") or_return
+                        next_token(p)
+                    } else if named_args {
+                        err = cur_pos_error(p, MIX_ARGS_MSG)
+                        return
+                    }
+
+                    value := parse_expr(p) or_return
+
+                    arg := new_clone(New_Arg{
+                        name = name,
+                        value = value,
+                    }, context.temp_allocator)
+
+                    if first_arg == nil {
+                        first_arg = arg
+                        last_arg = arg
+                    } else {
+                        last_arg.next = arg
+                        last_arg = arg
+                    }
+
+                    if l.last_tok.lexeme == "," {
+                        next_token(p)
+                    } else if l.last_tok.lexeme != "}" {
+                        err = cur_pos_error(p, "Expected ',' or '}' in 'new' expression args")
+                        return
+                    }
+                }
 
                 node = ast_node_create(p, Ast_New{
                     type = type,
+                    first_arg = first_arg,
+                    last_arg = last_arg,
                 })
+
+                next_token(p)
             } else {
                 node = ast_node_create(p, Ast_Ident(clone_lexeme(p)))
+
+                next_token(p)
             }
         }
 
@@ -167,6 +233,7 @@ parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Err
                 node = parse_expr(p) or_return
 
                 expect_token_lexeme(p, ")", "Expected ')' after previous '('") or_return
+
                 next_token(p)
             } else if l.last_tok.lexeme == "-" {
                 next_token(p)
@@ -183,8 +250,6 @@ parse_value :: proc(using p: ^Parser) -> (node: ^Ast_Node, err: Maybe(Parser_Err
         err = cur_pos_error(p, fmt.tprintf("Unexpected token"))
         return
     }
-
-    next_token(p)
 
     return
 }
@@ -229,7 +294,7 @@ parse_call_args :: proc(using p: ^Parser) -> (first_arg: ^Ast_Node, last_arg: ^A
         if l.last_tok.lexeme == "," {
             next_token(p)
         } else if l.last_tok.lexeme != ")" {
-            err = cur_pos_error(p, "Expected , or ) in call")
+            err = cur_pos_error(p, "Expected ',' or ')' in call")
             return
         }
     }

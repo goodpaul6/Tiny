@@ -106,8 +106,21 @@ Ast_Return :: struct {
     value: ^Ast_Node
 }
 
+New_Arg :: struct {
+    next: ^New_Arg,
+
+    // If this is empty, then it's an unnamed
+    // arg. We'll check that the user did not
+    // mix named and unnamed args.
+    name: string,
+    value: ^Ast_Node
+}
+
 Ast_New :: struct {
     type: ^Qual_Name,
+
+    first_arg: ^New_Arg,
+    last_arg: ^New_Arg,
 }
 
 Ast_Node_Sub :: union #no_nil {

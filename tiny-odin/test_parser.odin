@@ -143,12 +143,34 @@ test_parse_call :: proc(t: ^testing.T) {
 }
 
 @(test)
+test_parse_new :: proc(t: ^testing.T) {
+    p := parser_make("test", `x := new V2{10, 20}`)
+    parser_next_token(&p)
+
+    _, err := parser_parse_statement(&p)
+    testing.expect_value(t, err, nil)
+}
+
+@(test)
+test_parse_call_new :: proc(t: ^testing.T) {
+    p := parser_make("test", `f(new V2{10, 20})`)
+    parser_next_token(&p)
+
+    _, err := parser_parse_statement(&p)
+    testing.expect_value(t, err, nil)
+}
+
+@(test)
 test_parse_all :: proc(t: ^testing.T) {
     p := parser_make("test", `
     struct V2 { x: int y: int }
     func add(x: int, y: int): int { return x + y }
+    func add_v2(a: V2, b: V2): V2 {
+        return new V2{.x = a.x + b.x, .y = a.y + b.y}
+    }
 
     add(10, 20)
+    v := add_v2(new V2{10, 20}, new V2{20, 30})
     `)
     parser_next_token(&p)
 
