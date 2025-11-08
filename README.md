@@ -50,4 +50,6 @@ development utilities (async processing, routing, templating). Have a look at `e
 
 I used Tiny for [all of my Advent of Code 2024 solutions](https://github.com/goodpaul6/advent/blob/master/2024). I added a few quality-of-life features (`foreach` loops, array indexing, etc) but this added only ~200 lines to the compiler, and nothing to the runtime.
 
+<img width="1104" height="620" alt="image" src="https://github.com/user-attachments/assets/8cb98d79-189b-4c83-b465-3e86861c32ae" />
+
 You can run the solutions by building `terp` in the examples and then running `tiny_terp {day_whatever}.tiny` and putting the input in `inputs/{day_whatever}.txt` in your working directory.
