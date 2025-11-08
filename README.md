@@ -48,8 +48,6 @@ development utilities (async processing, routing, templating). Have a look at `e
 
 ### Advent of Code
 
-I used Tiny to [solve Day 19 of Advent of Code 2023](https://github.com/goodpaul6/advent/blob/master/2023/day19.tiny). It went surprisingly
-well. I did some other days as well; you can check out the `advent` repo to find out.
+I used Tiny for [all of my Advent of Code 2024 solutions](https://github.com/goodpaul6/advent/blob/master/2024). I added a few quality-of-life features (`foreach` loops, array indexing, etc) but this added only ~200 lines to the compiler, and nothing to the runtime.
 
-You can run the solution by building `terp` in the examples and then running `tiny_terp day19.tiny` and putting the input in `inputs/day19.txt`
-in your working directory.
+You can run the solutions by building `terp` in the examples and then running `tiny_terp {day_whatever}.tiny` and putting the input in `inputs/{day_whatever}.txt` in your working directory.
