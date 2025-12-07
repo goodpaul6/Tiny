@@ -201,16 +201,16 @@ Tiny_Value Tiny_NewLightNative(void *ptr);
 // which rely on null-terminated strings, ensure that you null terminate these yourself.
 Tiny_Value Tiny_NewString(Tiny_StateThread *thread, char *str, size_t len);
 
-// This is equivalent to Tiny_NewStringAssumeNullTerminated but it figures out the length assuming
+// This is equivalent to Tiny_NewString but it figures out the length assuming
 // the given pointer is null-terminated.
 Tiny_Value Tiny_NewStringNullTerminated(Tiny_StateThread *thread, char *str);
 
-// Same as Tiny_NewString but it allocates memory for and copies the given string.
+// Same as `Tiny_NewString` but it allocates memory for and copies the given string.
 //
 // Note that this is internally optimized to ensure there is only one allocation for
 // both the Tiny object "metadata" and the string itself. If you haven't already
 // allocated memory for your string and are ready to hand it off, I highly recommend
-// using this instead of Tiny_NewString.
+// using this instead of `Tiny_NewString`.
 Tiny_Value Tiny_NewStringCopy(Tiny_StateThread *thread, const char *src, size_t len);
 
 // Same as Tiny_NewStringCopy but assumes the given string is null terminated.

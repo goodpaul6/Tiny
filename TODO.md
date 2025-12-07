@@ -1,9 +1,16 @@
 # TODO
 
+- IDEA Maybe it's time to implement some sort of generic type beyond just hacky macros
+    - A lot of macro code has to be written to do simple things
+    - Rather than expanding the core language, let users define custom data types that have
+      type parameters? Then we can define `array(int)`
+    - Make `protocol` a thing, so we can do `protocol ArrayIndex {}` and then we can implement
+      protocols for our types and type specializations?
+
 - IDEA Get rid of nullable types from the code and just implement it as a macro library? `use nullable("int") as nint` + `nint_unwrap` + `nint_or`
     - Can store these in a single `Tiny_Value` anyways while we're tagging types
     - This will work nicely with the `:` syntax proposed below
-    
+
 - IDEA Add optional `symbolPrefix` argument to `CompileString` which lets you prefix every symbol in the compiled file
     - Allows you to prevent name collisions, makes composition via macros easier?
 
@@ -39,7 +46,7 @@
     - Types can be namespaces? Or namespaces can have types?
     - Basically formalize the "protocol" thing we've been doing with the indexing syntax
 
-- IDEA What if all `struct` are structurally typed? Assuming structs 
+- IDEA What if all `struct` are structurally typed? Assuming structs
 
 - IDEA Since it's become such a common pattern to call methods like `arr->aint_len()`, maybe a shorthand like `arr:len()` which just compiles to `{type(arr)}_len()`
   would simplify a lot of code
