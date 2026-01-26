@@ -24,14 +24,16 @@ static size_t NextMultipleOf(size_t value, size_t factor) {
 
     // Seems correct, I have tried 2 numbers
     // 3, 4
-    // 011, 100
-    // 011 => 100
+    // 0b011, 0b100
+    // 3 + 4 - 1 = 6
+    // 6 & ~(4 - 1) = 6 & 0b1...00 = 0b110 & 0b100 = 0b100 = 4
     // 000 + factor = 4
     //
     // 7, 4
     // 111, 100
-    // 100...
-    return (value & ~(factor - 1)) + factor;
+    // 7 + 4 - 1 = 10
+    // 10 & ~(4 - 1) = 10 & 0b1...00 = 0b1010 & 0b1100 = 0b1000 = 8
+    return (value + factor - 1) & ~(factor - 1);
 }
 
 void Tiny_InitArena(Tiny_Arena* a, Tiny_Context ctx) {
