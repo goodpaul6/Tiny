@@ -22,6 +22,15 @@ static unsigned long HashValue(Tiny_Value value) {
             return (int)value.boolean + 1;
         case TINY_VAL_INT:
             return (Tiny_Int)value.i;
+        case TINY_VAL_FLOAT: {
+            uint64_t v = 0;
+
+            // Might not be all the bytes depending on the size of the float.
+            // HACK(Apaar): We assume sizeof(value.f) <= sizeof(uint64_t)
+            memcpy(&v, &value.f, sizeof(value.f));
+
+            return v;
+        } break;
         case TINY_VAL_CONST_STRING:
         case TINY_VAL_STRING: {
             const char *start = Tiny_ToString(value);
@@ -82,6 +91,10 @@ void DestroyDict(Dict *dict) {
 }
 
 void DictSet(Dict *dict, Tiny_Value key, Tiny_Value value) {
+    // TODO(Apaar): Enforce somehow at the type level for
+    // Dict
+    assert(key.type != TINY_VAL_NULL);
+
     // TODO: Perhaps think about having a DictSetEx where you can
     // adjust growth factor and parameters (like allow it to fail
     // if there's no space). Better yet, break these apart into

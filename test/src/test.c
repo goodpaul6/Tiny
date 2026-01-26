@@ -301,6 +301,14 @@ static void test_DictSet(void) {
 
     InitDict(&dict, Tiny_DefaultContext);
 
+    Tiny_Value fValue = {.type = TINY_VAL_FLOAT, .f = 1234};
+
+    DictSet(&dict, fValue, fValue);
+
+    const Tiny_Value *pValue = DictGet(&dict, fValue);
+    lok_print_return(pValue, "No DictGet return value for fValue\n");
+    lequal(pValue->f, fValue.f);
+
     for (int i = 0; i < 1000; ++i) {
         DictSet(&dict,
                 (Tiny_Value){
@@ -313,7 +321,7 @@ static void test_DictSet(void) {
                 });
     }
 
-    lok(dict.filledCount == 1000);
+    lok(dict.filledCount == 1001);
 
     bool allGood = true;
 
