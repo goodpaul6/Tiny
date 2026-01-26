@@ -156,6 +156,30 @@ static void test_ArrayPush(void) {
     DestroyArray(&array);
 }
 
+static void test_ArrayResize(void) {
+    Array array;
+
+    InitArray(&array, Tiny_DefaultContext);
+
+    for (int i = 0; i < 64; ++i) {
+        ArrayPush(&array, (Tiny_Value){
+                              .type = TINY_VAL_INT,
+                              .i = i,
+                          });
+    }
+
+    ArrayResize(&array, 128, (Tiny_Value){.type = TINY_VAL_INT, .i = 128});
+
+    lequal(ArrayGet(&array, 100)->i, 128);
+    lequal(ArrayLen(&array), 128);
+
+    ArrayResize(&array, 10, (Tiny_Value){.type = TINY_VAL_INT, .i = 10});
+
+    lequal(ArrayLen(&array), 10);
+
+    DestroyArray(&array);
+}
+
 static void test_ArrayPop(void) {
     Array array;
 
@@ -265,6 +289,7 @@ static void test_ArrayRemove(void) {
 static void test_Array(void) {
     test_InitArrayEx();
     test_ArrayPush();
+    test_ArrayResize();
     test_ArrayPop();
     test_ArraySet();
     test_ArrayInsert();

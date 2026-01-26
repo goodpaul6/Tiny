@@ -30,7 +30,7 @@ void ArrayResize(Array *array, int newLen, Tiny_Value newValue) {
     if (newLen > len) {
         Tiny_Value *newValues = sb_add(&array->ctx, array->data, newLen - len);
 
-        for (int i = len; i < newLen; ++i) {
+        for (int i = 0; i < (newLen - len); ++i) {
             newValues[i] = newValue;
         }
     } else {
