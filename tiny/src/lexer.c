@@ -269,16 +269,16 @@ static Tiny_TokenKind GetToken(Tiny_Lexer *l) {
 
         l->last = GetChar(l);
 
-        while (l->last && l->last != '"') {
+        while (l->last != '"') {
+            if(!l->last) {
+                l->errorMsg = "Unterminated string literal (expected \" but got EOF)";
+                return TINY_TOK_LEXER_ERROR;
+            }
+
             CHECK_ESCAPE();
 
             sb_push(&l->ctx, l->lexeme, l->last);
             l->last = GetChar(l);
-        }
-
-        if(!l->last) {
-            l->errorMsg = "Unterminated string literal (expected \" but got EOF)";
-            return TINY_TOK_LEXER_ERROR;
         }
 
         sb_push(&l->ctx, l->lexeme, 0);
