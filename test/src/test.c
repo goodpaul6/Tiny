@@ -11,6 +11,7 @@
 #include "minctest.h"
 #include "pos.h"
 #include "tiny.h"
+#include "lexer.h"
 
 #define lok_print_return(test, ...)   \
     do {                              \
@@ -1247,6 +1248,20 @@ static void test_ForeachRevNoIndex() {
     Tiny_DeleteState(state);
 }
 
+static void test_UnterminatedStringLiteral() {
+    Tiny_Lexer l;
+
+    Tiny_InitLexer(&l, "test_UnterminatedStringLiteral", "x := \"hello", Tiny_DefaultContext);
+
+    lequal_return(Tiny_GetToken(&l), TINY_TOK_IDENT);
+    lequal_return(Tiny_GetToken(&l), TINY_TOK_DECLARE);
+    lequal_return(Tiny_GetToken(&l), TINY_TOK_LEXER_ERROR);
+
+    lsequal(l.errorMsg, "Unterminated string literal (expected \" but got EOF)");
+
+    Tiny_DestroyLexer(&l);
+}
+
 int main(int argc, char *argv[]) {
     lrun("Pos to friendly pos", test_PosToFriendlyPos);
     lrun("All Array tests", test_Array);
@@ -1275,6 +1290,7 @@ int main(int argc, char *argv[]) {
     lrun("Tiny Foreach Syntax", test_Foreach);
     lrun("Tiny Foreach Reverse Syntax", test_ForeachRev);
     lrun("Tiny Foreach Reverse Noindex Syntax", test_ForeachRevNoIndex);
+    lrun("Tiny Unterminated String Literal", test_UnterminatedStringLiteral);
 
     lrun("Check no leak in tests", test_CheckMallocs);
 
